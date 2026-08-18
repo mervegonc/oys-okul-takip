@@ -4,6 +4,7 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from './firebase';
 import Login from './components/Login';
 import Dashboard from './components/Dashboard';
+import Students from './pages/Students'; 
 
 function App() {
   const [user, setUser] = useState(null);
@@ -21,10 +22,11 @@ function App() {
 
   return (
     <BrowserRouter>
-      <Routes>
-        <Route path="/login" element={!user ? <Login /> : <Navigate to="/" />} />
-        <Route path="/" element={user ? <Dashboard user={user} /> : <Navigate to="/login" />} />
-      </Routes>
+   <Routes>
+  <Route path="/login" element={!user ? <Login /> : <Navigate to="/" />} />
+  <Route path="/" element={user ? <Dashboard user={user} /> : <Navigate to="/login" />} />
+  <Route path="/students" element={user ? <Students /> : <Navigate to="/login" />} />
+</Routes>
     </BrowserRouter>
   );
 }

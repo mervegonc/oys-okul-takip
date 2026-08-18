@@ -1,6 +1,7 @@
 import React from 'react';
 import { signOut } from 'firebase/auth';
 import { auth } from '../firebase';
+import { Link } from 'react-router-dom'; 
 
 const Dashboard = ({ user }) => {
   const handleLogout = async () => {
@@ -22,7 +23,11 @@ const Dashboard = ({ user }) => {
       <div style={{ marginTop: '2rem' }}>
         <h3>📋 Modüller (İskelet)</h3>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px,1fr))', gap: '1rem', marginTop: '1rem' }}>
-          <div style={{ padding: '1rem', background: '#f8f9fa', borderRadius: '8px', border: '1px solid #ddd' }}>👨‍🎓 Öğrenci Yönetimi</div>
+          <Link to="/students" style={{ textDecoration: 'none' }}>
+  <div style={{ padding: '1rem', background: '#f8f9fa', borderRadius: '8px', border: '1px solid #ddd', cursor: 'pointer' }}>
+    👨‍🎓 Öğrenci Yönetimi
+  </div>
+</Link>
           <div style={{ padding: '1rem', background: '#f8f9fa', borderRadius: '8px', border: '1px solid #ddd' }}>📝 Sınav Tanımla</div>
           <div style={{ padding: '1rem', background: '#f8f9fa', borderRadius: '8px', border: '1px solid #ddd' }}>🪑 Salon & Karma</div>
           <div style={{ padding: '1rem', background: '#f8f9fa', borderRadius: '8px', border: '1px solid #ddd' }}>✅ Yoklama Listeleri</div>
