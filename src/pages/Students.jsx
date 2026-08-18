@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { collection, getDocs, addDoc, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../firebase';
 import ExcelUpload from '../components/ExcelUpload';
-import { encrypt } from '../utils/encryption';
 
 const Students = () => {
   const [students, setStudents] = useState([]);
@@ -44,23 +43,15 @@ const Students = () => {
 
   const handleAddStudent = async (e) => {
     e.preventDefault();
-    if (!newStudent.firstName || !newStudent.lastName || !newStudent.grade) {
-      alert('Ad, soyad ve sınıf zorunludur.');
+    if (!newStudent.firstName || !newStudent.lastName) {
+      alert('Ad ve soyad zorunludur.');
       return;
     }
     try {
-      // Şifrelenecek alanlar
-      const encryptedData = {
+      const docRef = await addDoc(collection(db, 'students'), {
         ...newStudent,
-        tcNo: newStudent.tcNo ? encrypt(newStudent.tcNo) : '',
-        phone: newStudent.phone ? encrypt(newStudent.phone) : '',
-        parentPhone: newStudent.parentPhone ? encrypt(newStudent.parentPhone) : '',
-        parentPhone2: newStudent.parentPhone2 ? encrypt(newStudent.parentPhone2) : '',
         createdAt: new Date(),
-      };
-
-      const docRef = await addDoc(collection(db, 'students'), encryptedData);
-      // Listeye ekle (şifreli veriyi göster, ama kullanıcıya şifresiz gibi görünür)
+      });
       setStudents([...students, { id: docRef.id, ...newStudent }]);
       setNewStudent({
         firstName: '',
@@ -103,7 +94,7 @@ const Students = () => {
 
       <ExcelUpload onUploadComplete={fetchStudents} />
 
-      <div style={{ background: '#f9f9f9', padding: '1rem', borderRadius: '8px', marginBottom: '2rem', marginTop: '1rem' }}>
+      <div style={{ background: '#f9f9f9', padding: '1rem', borderRadius: '8px', marginBottom: '2rem' }}>
         <h3>Yeni Öğrenci Ekle</h3>
         <form onSubmit={handleAddStudent} style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
           <input type="text" placeholder="Ad" value={newStudent.firstName} onChange={(e) => setNewStudent({ ...newStudent, firstName: e.target.value })} style={{ padding: '0.4rem', flex: '1 1 150px' }} />
@@ -140,18 +131,10 @@ const Students = () => {
         <tbody>
           {students.map((student) => (
             <tr key={student.id} style={{ borderBottom: '1px solid #ddd' }}>
-              <td>{student.firstName}</td>
-              <td>{student.lastName}</td>
-              <td>{student.grade}</td>
-              <td>{student.class}</td>
-              <td>{student.studentNo}</td>
-              <td>{student.tcNo ? '🔒' : ''}</td>
-              <td>{student.phone ? '🔒' : ''}</td>
-              <td>{student.parentPhone ? '🔒' : ''}</td>
-              <td>{student.parentPhone2 ? '🔒' : ''}</td>
-              <td>{student.field}</td>
-              <td>{student.secondLang}</td>
-              <td>{student.gender}</td>
+              <td>{student.firstName}</td><td>{student.lastName}</td><td>{student.grade}</td><td>{student.class}</td>
+              <td>{student.studentNo}</td><td>{student.tcNo}</td><td>{student.phone}</td>
+              <td>{student.parentPhone}</td><td>{student.parentPhone2}</td>
+              <td>{student.field}</td><td>{student.secondLang}</td><td>{student.gender}</td>
               <td>{student.englishLevel}</td>
               <td><button onClick={() => handleDelete(student.id)} style={{ background: '#dc3545', color: 'white', border: 'none', borderRadius: '4px', padding: '0.2rem 0.5rem' }}>Sil</button></td>
             </tr>

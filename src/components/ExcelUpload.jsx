@@ -2,18 +2,18 @@ import React, { useState } from 'react';
 import * as XLSX from 'xlsx';
 import { collection, getDocs, addDoc, updateDoc, doc, query, where } from 'firebase/firestore';
 import { db } from '../firebase';
-import { encrypt } from '../utils/encryption';
 
 const ExcelUpload = ({ onUploadComplete }) => {
   const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState('');
-  const [mode, setMode] = useState('add'); // 'add' veya 'update'
-  
+  const [messageType, setMessageType] = useState('');
+  const [mode, setMode] = useState('add');
+
   const [updateFields, setUpdateFields] = useState({
-    grade: false,
-    class: false,
     firstName: false,
     lastName: false,
+    grade: false,
+    class: false,
     field: false,
     secondLang: false,
     phone: false,
@@ -40,31 +40,44 @@ const ExcelUpload = ({ onUploadComplete }) => {
   };
 
   const handleFileUpload = async (event) => {
+    console.log("🔹 1. Dosya seçme olayı tetiklendi!");
     const file = event.target.files[0];
-    if (!file) return;
+    if (!file) {
+      console.log("🔹 2. Dosya seçilmedi.");
+      return;
+    }
 
+    console.log("🔹 3. Dosya seçildi:", file.name);
     setUploading(true);
     setMessage('');
+    setMessageType('');
 
     const reader = new FileReader();
     reader.onload = async (e) => {
       try {
+        console.log("🔹 4. Dosya okundu, işleniyor...");
         const data = new Uint8Array(e.target.result);
         const workbook = XLSX.read(data, { type: 'array' });
         const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
         const jsonData = XLSX.utils.sheet_to_json(firstSheet, { defval: '' });
 
+        console.log("🔹 5. JSON verisi (ilk 3 satır):", jsonData.slice(0, 3));
+
         if (jsonData.length === 0) {
           setMessage('Excel dosyası boş.');
+          setMessageType('error');
           setUploading(false);
           return;
         }
 
-        const headers = Object.keys(jsonData[0]);
+        const headers = Object.keys(jsonData[0] || {});
+        console.log("🔹 6. Sütun başlıkları:", headers);
+
         const mappedHeaders = headers.map(h => columnMapping[h] || null);
         const missingHeaders = headers.filter((h, i) => !mappedHeaders[i]);
         if (missingHeaders.length > 0) {
           setMessage(`Tanımlanamayan sütunlar: ${missingHeaders.join(', ')}`);
+          setMessageType('error');
           setUploading(false);
           return;
         }
@@ -74,6 +87,7 @@ const ExcelUpload = ({ onUploadComplete }) => {
         let errorCount = 0;
 
         if (mode === 'add') {
+          console.log("🔹 7. EKLEME modu başladı...");
           for (const row of jsonData) {
             try {
               const studentData = {
@@ -82,11 +96,10 @@ const ExcelUpload = ({ onUploadComplete }) => {
                 grade: row['Sınıf'] ? String(row['Sınıf']) : '',
                 class: row['Şube'] || '',
                 studentNo: row['okul numarası'] ? String(row['okul numarası']) : '',
-                // TC ve telefonları şifrele
-                tcNo: row['tcNo'] ? encrypt(String(row['tcNo'])) : '',
-                phone: row['Telefon Numarası1'] ? encrypt(String(row['Telefon Numarası1'])) : '',
-                parentPhone: row['Veli 1 Telefon Numarası'] ? encrypt(String(row['Veli 1 Telefon Numarası'])) : '',
-                parentPhone2: row['Veli 2 Telefon Numarası'] ? encrypt(String(row['Veli 2 Telefon Numarası'])) : '',
+                tcNo: row['tcNo'] ? String(row['tcNo']) : '',
+                phone: row['Telefon Numarası1'] ? String(row['Telefon Numarası1']) : '',
+                parentPhone: row['Veli 1 Telefon Numarası'] ? String(row['Veli 1 Telefon Numarası']) : '',
+                parentPhone2: row['Veli 2 Telefon Numarası'] ? String(row['Veli 2 Telefon Numarası']) : '',
                 field: row['Öğrenim Alanı'] || '',
                 secondLang: row['2. Yab. Dil'] || '',
                 gender: row['Cinsiyet'] || '',
@@ -101,29 +114,30 @@ const ExcelUpload = ({ onUploadComplete }) => {
 
               await addDoc(collection(db, 'students'), studentData);
               addedCount++;
+              console.log(`✅ Eklendi: ${studentData.firstName} ${studentData.lastName}`);
             } catch (err) {
-              console.error('Öğrenci eklenirken hata:', err);
+              console.error('❌ Öğrenci eklenirken hata:', err);
               errorCount++;
             }
           }
           setMessage(`${addedCount} öğrenci başarıyla eklendi. ${errorCount} hata oluştu.`);
-        } 
-        else if (mode === 'update') {
+          setMessageType('success');
+        } else if (mode === 'update') {
+          console.log("🔹 8. GÜNCELLEME modu başladı...");
           for (const row of jsonData) {
             try {
-              const tcNoPlain = row['tcNo'] ? String(row['tcNo']) : '';
-              if (!tcNoPlain) {
+              const tcNo = row['tcNo'] ? String(row['tcNo']) : '';
+              if (!tcNo) {
                 errorCount++;
                 continue;
               }
 
-              // TC şifrelenmiş halini ara
-              const encryptedTc = encrypt(tcNoPlain);
-              const q = query(collection(db, 'students'), where('tcNo', '==', encryptedTc));
+              const q = query(collection(db, 'students'), where('tcNo', '==', tcNo));
               const querySnapshot = await getDocs(q);
 
               if (querySnapshot.empty) {
                 errorCount++;
+                console.log(`⚠️ TC bulunamadı: ${tcNo}`);
                 continue;
               }
 
@@ -136,9 +150,9 @@ const ExcelUpload = ({ onUploadComplete }) => {
               if (updateFields.class) updateData.class = row['Şube'] || '';
               if (updateFields.field) updateData.field = row['Öğrenim Alanı'] || '';
               if (updateFields.secondLang) updateData.secondLang = row['2. Yab. Dil'] || '';
-              if (updateFields.phone) updateData.phone = row['Telefon Numarası1'] ? encrypt(String(row['Telefon Numarası1'])) : '';
-              if (updateFields.parentPhone) updateData.parentPhone = row['Veli 1 Telefon Numarası'] ? encrypt(String(row['Veli 1 Telefon Numarası'])) : '';
-              if (updateFields.parentPhone2) updateData.parentPhone2 = row['Veli 2 Telefon Numarası'] ? encrypt(String(row['Veli 2 Telefon Numarası'])) : '';
+              if (updateFields.phone) updateData.phone = row['Telefon Numarası1'] ? String(row['Telefon Numarası1']) : '';
+              if (updateFields.parentPhone) updateData.parentPhone = row['Veli 1 Telefon Numarası'] ? String(row['Veli 1 Telefon Numarası']) : '';
+              if (updateFields.parentPhone2) updateData.parentPhone2 = row['Veli 2 Telefon Numarası'] ? String(row['Veli 2 Telefon Numarası']) : '';
               if (updateFields.gender) updateData.gender = row['Cinsiyet'] || '';
               if (updateFields.englishLevel) updateData.englishLevel = row['İngilizce Seviyesi'] || 'Core';
 
@@ -149,17 +163,22 @@ const ExcelUpload = ({ onUploadComplete }) => {
 
               await updateDoc(doc(db, 'students', studentDoc.id), updateData);
               updatedCount++;
+              console.log(`✅ Güncellendi: TC ${tcNo}`);
             } catch (err) {
-              console.error('Güncelleme hatası:', err);
+              console.error('❌ Güncelleme hatası:', err);
               errorCount++;
             }
           }
           setMessage(`${updatedCount} öğrenci güncellendi. ${errorCount} hata oluştu.`);
+          setMessageType('success');
         }
 
+        console.log("🔹 9. İşlem tamamlandı.");
         if (onUploadComplete) onUploadComplete();
       } catch (err) {
+        console.error("🔹 10. KRİTİK HATA:", err);
         setMessage('Dosya okunamadı: ' + err.message);
+        setMessageType('error');
       } finally {
         setUploading(false);
         event.target.value = '';
@@ -179,7 +198,7 @@ const ExcelUpload = ({ onUploadComplete }) => {
   return (
     <div style={{ margin: '1rem 0', padding: '1rem', border: '1px solid #ddd', borderRadius: '8px', background: '#f9f9f9' }}>
       <h4>📤 Excel ile Öğrenci İşlemleri</h4>
-      
+
       <div style={{ marginBottom: '1rem' }}>
         <label style={{ marginRight: '1rem' }}>
           <input
@@ -216,12 +235,12 @@ const ExcelUpload = ({ onUploadComplete }) => {
       )}
 
       <div>
-        <label htmlFor="excel-upload" style={{ 
-          display: 'inline-block', 
-          padding: '0.5rem 1rem', 
-          background: '#007bff', 
-          color: 'white', 
-          borderRadius: '4px', 
+        <label htmlFor="excel-upload" style={{
+          display: 'inline-block',
+          padding: '0.5rem 1rem',
+          background: '#007bff',
+          color: 'white',
+          borderRadius: '4px',
           cursor: 'pointer',
           marginRight: '1rem'
         }}>
@@ -238,8 +257,16 @@ const ExcelUpload = ({ onUploadComplete }) => {
         {uploading && <span>Yükleniyor...</span>}
       </div>
 
-      {message && <p style={{ marginTop: '0.5rem', color: message.includes('hata') ? 'orange' : 'green' }}>{message}</p>}
-      
+      {message && (
+        <p style={{
+          marginTop: '0.5rem',
+          color: messageType === 'error' ? '#dc3545' : '#28a745',
+          fontWeight: 'bold'
+        }}>
+          {message}
+        </p>
+      )}
+
       <details style={{ marginTop: '0.5rem' }}>
         <summary style={{ cursor: 'pointer', fontSize: '0.9rem', color: '#666' }}>✅ Geçerli sütun başlıkları</summary>
         <p style={{ fontSize: '0.8rem', marginTop: '0.3rem' }}>
