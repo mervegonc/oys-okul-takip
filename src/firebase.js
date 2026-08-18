@@ -16,4 +16,8 @@ const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 export const storage = getStorage(app);
+
+// Şifreleme anahtarını .env'den al
+export const CRYPTO_SECRET = import.meta.env.VITE_CRYPTO_SECRET || 'defaultSecretKey';
+
 export default app;
