@@ -22,6 +22,7 @@ const Students = () => {
     englishLevel: 'Core',
   });
 
+  // Öğrencileri Firestore'dan çek
   const fetchStudents = async () => {
     try {
       const querySnapshot = await getDocs(collection(db, 'students'));
@@ -41,6 +42,7 @@ const Students = () => {
     fetchStudents();
   }, []);
 
+  // Yeni öğrenci ekle
   const handleAddStudent = async (e) => {
     e.preventDefault();
     if (!newStudent.firstName || !newStudent.lastName) {
@@ -75,6 +77,7 @@ const Students = () => {
     }
   };
 
+  // Öğrenci sil
   const handleDelete = async (id) => {
     if (window.confirm('Bu öğrenciyi silmek istediğinizden emin misiniz?')) {
       try {
@@ -86,14 +89,40 @@ const Students = () => {
     }
   };
 
+  // Seviyelere göre öğrenci sayısını hesapla
+  const getGradeStats = () => {
+    const stats = {};
+    students.forEach((s) => {
+      const grade = s.grade || 'Belirsiz';
+      stats[grade] = (stats[grade] || 0) + 1;
+    });
+    return stats;
+  };
+
+  const gradeStats = getGradeStats();
+
   if (loading) return <div>Öğrenciler yükleniyor...</div>;
 
   return (
     <div style={{ padding: '1rem', maxWidth: '1200px', margin: '0 auto' }}>
       <h2>👨‍🎓 Öğrenci Yönetimi</h2>
 
+      {/* Excel Yükleme Bileşeni */}
       <ExcelUpload onUploadComplete={fetchStudents} />
 
+      {/* İstatistik Kartları */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', margin: '1rem 0', background: '#f8f9fa', padding: '1rem', borderRadius: '8px', border: '1px solid #ddd' }}>
+        <div style={{ fontWeight: 'bold', marginRight: '1rem' }}>
+          Toplam Öğrenci: <span style={{ color: '#007bff' }}>{students.length}</span>
+        </div>
+        {Object.keys(gradeStats).sort().map((grade) => (
+          <div key={grade} style={{ background: '#e9ecef', padding: '0.3rem 0.8rem', borderRadius: '20px' }}>
+            {grade}. Sınıf: <strong>{gradeStats[grade]}</strong>
+          </div>
+        ))}
+      </div>
+
+      {/* Yeni Öğrenci Ekleme Formu */}
       <div style={{ background: '#f9f9f9', padding: '1rem', borderRadius: '8px', marginBottom: '2rem' }}>
         <h3>Yeni Öğrenci Ekle</h3>
         <form onSubmit={handleAddStudent} style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
@@ -122,21 +151,49 @@ const Students = () => {
         </form>
       </div>
 
+      {/* Öğrenci Listesi */}
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
         <thead>
           <tr style={{ background: '#f1f1f1' }}>
-            <th>Ad</th><th>Soyad</th><th>Sınıf</th><th>Şube</th><th>No</th><th>TC</th><th>Telefon</th><th>Veli1</th><th>Veli2</th><th>Alan</th><th>2.Dil</th><th>Cinsiyet</th><th>İng.</th><th>İşlem</th>
+            <th>#</th>
+            <th>Ad</th>
+            <th>Soyad</th>
+            <th>Sınıf</th>
+            <th>Şube</th>
+            <th>No</th>
+            <th>TC</th>
+            <th>Telefon</th>
+            <th>Veli1</th>
+            <th>Veli2</th>
+            <th>Alan</th>
+            <th>2.Dil</th>
+            <th>Cinsiyet</th>
+            <th>İng.</th>
+            <th>İşlem</th>
           </tr>
         </thead>
         <tbody>
-          {students.map((student) => (
+          {students.map((student, index) => (
             <tr key={student.id} style={{ borderBottom: '1px solid #ddd' }}>
-              <td>{student.firstName}</td><td>{student.lastName}</td><td>{student.grade}</td><td>{student.class}</td>
-              <td>{student.studentNo}</td><td>{student.tcNo}</td><td>{student.phone}</td>
-              <td>{student.parentPhone}</td><td>{student.parentPhone2}</td>
-              <td>{student.field}</td><td>{student.secondLang}</td><td>{student.gender}</td>
+              <td>{index + 1}</td>
+              <td>{student.firstName}</td>
+              <td>{student.lastName}</td>
+              <td>{student.grade}</td>
+              <td>{student.class}</td>
+              <td>{student.studentNo}</td>
+              <td>{student.tcNo}</td>
+              <td>{student.phone}</td>
+              <td>{student.parentPhone}</td>
+              <td>{student.parentPhone2}</td>
+              <td>{student.field}</td>
+              <td>{student.secondLang}</td>
+              <td>{student.gender}</td>
               <td>{student.englishLevel}</td>
-              <td><button onClick={() => handleDelete(student.id)} style={{ background: '#dc3545', color: 'white', border: 'none', borderRadius: '4px', padding: '0.2rem 0.5rem' }}>Sil</button></td>
+              <td>
+                <button onClick={() => handleDelete(student.id)} style={{ background: '#dc3545', color: 'white', border: 'none', borderRadius: '4px', padding: '0.2rem 0.5rem' }}>
+                  Sil
+                </button>
+              </td>
             </tr>
           ))}
         </tbody>
