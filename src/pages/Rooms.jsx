@@ -1,15 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { collection, getDocs, addDoc, deleteDoc, doc, query, orderBy } from 'firebase/firestore';
+import { collection, getDocs, addDoc, deleteDoc, doc, updateDoc, query, orderBy } from 'firebase/firestore';
 import { db } from '../firebase';
-import { FaPlus, FaTrash, FaBuilding } from 'react-icons/fa';
+import { FaPlus, FaTrash, FaEdit, FaTimes, FaSave } from 'react-icons/fa';
 
 const Rooms = () => {
   const [rooms, setRooms] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState(null);
   const [formData, setFormData] = useState({
     name: '',
-    branch: '',        // <-- YENİ: şube adı
     capacity: '',
     floor: '',
     hasExtraSeats: false,
@@ -49,20 +49,54 @@ const Rooms = () => {
       return;
     }
     try {
-      await addDoc(collection(db, 'rooms'), {
-        ...formData,
-        capacity: Number(formData.capacity),
-        extraSeatsAdded: Number(formData.extraSeatsAdded || 0),
-        createdAt: new Date(),
-      });
-      setShowForm(false);
-      setFormData({ name: '', branch: '', capacity: '', floor: '', hasExtraSeats: false, extraSeatsAdded: 0 });
+      if (editingId) {
+        // Güncelleme
+        await updateDoc(doc(db, 'rooms', editingId), {
+          ...formData,
+          capacity: Number(formData.capacity),
+          extraSeatsAdded: Number(formData.extraSeatsAdded || 0),
+        });
+        alert('Salon güncellendi.');
+      } else {
+        // Yeni ekleme
+        await addDoc(collection(db, 'rooms'), {
+          ...formData,
+          capacity: Number(formData.capacity),
+          extraSeatsAdded: Number(formData.extraSeatsAdded || 0),
+          createdAt: new Date(),
+        });
+        alert('Salon başarıyla eklendi.');
+      }
+      resetForm();
       fetchRooms();
-      alert('Salon başarıyla eklendi.');
     } catch (error) {
-      console.error('Salon eklenirken hata:', error);
+      console.error('Salon kaydedilirken hata:', error);
       alert('Bir hata oluştu.');
     }
+  };
+
+  const handleEdit = (room) => {
+    setEditingId(room.id);
+    setFormData({
+      name: room.name || '',
+      capacity: room.capacity || '',
+      floor: room.floor || '',
+      hasExtraSeats: room.hasExtraSeats || false,
+      extraSeatsAdded: room.extraSeatsAdded || 0,
+    });
+    setShowForm(true);
+  };
+
+  const resetForm = () => {
+    setShowForm(false);
+    setEditingId(null);
+    setFormData({
+      name: '',
+      capacity: '',
+      floor: '',
+      hasExtraSeats: false,
+      extraSeatsAdded: 0,
+    });
   };
 
   const handleDelete = async (id) => {
@@ -82,7 +116,7 @@ const Rooms = () => {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
         <h2>🏫 Salon Yönetimi</h2>
         <button
-          onClick={() => setShowForm(!showForm)}
+          onClick={() => { resetForm(); setShowForm(!showForm); }}
           style={{
             padding: '0.5rem 1rem',
             background: '#007bff',
@@ -95,11 +129,12 @@ const Rooms = () => {
             gap: '0.5rem',
           }}
         >
-          <FaPlus /> Yeni Salon
+          {showForm ? <FaTimes /> : <FaPlus />} 
+          {showForm ? 'Kapat' : 'Yeni Salon'}
         </button>
       </div>
 
-      {/* Yeni Salon Formu */}
+      {/* Yeni Salon / Düzenleme Formu */}
       {showForm && (
         <form
           onSubmit={handleSubmit}
@@ -111,7 +146,7 @@ const Rooms = () => {
             border: '1px solid #e0e0e0',
           }}
         >
-          <h4 style={{ marginTop: 0 }}>Yeni Salon Ekle</h4>
+          <h4 style={{ marginTop: 0 }}>{editingId ? 'Salon Düzenle' : 'Yeni Salon Ekle'}</h4>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px,1fr))', gap: '1rem' }}>
             <div>
               <label>Salon Adı</label>
@@ -124,18 +159,6 @@ const Rooms = () => {
                 style={{ width: '100%', padding: '0.5rem', border: '1px solid #ddd', borderRadius: '4px' }}
                 required
               />
-            </div>
-            <div>
-              <label>Şube Adı</label>
-              <input
-                type="text"
-                name="branch"
-                value={formData.branch}
-                onChange={handleChange}
-                placeholder="Örn: 12-F, 9-A"
-                style={{ width: '100%', padding: '0.5rem', border: '1px solid #ddd', borderRadius: '4px' }}
-              />
-              <small style={{ fontSize: '0.8rem', color: '#666' }}>Ortaokul 2. dil sınavlarında kullanılır.</small>
             </div>
             <div>
               <label>Kapasite</label>
@@ -195,13 +218,16 @@ const Rooms = () => {
                 border: 'none',
                 borderRadius: '6px',
                 cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
               }}
             >
-              Kaydet
+              <FaSave /> {editingId ? 'Güncelle' : 'Kaydet'}
             </button>
             <button
               type="button"
-              onClick={() => setShowForm(false)}
+              onClick={resetForm}
               style={{
                 padding: '0.5rem 1.5rem',
                 background: '#6c757d',
@@ -223,7 +249,6 @@ const Rooms = () => {
           <tr>
             <th style={{ padding: '0.5rem' }}>#</th>
             <th style={{ padding: '0.5rem' }}>Salon Adı</th>
-            <th style={{ padding: '0.5rem' }}>Şube Adı</th>
             <th style={{ padding: '0.5rem' }}>Kapasite</th>
             <th style={{ padding: '0.5rem' }}>Kat</th>
             <th style={{ padding: '0.5rem' }}>Ek Sıra</th>
@@ -235,11 +260,22 @@ const Rooms = () => {
             <tr key={room.id} style={{ borderBottom: '1px solid #eee' }}>
               <td style={{ padding: '0.5rem', textAlign: 'center' }}>{index + 1}</td>
               <td style={{ padding: '0.5rem' }}>{room.name}</td>
-              <td style={{ padding: '0.5rem' }}>{room.branch || '-'}</td>
               <td style={{ padding: '0.5rem' }}>{room.capacity}</td>
               <td style={{ padding: '0.5rem' }}>{room.floor || '-'}</td>
               <td style={{ padding: '0.5rem' }}>{room.hasExtraSeats ? `${room.extraSeatsAdded || 0} adet` : 'Yok'}</td>
               <td style={{ padding: '0.5rem' }}>
+                <button
+                  onClick={() => handleEdit(room)}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: '#ffc107',
+                    cursor: 'pointer',
+                    marginRight: '0.5rem',
+                  }}
+                >
+                  <FaEdit />
+                </button>
                 <button
                   onClick={() => handleDelete(room.id)}
                   style={{
@@ -256,7 +292,7 @@ const Rooms = () => {
           ))}
           {rooms.length === 0 && (
             <tr>
-              <td colSpan="7" style={{ textAlign: 'center', padding: '1rem' }}>
+              <td colSpan="6" style={{ textAlign: 'center', padding: '1rem' }}>
                 Henüz salon eklenmemiş.
               </td>
             </tr>
