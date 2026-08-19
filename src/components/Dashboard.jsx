@@ -31,7 +31,11 @@ const Dashboard = ({ user }) => {
           <div style={{ padding: '1rem', background: '#f8f9fa', borderRadius: '8px', border: '1px solid #ddd' }}>📝 Sınav Tanımla</div>
           <div style={{ padding: '1rem', background: '#f8f9fa', borderRadius: '8px', border: '1px solid #ddd' }}>🪑 Salon & Karma</div>
           <div style={{ padding: '1rem', background: '#f8f9fa', borderRadius: '8px', border: '1px solid #ddd' }}>✅ Yoklama Listeleri</div>
-          <div style={{ padding: '1rem', background: '#f8f9fa', borderRadius: '8px', border: '1px solid #ddd' }}>⏰ Geç Kalma Takibi</div>
+   <Link to="/discipline" style={{ textDecoration: 'none' }}>
+  <div style={{ padding: '1rem', background: '#f8f9fa', borderRadius: '8px', border: '1px solid #ddd', cursor: 'pointer' }}>
+    ⏰ Geç Kalma Takibi
+  </div>
+</Link>
           <div style={{ padding: '1rem', background: '#f8f9fa', borderRadius: '8px', border: '1px solid #ddd' }}>📊 Raporlar</div>
         </div>
         <p style={{ marginTop: '2rem', color: '#666', fontStyle: 'italic' }}>

@@ -5,6 +5,7 @@ import { auth } from './firebase';
 import Login from './components/Login';
 import Dashboard from './components/Dashboard';
 import Students from './pages/Students'; 
+import DisciplineTracking from './pages/DisciplineTracking';
 
 function App() {
   const [user, setUser] = useState(null);
@@ -26,6 +27,7 @@ function App() {
   <Route path="/login" element={!user ? <Login /> : <Navigate to="/" />} />
   <Route path="/" element={user ? <Dashboard user={user} /> : <Navigate to="/login" />} />
   <Route path="/students" element={user ? <Students /> : <Navigate to="/login" />} />
+  <Route path="/discipline" element={user ? <DisciplineTracking /> : <Navigate to="/login" />} />
 </Routes>
     </BrowserRouter>
   );
