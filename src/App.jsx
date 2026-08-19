@@ -6,6 +6,7 @@ import Login from './components/Login';
 import Dashboard from './components/Dashboard';
 import Students from './pages/Students'; 
 import DisciplineTracking from './pages/DisciplineTracking';
+import DisciplineReports from './pages/DisciplineReports';
 
 function App() {
   const [user, setUser] = useState(null);
@@ -28,6 +29,7 @@ function App() {
   <Route path="/" element={user ? <Dashboard user={user} /> : <Navigate to="/login" />} />
   <Route path="/students" element={user ? <Students /> : <Navigate to="/login" />} />
   <Route path="/discipline" element={user ? <DisciplineTracking /> : <Navigate to="/login" />} />
+  <Route path="/discipline-reports" element={user ? <DisciplineReports /> : <Navigate to="/login" />} />
 </Routes>
     </BrowserRouter>
   );

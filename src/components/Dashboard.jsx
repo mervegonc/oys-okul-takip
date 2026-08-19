@@ -36,6 +36,11 @@ const Dashboard = ({ user }) => {
     ⏰ Geç Kalma Takibi
   </div>
 </Link>
+<Link to="/discipline-reports" style={{ textDecoration: 'none' }}>
+  <div style={{ padding: '1rem', background: '#f8f9fa', borderRadius: '8px', border: '1px solid #ddd', cursor: 'pointer' }}>
+    📊 Geç Kalma Raporları
+  </div>
+</Link>
           <div style={{ padding: '1rem', background: '#f8f9fa', borderRadius: '8px', border: '1px solid #ddd' }}>📊 Raporlar</div>
         </div>
         <p style={{ marginTop: '2rem', color: '#666', fontStyle: 'italic' }}>
