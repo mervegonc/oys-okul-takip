@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { collection, getDocs, addDoc, deleteDoc, doc, query, orderBy } from 'firebase/firestore';
 import { db } from '../firebase';
 import ExcelUpload from '../components/ExcelUpload';
-import { encrypt, decrypt, isEncrypted } from '../utils/encryption';
+import { encrypt, decrypt } from '../utils/encryption';
 import { FaTrash, FaUserPlus } from 'react-icons/fa';
 
 const Students = () => {
@@ -26,39 +26,55 @@ const Students = () => {
     englishLevel: 'Core',
   });
 
-  // Öğrencileri getir (TC ve telefonları çöz)
-};
-const fetchStudents = async () => {
-  try {
-    const q = query(collection(db, 'students'), orderBy('lastName', 'asc'));
-    const snapshot = await getDocs(q);
-    const data = [];
-    snapshot.forEach((doc) => {
-      const raw = doc.data();
-      const isAdmin = true; // Admin kontrolü (ileride role göre yapılacak)
-      
-      // Sadece şifreli olan alanları çöz
-      const tcNo = isAdmin && isEncrypted(raw.tcNo) ? decrypt(raw.tcNo) : raw.tcNo || '***';
-      const phone = isAdmin && isEncrypted(raw.phone) ? decrypt(raw.phone) : raw.phone || '***';
-      const parentPhone = isAdmin && isEncrypted(raw.parentPhone) ? decrypt(raw.parentPhone) : raw.parentPhone || '***';
-      const parentPhone2 = isAdmin && isEncrypted(raw.parentPhone2) ? decrypt(raw.parentPhone2) : raw.parentPhone2 || '***';
-      
-      data.push({
-        id: doc.id,
-        ...raw,
-        tcNo,
-        phone,
-        parentPhone,
-        parentPhone2,
-      });
-    });
-    setStudents(data);
-  } catch (error) {
-    console.error('Öğrenciler alınamadı:', error);
-  } finally {
-    setLoading(false);
-  }
+  // Öğrencileri getir (TC ve telefonları çöz - admin kontrolü true)
+  const fetchStudents = async () => {
+    try {
+      const q = query(collection(db, 'students'), orderBy('lastName', 'asc'));
+      const snapshot = await getDocs(q);
+      const data = [];
+      snapshot.forEach((doc) => {
+        const raw = doc.data();
+        const isAdmin = true; // İleride role göre ayarlanacak
 
+        // Sadece şifreli olan alanları çözmeye çalış, hata olursa orijinali göster
+        let tcNo = raw.tcNo || '';
+        let phone = raw.phone || '';
+        let parentPhone = raw.parentPhone || '';
+        let parentPhone2 = raw.parentPhone2 || '';
+
+        if (isAdmin) {
+          try {
+            if (tcNo && tcNo.length > 20) tcNo = decrypt(tcNo);
+            if (phone && phone.length > 20) phone = decrypt(phone);
+            if (parentPhone && parentPhone.length > 20) parentPhone = decrypt(parentPhone);
+            if (parentPhone2 && parentPhone2.length > 20) parentPhone2 = decrypt(parentPhone2);
+          } catch (e) {
+            console.warn('Çözümleme hatası:', e);
+          }
+        } else {
+          // Admin değilse gizle
+          if (tcNo) tcNo = '***';
+          if (phone) phone = '***';
+          if (parentPhone) parentPhone = '***';
+          if (parentPhone2) parentPhone2 = '***';
+        }
+
+        data.push({
+          id: doc.id,
+          ...raw,
+          tcNo,
+          phone,
+          parentPhone,
+          parentPhone2,
+        });
+      });
+      setStudents(data);
+    } catch (error) {
+      console.error('Öğrenciler alınamadı:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     fetchStudents();
@@ -81,6 +97,7 @@ const fetchStudents = async () => {
         createdAt: new Date(),
       };
       const docRef = await addDoc(collection(db, 'students'), encryptedData);
+      // Listeye eklerken şifresiz halini göster
       setStudents([...students, { id: docRef.id, ...newStudent }]);
       setNewStudent({
         firstName: '',
