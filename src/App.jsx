@@ -37,7 +37,7 @@ function App() {
                 <Navbar userEmail={userEmail} />
                 <Routes>
                   <Route path="/students" element={
-                    hasPermission(userEmail, 'admin') ? <Students /> : <Navigate to="/" />
+                    hasPermission(userEmail, 'admin') ? <Students /> : <Navigate to="/discipline" />
                   } />
                   <Route path="/discipline" element={
                     hasPermission(userEmail, 'attendance') ? <DisciplineTracking /> : <Navigate to="/" />
@@ -45,18 +45,7 @@ function App() {
                   <Route path="/discipline-reports" element={
                     (hasPermission(userEmail, 'attendance') || hasPermission(userEmail, 'exam')) ? <DisciplineReports /> : <Navigate to="/" />
                   } />
-                  <Route path="/exams" element={
-                    hasPermission(userEmail, 'exam') ? <DisciplineReports /> : <Navigate to="/" />
-                  } />
-                  <Route path="/calendar" element={
-                    hasPermission(userEmail, 'calendar') ? <DisciplineReports /> : <Navigate to="/" />
-                  } />
-                  <Route path="/candidates" element={
-                    hasPermission(userEmail, 'candidates') ? <DisciplineReports /> : <Navigate to="/" />
-                  } />
-                  <Route path="/yds" element={
-                    hasPermission(userEmail, 'exam') ? <DisciplineReports /> : <Navigate to="/" />
-                  } />
+                  {/* Diğer rotalar ileride eklenecek */}
                   <Route path="/" element={<Navigate to="/students" />} />
                 </Routes>
               </>

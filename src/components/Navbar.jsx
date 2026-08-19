@@ -15,10 +15,9 @@ const Navbar = ({ userEmail }) => {
     { path: '/exams', label: 'Sınavlar', icon: <FaBook />, module: 'exam' },
     { path: '/calendar', label: 'Takvim', icon: <FaCalendarAlt />, module: 'calendar' },
     { path: '/candidates', label: 'Adaylar', icon: <FaUserPlus />, module: 'candidates' },
-    { path: '/yds', label: 'YDS', icon: <FaLanguage />, module: 'exam' }, // YDS de sınav modülü kapsamında
+    { path: '/yds', label: 'YDS', icon: <FaLanguage />, module: 'exam' },
   ];
 
-  // Kullanıcının email'ine göre menüleri filtrele
   const visibleMenu = menuItems.filter(item =>
     hasPermission(userEmail, item.module)
   );
@@ -28,21 +27,19 @@ const Navbar = ({ userEmail }) => {
   };
 
   return (
-    <nav
-      style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        padding: '0.5rem 2rem',
-        background: '#ffffff',
-        borderBottom: '1px solid #e0e0e0',
-        boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
-        position: 'sticky',
-        top: 0,
-        zIndex: 1000,
-        flexWrap: 'wrap',
-      }}
-    >
+    <nav style={{
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      padding: '0.5rem 2rem',
+      background: '#ffffff',
+      borderBottom: '1px solid #e0e0e0',
+      boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
+      position: 'sticky',
+      top: 0,
+      zIndex: 1000,
+      flexWrap: 'wrap',
+    }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', flexWrap: 'wrap' }}>
         <Link to="/" style={{ fontWeight: 'bold', fontSize: '1.2rem', color: '#2c3e50', textDecoration: 'none' }}>
           OYS
@@ -73,17 +70,7 @@ const Navbar = ({ userEmail }) => {
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
         <span style={{ fontSize: '0.9rem', color: '#555' }}>{userEmail}</span>
-        <button
-          onClick={handleLogout}
-          style={{
-            padding: '0.3rem 0.8rem',
-            background: '#dc3545',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer',
-          }}
-        >
+        <button onClick={handleLogout} style={{ padding: '0.3rem 0.8rem', background: '#dc3545', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
           Çıkış
         </button>
       </div>
