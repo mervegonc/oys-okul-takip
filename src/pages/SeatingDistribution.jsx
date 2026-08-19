@@ -1,28 +1,25 @@
 import React, { useState, useEffect } from 'react';
 import { collection, getDocs, query, orderBy, where, addDoc, updateDoc, doc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { FaSync, FaSave, FaEdit, FaTrash, FaUsers, FaChair } from 'react-icons/fa';
+import { FaSync, FaSave, FaEdit, FaTrash, FaUserGraduate, FaChair, FaBuilding } from 'react-icons/fa';
 
 const SeatingDistribution = () => {
-  // State'ler
+  // Temel state'ler
   const [exams, setExams] = useState([]);
   const [rooms, setRooms] = useState([]);
   const [selectedExam, setSelectedExam] = useState('');
-  const [selectedExamData, setSelectedExamData] = useState(null);
   const [students, setStudents] = useState([]);
-  const [filteredStudents, setFilteredStudents] = useState([]);
-  const [distributions, setDistributions] = useState([]);
+  const [allClasses, setAllClasses] = useState([]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
-  
-  // Şube grupları ve salon atamaları
-  const [groups, setGroups] = useState([]);
-  
-  // Çakışma listesi
-  const [conflictList, setConflictList] = useState([]);
-  const [conflictInput, setConflictInput] = useState('');
+  const [distributions, setDistributions] = useState([]);
+  const [selectedExamData, setSelectedExamData] = useState(null);
 
-  // Tüm sınavları ve salonları getir
+  // Grup ve salon yapılandırması
+  const [groups, setGroups] = useState([]);
+  const [conflictList, setConflictList] = useState([]);
+
+  // Sınav ve salonları yükle
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -40,42 +37,49 @@ const SeatingDistribution = () => {
     fetchData();
   }, []);
 
-  // Sınav seçildiğinde, o sınavdaki sınıflara göre öğrencileri getir
+  // Sınav seçildiğinde öğrencileri ve şubeleri getir
   useEffect(() => {
-    if (!selectedExam) {
-      setStudents([]);
-      setFilteredStudents([]);
-      setSelectedExamData(null);
-      return;
-    }
-    
-    const exam = exams.find(e => e.id === selectedExam);
-    if (!exam) return;
-    setSelectedExamData(exam);
-    
+    if (!selectedExam) return;
     const fetchStudentsForExam = async () => {
+      const exam = exams.find(e => e.id === selectedExam);
+      if (!exam) return;
+      setSelectedExamData(exam);
+      
       try {
         const gradeLevels = exam.gradeLevels || [];
         if (gradeLevels.length === 0) {
           setStudents([]);
-          setFilteredStudents([]);
+          setAllClasses([]);
+          setMessage('Bu sınav için sınıf seviyesi seçilmemiş.');
           return;
         }
-        // Sınıf seviyelerini stringe çevir
-        const gradeStrings = gradeLevels.map(String);
+
+        // Öğrencileri getir
         const q = query(
           collection(db, 'students'),
-          where('grade', 'in', gradeStrings)
+          where('grade', 'in', gradeLevels.map(String))
         );
         const snap = await getDocs(q);
         const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         setStudents(data);
-        setFilteredStudents(data);
-        setMessage(`${data.length} öğrenci bulundu.`);
-        
-        // Grupları sıfırla
-        setGroups([]);
-        setDistributions([]);
+
+        // Benzersiz şubeleri çıkar
+        const classSet = new Set(data.map(s => s.class).filter(Boolean));
+        const classList = Array.from(classSet).sort();
+        setAllClasses(classList);
+        setMessage(`${data.length} öğrenci, ${classList.length} farklı şube bulundu.`);
+
+        // Varsayılan grup yapılandırması oluştur (tüm şubeler tek grup)
+        if (classList.length > 0) {
+          setGroups([{
+            id: Date.now(),
+            name: 'Grup 1',
+            classes: classList,
+            selectedRooms: []
+          }]);
+        } else {
+          setGroups([]);
+        }
       } catch (error) {
         console.error('Öğrenciler alınamadı:', error);
         setMessage('Öğrenciler alınırken hata oluştu.');
@@ -86,141 +90,184 @@ const SeatingDistribution = () => {
 
   // Grup ekle
   const addGroup = () => {
-    setGroups([...groups, { 
-      id: Date.now(), 
-      classes: [], 
-      roomIds: [],
-      students: []
-    }]);
+    const newGroup = {
+      id: Date.now(),
+      name: `Grup ${groups.length + 1}`,
+      classes: [],
+      selectedRooms: []
+    };
+    setGroups([...groups, newGroup]);
   };
 
   // Grup sil
   const removeGroup = (groupId) => {
+    if (groups.length <= 1) {
+      setMessage('En az bir grup olmalıdır.');
+      return;
+    }
     setGroups(groups.filter(g => g.id !== groupId));
   };
 
-  // Grup şubelerini güncelle
-  const updateGroupClasses = (groupId, value) => {
-    setGroups(groups.map(g =>
-      g.id === groupId ? { ...g, classes: value.split(',').map(s => s.trim()).filter(Boolean) } : g
-    ));
+  // Grup adını güncelle
+  const updateGroupName = (groupId, name) => {
+    setGroups(groups.map(g => g.id === groupId ? { ...g, name } : g));
   };
 
-  // Grup salonlarını toggle et
-  const toggleRoomForGroup = (groupId, roomId) => {
+  // Gruba şube ekle/çıkar
+  const toggleClassInGroup = (groupId, className) => {
     setGroups(groups.map(g => {
       if (g.id !== groupId) return g;
-      const roomIds = g.roomIds.includes(roomId) 
-        ? g.roomIds.filter(id => id !== roomId) 
-        : [...g.roomIds, roomId];
-      return { ...g, roomIds };
+      const classes = g.classes.includes(className)
+        ? g.classes.filter(c => c !== className)
+        : [...g.classes, className];
+      return { ...g, classes };
     }));
   };
 
-  // Öğrencileri gruplara dağıt (şube bazında)
-  const distributeStudentsToGroups = () => {
-    const updatedGroups = groups.map(group => {
-      const groupStudents = filteredStudents.filter(s => 
-        group.classes.includes(s.class)
-      );
-      return { ...group, students: groupStudents };
-    });
-    setGroups(updatedGroups);
-    
-    // Gruplanmayan öğrenciler
-    const groupedStudentIds = updatedGroups.flatMap(g => g.students.map(s => s.id));
-    const ungrouped = filteredStudents.filter(s => !groupedStudentIds.includes(s.id));
-    if (ungrouped.length > 0) {
-      setMessage(`${ungrouped.length} öğrenci herhangi bir gruba atanmadı.`);
+  // Gruba salon seç/çıkar
+  const toggleRoomInGroup = (groupId, roomId) => {
+    setGroups(groups.map(g => {
+      if (g.id !== groupId) return g;
+      const rooms = g.selectedRooms.includes(roomId)
+        ? g.selectedRooms.filter(r => r !== roomId)
+        : [...g.selectedRooms, roomId];
+      return { ...g, rooms };
+    }));
+  };
+
+  // Çakışma listesine öğrenci ekle
+  const addConflict = (studentId) => {
+    if (!conflictList.includes(studentId)) {
+      setConflictList([...conflictList, studentId]);
     }
   };
 
-  // Karma algoritması
+  // Çakışma listesinden çıkar
+  const removeConflict = (studentId) => {
+    setConflictList(conflictList.filter(id => id !== studentId));
+  };
+
+  // Karma dağıtım algoritması
   const runDistribution = async () => {
     if (!selectedExam) {
       setMessage('Lütfen bir sınav seçin.');
       return;
     }
-    if (groups.length === 0) {
-      setMessage('Lütfen en az bir şube grubu oluşturun.');
-      return;
-    }
-    if (filteredStudents.length === 0) {
+    if (students.length === 0) {
       setMessage('Bu sınava uygun öğrenci bulunamadı.');
       return;
+    }
+
+    // Grup kontrolü
+    const allClassesInGroups = groups.flatMap(g => g.classes);
+    const allClassesSet = new Set(allClasses);
+    const groupClassesSet = new Set(allClassesInGroups);
+    const missingClasses = allClasses.filter(c => !groupClassesSet.has(c));
+    if (missingClasses.length > 0) {
+      setMessage(`Tüm şubeler gruplara eklenmemiş: ${missingClasses.join(', ')}`);
+      return;
+    }
+
+    // Her grupta salon kontrolü
+    for (const group of groups) {
+      if (group.selectedRooms.length === 0) {
+        setMessage(`${group.name} için salon seçilmemiş.`);
+        return;
+      }
     }
 
     setLoading(true);
     setMessage('Karma dağıtım başlatılıyor...');
 
     try {
-      // Önce öğrencileri gruplara dağıt
-      distributeStudentsToGroups();
+      const allRooms = rooms;
+      const assignments = [];
 
-      // Her grup için salonları doldur
-      const allAssignments = [];
-      let totalAssigned = 0;
-      let errorCount = 0;
-
+      // Her grup için dağıtım yap
       for (const group of groups) {
-        if (group.students.length === 0) continue;
-        if (group.roomIds.length === 0) {
-          setMessage(`${group.classes.join(', ')} grubu için salon seçilmedi.`);
-          setLoading(false);
-          return;
-        }
+        const groupStudents = students.filter(s => group.classes.includes(s.class));
+        if (groupStudents.length === 0) continue;
 
-        const groupRooms = rooms.filter(r => group.roomIds.includes(r.id));
+        const groupRooms = allRooms.filter(r => group.selectedRooms.includes(r.id));
         const totalCapacity = groupRooms.reduce((acc, r) => acc + (r.capacity + (r.extraSeatsAdded || 0)), 0);
-        
-        if (totalCapacity < group.students.length) {
-          setMessage(`${group.classes.join(', ')} grubu için yetersiz kapasite! (Öğrenci: ${group.students.length}, Kapasite: ${totalCapacity})`);
+
+        if (totalCapacity < groupStudents.length) {
+          setMessage(`${group.name} için kapasite yetersiz! Toplam: ${totalCapacity}, Öğrenci: ${groupStudents.length}`);
           setLoading(false);
           return;
         }
 
-        // Öğrencileri karıştır (random)
-        const shuffled = [...group.students].sort(() => Math.random() - 0.5);
+        // Öğrencileri salonlara dağıt
         let roomIndex = 0;
-        let seatCounter = 1;
+        let remaining = [...groupStudents];
 
-        for (const student of shuffled) {
-          const room = groupRooms[roomIndex % groupRooms.length];
-          const capacity = room.capacity + (room.extraSeatsAdded || 0);
-          
-          allAssignments.push({
-            studentId: student.id,
-            roomId: room.id,
-            seatNumber: seatCounter,
-            studentName: `${student.firstName} ${student.lastName}`,
-            class: student.class,
-            grade: student.grade,
-            groupClasses: group.classes.join(', ')
+        // Özel durum: Yabancı dil sınavı için 2. dile göre grupla
+        const exam = selectedExamData;
+        let studentGroups = [];
+        if (exam?.type === 'foreign_lang') {
+          const langGroups = {};
+          remaining.forEach(s => {
+            const key = s.secondLang || 'None';
+            if (!langGroups[key]) langGroups[key] = [];
+            langGroups[key].push(s);
           });
+          // Önce aynı dili konuşanları aynı salona yerleştirmeye çalış
+          studentGroups = Object.values(langGroups);
+        } else {
+          studentGroups = [remaining];
+        }
 
-          seatCounter++;
-          // Eğer salon dolduysa bir sonraki salona geç
-          if (seatCounter > capacity) {
+        // Her alt grubu doldur
+        for (const subGroup of studentGroups) {
+          let subRemaining = [...subGroup];
+          while (subRemaining.length > 0) {
+            const room = groupRooms[roomIndex % groupRooms.length];
+            const capacity = room.capacity + (room.extraSeatsAdded || 0);
+            const take = Math.min(subRemaining.length, capacity);
+            const batch = subRemaining.splice(0, take);
+            batch.forEach((student, idx) => {
+              assignments.push({
+                studentId: student.id,
+                studentName: `${student.firstName} ${student.lastName}`,
+                class: student.class,
+                grade: student.grade,
+                roomId: room.id,
+                roomName: room.name,
+                seatNumber: idx + 1,
+                groupId: group.id,
+                groupName: group.name,
+              });
+            });
             roomIndex++;
-            seatCounter = 1;
           }
-          totalAssigned++;
         }
       }
 
-      // Çakışma listesi kontrolü
-      if (conflictList.length > 0) {
-        // Basit çakışma çözümü: aynı salona düşenleri farklı salona taşı
-        for (const conflictPair of conflictList) {
-          const [s1, s2] = conflictPair;
-          const assign1 = allAssignments.find(a => a.studentId === s1);
-          const assign2 = allAssignments.find(a => a.studentId === s2);
-          if (assign1 && assign2 && assign1.roomId === assign2.roomId) {
-            // assign2'yi farklı bir salona taşı
-            const allRoomIds = groups.flatMap(g => g.roomIds);
-            const differentRoom = rooms.find(r => r.id !== assign1.roomId && allRoomIds.includes(r.id));
-            if (differentRoom) {
-              assign2.roomId = differentRoom.id;
+      // Çakışma kontrolü
+      if (conflictList.length > 1) {
+        // Aynı salona düşen çakışmaları kontrol et
+        for (let i = 0; i < conflictList.length; i++) {
+          for (let j = i + 1; j < conflictList.length; j++) {
+            const s1 = assignments.find(a => a.studentId === conflictList[i]);
+            const s2 = assignments.find(a => a.studentId === conflictList[j]);
+            if (s1 && s2 && s1.roomId === s2.roomId) {
+              // s2'yi farklı bir salona taşı
+              const allRoomsInGroup = groups.find(g => g.id === s2.groupId)?.selectedRooms || [];
+              const otherRoom = allRoomsInGroup.find(r => r !== s1.roomId);
+              if (otherRoom) {
+                const roomObj = rooms.find(r => r.id === otherRoom);
+                if (roomObj) {
+                  const capacity = roomObj.capacity + (roomObj.extraSeatsAdded || 0);
+                  const currentInRoom = assignments.filter(a => a.roomId === otherRoom).length;
+                  if (currentInRoom < capacity) {
+                    s2.roomId = otherRoom;
+                    s2.roomName = roomObj.name;
+                    // Sıra numarasını güncelle
+                    const maxSeat = Math.max(...assignments.filter(a => a.roomId === otherRoom).map(a => a.seatNumber), 0);
+                    s2.seatNumber = maxSeat + 1;
+                  }
+                }
+              }
             }
           }
         }
@@ -230,12 +277,12 @@ const SeatingDistribution = () => {
       const seatingPlanRef = await addDoc(collection(db, 'seating_plans'), {
         examId: selectedExam,
         createdAt: new Date(),
-        assignments: allAssignments,
-        groups: groups.map(g => ({ classes: g.classes, roomIds: g.roomIds })),
+        assignments: assignments,
+        groups: groups.map(g => ({ name: g.name, classes: g.classes, rooms: g.selectedRooms })),
       });
 
-      setDistributions(allAssignments);
-      setMessage(`${allAssignments.length} öğrenci ${groups.length} gruba dağıtıldı.`);
+      setDistributions(assignments);
+      setMessage(`${assignments.length} öğrenci başarıyla dağıtıldı.`);
     } catch (error) {
       console.error('Karma hatası:', error);
       setMessage('Karma sırasında hata oluştu: ' + error.message);
@@ -244,33 +291,35 @@ const SeatingDistribution = () => {
     }
   };
 
-  // Dağıtım özeti
-  const getDistributionSummary = () => {
-    if (distributions.length === 0) return null;
-    
-    const roomStats = {};
+  // Oturum düzeni önizlemesi
+  const getRoomSummary = () => {
+    const summary = {};
     distributions.forEach(d => {
-      const room = rooms.find(r => r.id === d.roomId);
-      const roomName = room ? room.name : d.roomId;
-      if (!roomStats[roomName]) roomStats[roomName] = 0;
-      roomStats[roomName]++;
+      const key = d.roomId;
+      if (!summary[key]) summary[key] = { roomName: d.roomName, count: 0, students: [] };
+      summary[key].count++;
+      summary[key].students.push(d.studentName);
     });
-    
-    return (
-      <div style={{ margin: '1rem 0', padding: '1rem', background: '#e9f7ef', borderRadius: '8px' }}>
-        <h4>📊 Dağıtım Özeti</h4>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-          {Object.entries(roomStats).map(([room, count]) => (
-            <div key={room} style={{ padding: '0.3rem 0.8rem', background: '#d4edda', borderRadius: '4px' }}>
-              {room}: {count} öğrenci
-            </div>
-          ))}
-        </div>
-        <div style={{ marginTop: '0.5rem', fontWeight: 'bold' }}>
-          Toplam: {distributions.length} öğrenci
-        </div>
-      </div>
-    );
+    return Object.values(summary);
+  };
+
+  // Öğrenci listesini indir (CSV)
+  const exportCSV = () => {
+    if (distributions.length === 0) return alert('Dağıtım yapılmamış.');
+    const headers = ['Sıra', 'Öğrenci Adı', 'Sınıf', 'Salon', 'Sıra No'];
+    const rows = distributions.map((d, i) => [
+      i + 1,
+      d.studentName,
+      `${d.grade}-${d.class}`,
+      d.roomName,
+      d.seatNumber
+    ]);
+    const csv = [headers.join(','), ...rows.map(row => row.join(','))].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `karma_dagilim_${new Date().toISOString().slice(0,10)}.csv`;
+    link.click();
   };
 
   return (
@@ -278,87 +327,90 @@ const SeatingDistribution = () => {
       <h2>🪑 Sınav Karma Dağıtım</h2>
 
       {/* Sınav Seçimi */}
-      <div style={{ marginBottom: '1rem' }}>
-        <label>Sınav Seçin</label>
+      <div style={{ marginBottom: '1.5rem' }}>
+        <label style={{ fontWeight: 'bold' }}>Sınav Seçin</label>
         <select
           value={selectedExam}
           onChange={(e) => setSelectedExam(e.target.value)}
-          style={{ width: '100%', padding: '0.5rem', border: '1px solid #ddd', borderRadius: '4px' }}
+          style={{ width: '100%', padding: '0.5rem', border: '1px solid #ddd', borderRadius: '4px', marginTop: '0.3rem' }}
         >
           <option value="">-- Sınav Seçin --</option>
           {exams.map(exam => (
             <option key={exam.id} value={exam.id}>
-              {exam.title} ({exam.date}) - {exam.gradeLevels?.join(', ')}. Sınıflar
+              {exam.title} ({exam.date}) - {exam.gradeLevels?.join(', ') || 'Tümü'}
             </option>
           ))}
         </select>
       </div>
 
-      {selectedExamData && (
-        <div style={{ marginBottom: '1rem', padding: '0.5rem 1rem', background: '#e7f3ff', borderRadius: '8px' }}>
-          <p><strong>Sınav Bilgileri:</strong> {selectedExamData.title} - {selectedExamData.gradeLevels?.join(', ')}. Sınıflar - {selectedExamData.type}</p>
-          <p><strong>Öğrenci Sayısı:</strong> {filteredStudents.length}</p>
-        </div>
-      )}
+      {selectedExam && (
+        <>
+          {/* Grup Yapılandırması */}
+          <div style={{ marginBottom: '1.5rem', padding: '1rem', background: '#f8f9fa', borderRadius: '8px' }}>
+            <h4>Şube Grupları</h4>
+            <p style={{ fontSize: '0.9rem', color: '#666' }}>
+              Mevcut şubeler: {allClasses.join(', ') || 'Henüz şube bulunamadı.'}
+            </p>
 
-      {/* Şube Grupları */}
-      {selectedExam && filteredStudents.length > 0 && (
-        <div style={{ marginBottom: '1.5rem', padding: '1rem', background: '#f8f9fa', borderRadius: '8px' }}>
-          <h4>Şube Grupları</h4>
-          <button
-            onClick={addGroup}
-            style={{
-              padding: '0.3rem 0.8rem',
-              background: '#28a745',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              marginBottom: '0.5rem'
-            }}
-          >
-            + Grup Ekle
-          </button>
+            <button
+              onClick={addGroup}
+              style={{ padding: '0.3rem 0.8rem', background: '#28a745', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', marginBottom: '0.5rem' }}
+            >
+              + Grup Ekle
+            </button>
 
-          {groups.map((group) => {
-            // Bu gruptaki öğrenciler
-            const groupStudents = filteredStudents.filter(s => group.classes.includes(s.class));
-            // Bu grubun toplam kapasitesi
-            const groupRooms = rooms.filter(r => group.roomIds.includes(r.id));
-            const totalCapacity = groupRooms.reduce((acc, r) => acc + (r.capacity + (r.extraSeatsAdded || 0)), 0);
-
-            return (
-              <div key={group.id} style={{ marginBottom: '1rem', padding: '1rem', background: 'white', borderRadius: '8px', border: '1px solid #ddd' }}>
-                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '0.5rem' }}>
+            {groups.map((group, index) => (
+              <div key={group.id} style={{ border: '1px solid #ddd', borderRadius: '8px', padding: '0.8rem', marginBottom: '0.5rem', background: 'white' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
                   <input
                     type="text"
-                    placeholder="Şube kodu (virgülle ayırın)"
-                    value={group.classes.join(', ')}
-                    onChange={(e) => updateGroupClasses(group.id, e.target.value)}
-                    style={{ flex: 1, padding: '0.4rem', border: '1px solid #ddd', borderRadius: '4px' }}
+                    value={group.name}
+                    onChange={(e) => updateGroupName(group.id, e.target.value)}
+                    style={{ padding: '0.3rem', border: '1px solid #ddd', borderRadius: '4px', flex: 1 }}
                   />
                   <button onClick={() => removeGroup(group.id)} style={{ background: 'transparent', border: 'none', color: '#dc3545', cursor: 'pointer' }}>
                     <FaTrash />
                   </button>
                 </div>
 
-                <div style={{ marginTop: '0.5rem' }}>
-                  <label style={{ fontSize: '0.9rem', display: 'block', marginBottom: '0.3rem' }}>
-                    Salon Seçimi (Toplam Kapasite: {totalCapacity} | Öğrenci: {groupStudents.length})
-                  </label>
+                <div style={{ marginBottom: '0.5rem' }}>
+                  <div style={{ fontSize: '0.9rem', fontWeight: 'bold', marginBottom: '0.3rem' }}>Şubeler:</div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem' }}>
+                    {allClasses.map(className => (
+                      <button
+                        key={className}
+                        onClick={() => toggleClassInGroup(group.id, className)}
+                        style={{
+                          padding: '0.2rem 0.6rem',
+                          background: group.classes.includes(className) ? '#007bff' : '#e9ecef',
+                          color: group.classes.includes(className) ? 'white' : '#333',
+                          border: '1px solid #ddd',
+                          borderRadius: '4px',
+                          cursor: 'pointer',
+                          fontSize: '0.8rem',
+                        }}
+                      >
+                        {className}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <div style={{ fontSize: '0.9rem', fontWeight: 'bold', marginBottom: '0.3rem' }}>Salonlar:</div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem' }}>
                     {rooms.map(room => (
                       <button
                         key={room.id}
-                        onClick={() => toggleRoomForGroup(group.id, room.id)}
+                        onClick={() => toggleRoomInGroup(group.id, room.id)}
                         style={{
                           padding: '0.2rem 0.6rem',
-                          background: group.roomIds.includes(room.id) ? '#007bff' : '#e9ecef',
-                          color: group.roomIds.includes(room.id) ? 'white' : '#333',
+                          background: group.selectedRooms?.includes(room.id) ? '#28a745' : '#e9ecef',
+                          color: group.selectedRooms?.includes(room.id) ? 'white' : '#333',
                           border: '1px solid #ddd',
                           borderRadius: '4px',
                           cursor: 'pointer',
-                          fontSize: '0.8rem'
+                          fontSize: '0.8rem',
                         }}
                       >
                         {room.name} ({room.capacity + (room.extraSeatsAdded || 0)})
@@ -366,121 +418,106 @@ const SeatingDistribution = () => {
                     ))}
                   </div>
                 </div>
-
-                {groupStudents.length > 0 && (
-                  <div style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: '#666' }}>
-                    <FaUsers /> {groupStudents.length} öğrenci
-                  </div>
-                )}
               </div>
-            );
-          })}
-
-          {groups.length > 0 && (
-            <button
-              onClick={distributeStudentsToGroups}
-              style={{
-                padding: '0.3rem 0.8rem',
-                background: '#17a2b8',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                marginRight: '0.5rem'
-              }}
-            >
-              Öğrencileri Gruplara Dağıt
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* Çakışma Listesi */}
-      <div style={{ marginBottom: '1rem' }}>
-        <h4>Çakışma Listesi (Aynı salonda oturmaması gereken öğrenciler)</h4>
-        <textarea
-          placeholder="Öğrenci ID'lerini virgülle ayırın (örn: id1,id2,id3)"
-          value={conflictInput}
-          onChange={(e) => {
-            setConflictInput(e.target.value);
-            const ids = e.target.value.split(',').map(s => s.trim()).filter(Boolean);
-            const pairs = [];
-            for (let i = 0; i < ids.length - 1; i += 2) {
-              if (ids[i+1]) pairs.push([ids[i], ids[i+1]]);
-            }
-            setConflictList(pairs);
-          }}
-          style={{ width: '100%', padding: '0.5rem', border: '1px solid #ddd', borderRadius: '4px', minHeight: '60px' }}
-        />
-        <p style={{ fontSize: '0.9rem', color: '#666' }}>
-          Her satırda 2 öğrenci ID'si yazın (örn: id1,id2). Sistem bu öğrencileri farklı salonlara atamaya çalışacak.
-        </p>
-        {conflictList.length > 0 && (
-          <div style={{ marginTop: '0.5rem' }}>
-            <strong>{conflictList.length} çakışma çifti tanımlandı.</strong>
+            ))}
           </div>
-        )}
-      </div>
 
-      {/* Karma Butonu */}
-      <button
-        onClick={runDistribution}
-        disabled={loading}
-        style={{
-          padding: '0.6rem 1.5rem',
-          background: '#007bff',
-          color: 'white',
-          border: 'none',
-          borderRadius: '6px',
-          cursor: 'pointer',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '0.5rem',
-          marginBottom: '1rem',
-        }}
-      >
-        <FaSync /> {loading ? 'Dağıtılıyor...' : 'Karma Dağıtımı Başlat'}
-      </button>
+          {/* Çakışma Listesi */}
+          <div style={{ marginBottom: '1rem', padding: '1rem', background: '#fff3cd', borderRadius: '8px' }}>
+            <h4>⚠️ Çakışma Listesi (Aynı salonda oturmaması gerekenler)</h4>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem', marginTop: '0.5rem' }}>
+              {students.map(student => (
+                <button
+                  key={student.id}
+                  onClick={() => conflictList.includes(student.id) ? removeConflict(student.id) : addConflict(student.id)}
+                  style={{
+                    padding: '0.2rem 0.6rem',
+                    background: conflictList.includes(student.id) ? '#dc3545' : '#e9ecef',
+                    color: conflictList.includes(student.id) ? 'white' : '#333',
+                    border: '1px solid #ddd',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    fontSize: '0.8rem',
+                  }}
+                >
+                  {student.firstName} {student.lastName}
+                </button>
+              ))}
+            </div>
+          </div>
 
-      {message && <p style={{ margin: '0.5rem 0', color: message.includes('hata') ? 'red' : 'green' }}>{message}</p>}
+          {/* Karma Butonu */}
+          <button
+            onClick={runDistribution}
+            disabled={loading}
+            style={{
+              padding: '0.6rem 1.5rem',
+              background: '#007bff',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: loading ? 'not-allowed' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              marginBottom: '1rem',
+            }}
+          >
+            <FaSync /> {loading ? 'Dağıtılıyor...' : 'Karma Dağıtımı Başlat'}
+          </button>
 
-      {/* Dağıtım Özeti */}
-      {getDistributionSummary()}
+          {message && <p style={{ margin: '0.5rem 0', color: message.includes('hata') || message.includes('yetersiz') ? 'red' : 'green' }}>{message}</p>}
 
-      {/* Sonuç Listesi */}
-      {distributions.length > 0 && (
-        <div style={{ marginTop: '2rem' }}>
-          <h4>Dağıtım Sonucu ({distributions.length} öğrenci)</h4>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', background: 'white', borderRadius: '8px', overflow: 'hidden', boxShadow: '0 0 10px rgba(0,0,0,0.05)' }}>
-              <thead style={{ background: '#f1f1f1' }}>
-                <tr>
-                  <th style={{ padding: '0.5rem' }}>#</th>
-                  <th style={{ padding: '0.5rem' }}>Öğrenci</th>
-                  <th style={{ padding: '0.5rem' }}>Sınıf</th>
-                  <th style={{ padding: '0.5rem' }}>Grup</th>
-                  <th style={{ padding: '0.5rem' }}>Salon</th>
-                  <th style={{ padding: '0.5rem' }}>Sıra No</th>
-                </tr>
-              </thead>
-              <tbody>
-                {distributions.map((item, index) => {
-                  const room = rooms.find(r => r.id === item.roomId);
-                  return (
+          {/* Dağıtım Sonucu */}
+          {distributions.length > 0 && (
+            <div style={{ marginTop: '1.5rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                <h4>Dağıtım Sonucu ({distributions.length} öğrenci)</h4>
+                <button
+                  onClick={exportCSV}
+                  style={{ padding: '0.3rem 0.8rem', background: '#28a745', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+                >
+                  CSV İndir
+                </button>
+              </div>
+
+              {/* Salon Özeti */}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '1rem' }}>
+                {getRoomSummary().map((item, index) => (
+                  <div key={index} style={{ padding: '0.3rem 0.6rem', background: '#e9ecef', borderRadius: '4px' }}>
+                    {item.roomName}: {item.count} öğrenci
+                  </div>
+                ))}
+              </div>
+
+              {/* Detaylı Tablo */}
+              <table style={{ width: '100%', borderCollapse: 'collapse', background: 'white', borderRadius: '8px', overflow: 'hidden', boxShadow: '0 0 10px rgba(0,0,0,0.05)' }}>
+                <thead style={{ background: '#f1f1f1' }}>
+                  <tr>
+                    <th>#</th>
+                    <th>Öğrenci</th>
+                    <th>Sınıf</th>
+                    <th>Grup</th>
+                    <th>Salon</th>
+                    <th>Sıra No</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {distributions.map((item, index) => (
                     <tr key={index} style={{ borderBottom: '1px solid #eee' }}>
-                      <td style={{ padding: '0.5rem', textAlign: 'center' }}>{index + 1}</td>
+                      <td style={{ padding: '0.5rem' }}>{index + 1}</td>
                       <td style={{ padding: '0.5rem' }}>{item.studentName}</td>
                       <td style={{ padding: '0.5rem' }}>{item.grade}-{item.class}</td>
-                      <td style={{ padding: '0.5rem' }}>{item.groupClasses || '-'}</td>
-                      <td style={{ padding: '0.5rem' }}>{room?.name || item.roomId}</td>
+                      <td style={{ padding: '0.5rem' }}>{item.groupName}</td>
+                      <td style={{ padding: '0.5rem' }}>{item.roomName}</td>
                       <td style={{ padding: '0.5rem' }}>{item.seatNumber}</td>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
