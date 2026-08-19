@@ -1,21 +1,19 @@
-// Şifreleme için basit bir yardımcı
-// Production'da daha güçlü bir yöntem kullanılabilir (örn: crypto-js ile AES)
-// Bu örnekte base64 ile basit bir encoding yapıyoruz.
-// DİKKAT: Bu yöntem gerçek güvenlik sağlamaz, sadece veriyi gizler.
-// İleride crypto-js veya Node.js crypto modülü ile değiştirilebilir.
+import CryptoJS from 'crypto-js';
+
+const ENCRYPTION_KEY = import.meta.env.VITE_ENCRYPTION_KEY || 'hstr4b5fBHT%Y5h2g5bhTHbjbglmfbn5hnhjjgnXfm';
 
 export const encrypt = (text) => {
-  if (!text) return text;
-  // Basit bir obfuscation (şifreleme değil, sadece gizleme)
-  // Gerçek projede crypto-js AES kullanılmalı
-  return btoa(encodeURIComponent(text));
+  if (!text) return '';
+  return CryptoJS.AES.encrypt(text, ENCRYPTION_KEY).toString();
 };
 
-export const decrypt = (encryptedText) => {
-  if (!encryptedText) return encryptedText;
+export const decrypt = (ciphertext) => {
+  if (!ciphertext) return '';
   try {
-    return decodeURIComponent(atob(encryptedText));
-  } catch {
-    return encryptedText;
+    const bytes = CryptoJS.AES.decrypt(ciphertext, ENCRYPTION_KEY);
+    return bytes.toString(CryptoJS.enc.Utf8);
+  } catch (error) {
+    console.error('Şifre çözme hatası:', error);
+    return ciphertext; // çözülemezse orijinali döndür (hata durumunda)
   }
 };
