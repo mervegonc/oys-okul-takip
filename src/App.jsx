@@ -11,6 +11,7 @@ import { hasPermission } from './utils/permissions';
 import Exams from './pages/Exams';
 import Rooms from './pages/Rooms';
 import SeatingDistribution from './pages/SeatingDistribution';
+import ConflictGroups from './pages/ConflictGroups';
 
 function App() {
   const [user, setUser] = useState(null);
@@ -56,6 +57,9 @@ function App() {
 } />
 <Route path="/seating" element={
   hasPermission(userEmail, 'seating') ? <SeatingDistribution /> : <Navigate to="/" />
+} />
+<Route path="/conflict-groups" element={
+  hasPermission(userEmail, 'seating') ? <ConflictGroups /> : <Navigate to="/" />
 } />
 
                   <Route path="/" element={<Navigate to="/students" />} />
