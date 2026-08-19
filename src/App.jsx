@@ -9,6 +9,7 @@ import DisciplineTracking from './pages/DisciplineTracking';
 import DisciplineReports from './pages/DisciplineReports';
 import { hasPermission } from './utils/permissions';
 import Exams from './pages/Exams';
+import Rooms from './pages/Rooms';
 
 function App() {
   const [user, setUser] = useState(null);
@@ -49,6 +50,10 @@ function App() {
                   <Route path="/exams" element={
   hasPermission(userEmail, 'exam') ? <Exams /> : <Navigate to="/" />
 } />
+<Route path="/rooms" element={
+  hasPermission(userEmail, 'seating') ? <Rooms /> : <Navigate to="/" />
+} />
+
                   <Route path="/" element={<Navigate to="/students" />} />
                 </Routes>
               </>
