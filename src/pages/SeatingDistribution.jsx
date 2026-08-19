@@ -8,8 +8,8 @@ const SeatingDistribution = () => {
   const [rooms, setRooms] = useState([]);
   const [selectedExam, setSelectedExam] = useState('');
   const [students, setStudents] = useState([]);
-  const [availableClasses, setAvailableClasses] = useState([]); // Benzersiz şubeler
-  const [groups, setGroups] = useState([]); // [{ id, classes: [], roomIds: [] }]
+  const [allClasses, setAllClasses] = useState([]); // Tüm şubeler
+  const [groups, setGroups] = useState([]); // [{ id, name, classes: [], roomIds: [] }]
   const [distributions, setDistributions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
@@ -36,7 +36,7 @@ const SeatingDistribution = () => {
   useEffect(() => {
     if (!selectedExam) {
       setStudents([]);
-      setAvailableClasses([]);
+      setAllClasses([]);
       setGroups([]);
       return;
     }
@@ -46,7 +46,7 @@ const SeatingDistribution = () => {
       const gradeLevels = exam.gradeLevels || [];
       if (gradeLevels.length === 0) {
         setStudents([]);
-        setAvailableClasses([]);
+        setAllClasses([]);
         return;
       }
       try {
@@ -62,16 +62,11 @@ const SeatingDistribution = () => {
         const classSet = new Set();
         data.forEach(s => classSet.add(`${s.grade}-${s.class}`));
         const sortedClasses = Array.from(classSet).sort();
-        setAvailableClasses(sortedClasses);
+        setAllClasses(sortedClasses);
 
-        // Otomatik olarak grupları oluştur: her şube kendi başına bir grup
-        const initialGroups = sortedClasses.map((cls, idx) => ({
-          id: Date.now() + idx,
-          class: cls,
-          roomIds: [],
-        }));
-        setGroups(initialGroups);
-
+        // Grupları sıfırla (kullanıcı yeniden oluştursun)
+        setGroups([]);
+        setDistributions([]);
         setMessage(`${data.length} öğrenci, ${sortedClasses.length} farklı şube bulundu.`);
       } catch (error) {
         console.error('Öğrenciler alınamadı:', error);
@@ -81,6 +76,17 @@ const SeatingDistribution = () => {
     fetchStudentsForExam();
   }, [selectedExam, exams]);
 
+  // Grup ekle
+  const addGroup = () => {
+    const newGroup = {
+      id: Date.now(),
+      name: `Grup ${groups.length + 1}`,
+      classes: [],
+      roomIds: [],
+    };
+    setGroups([...groups, newGroup]);
+  };
+
   // Grup sil
   const removeGroup = (groupId) => {
     if (groups.length <= 1) {
@@ -89,6 +95,19 @@ const SeatingDistribution = () => {
     }
     if (!window.confirm('Bu grubu silmek istediğinize emin misiniz?')) return;
     setGroups(groups.filter(g => g.id !== groupId));
+  };
+
+  // Gruba şube ekle/çıkar (toggle)
+  const toggleClassForGroup = (groupId, className) => {
+    setGroups(groups.map(g => {
+      if (g.id === groupId) {
+        const classes = g.classes.includes(className)
+          ? g.classes.filter(c => c !== className)
+          : [...g.classes, className];
+        return { ...g, classes };
+      }
+      return g;
+    }));
   };
 
   // Gruba salon ekle/çıkar (toggle)
@@ -104,38 +123,42 @@ const SeatingDistribution = () => {
     }));
   };
 
-  // Karma dağıtım
+  // Karma dağıtım (çakışma kontrolü ile)
   const runDistribution = async () => {
     if (!selectedExam) {
       setMessage('Lütfen bir sınav seçin.');
       return;
     }
     if (groups.length === 0) {
-      setMessage('Şube grupları oluşturulmamış.');
+      setMessage('Lütfen en az bir grup oluşturun.');
       return;
     }
-    // Tüm grupların en az bir salonu var mı kontrol et
-    const emptyGroups = groups.filter(g => g.roomIds.length === 0);
-    if (emptyGroups.length > 0) {
-      setMessage(`"${emptyGroups.map(g => g.class).join(', ')}" grubu için salon seçilmemiş.`);
-      return;
+
+    // Her grubun en az bir şubesi ve bir salonu olmalı
+    for (const group of groups) {
+      if (group.classes.length === 0) {
+        setMessage(`"${group.name}" için şube seçilmemiş.`);
+        return;
+      }
+      if (group.roomIds.length === 0) {
+        setMessage(`"${group.name}" için salon seçilmemiş.`);
+        return;
+      }
     }
 
     setLoading(true);
     setMessage('Karma dağıtım başlatılıyor...');
 
     try {
-      // Tüm seçili salonların kapasitelerini topla
-      const selectedRoomIds = [...new Set(groups.flatMap(g => g.roomIds))];
-      const roomData = rooms.filter(r => selectedRoomIds.includes(r.id));
-      const totalCapacity = roomData.reduce((acc, r) => acc + (r.capacity + (r.extraSeatsAdded || 0)), 0);
-      if (totalCapacity < students.length) {
-        setMessage(`Yetersiz kapasite! Toplam kapasite: ${totalCapacity}, Öğrenci sayısı: ${students.length}`);
-        setLoading(false);
-        return;
-      }
+      // 1. ÇAKIŞMA KONTROLÜ (ConflictManagement'ten gelen grupları kontrol et)
+      const conflictSnap = await getDocs(collection(db, 'conflict_groups'));
+      const conflictGroups = [];
+      conflictSnap.forEach(doc => {
+        conflictGroups.push({ id: doc.id, ...doc.data() });
+      });
 
-      // Öğrencileri şubelerine göre grupla
+      // Çakışma kontrolü: Aynı gruptaki öğrenciler farklı salonlara atanmalı
+      // Önce tüm öğrencileri şubelerine göre grupla
       const studentMap = {};
       students.forEach(s => {
         const key = `${s.grade}-${s.class}`;
@@ -143,27 +166,33 @@ const SeatingDistribution = () => {
         studentMap[key].push(s);
       });
 
-      // Her grup için salonları doldur
-      const assignments = [];
+      // Her grup için salonları hazırla
+      const allRoomIds = [...new Set(groups.flatMap(g => g.roomIds))];
+      const roomData = rooms.filter(r => allRoomIds.includes(r.id));
       const roomUsage = roomData.map(room => ({
         roomId: room.id,
         capacity: room.capacity + (room.extraSeatsAdded || 0),
         students: [],
       }));
 
+      // Önce normal dağıtım (çakışma yokmuş gibi)
+      const assignments = [];
       for (const group of groups) {
-        const groupStudents = studentMap[group.class] || [];
+        const groupStudents = [];
+        group.classes.forEach(cls => {
+          if (studentMap[cls]) {
+            groupStudents.push(...studentMap[cls]);
+          }
+        });
         if (groupStudents.length === 0) continue;
 
-        // Bu grubun salonlarını al
         const groupRooms = roomUsage.filter(r => group.roomIds.includes(r.roomId));
         if (groupRooms.length === 0) {
-          setMessage(`"${group.class}" grubu için uygun salon bulunamadı.`);
+          setMessage(`"${group.name}" için uygun salon bulunamadı.`);
           setLoading(false);
           return;
         }
 
-        // Öğrencileri sırayla salonlara dağıt
         let roomIndex = 0;
         for (const student of groupStudents) {
           let placed = false;
@@ -178,12 +207,65 @@ const SeatingDistribution = () => {
             }
           }
           if (!placed) {
-            throw new Error(`"${group.class}" için yeterli kapasite yok.`);
+            throw new Error(`"${group.name}" için yeterli kapasite yok.`);
           }
         }
       }
 
-      // Assignments listesini oluştur
+      // 2. ÇAKIŞMA DÜZELTMESİ
+      // Çakışma gruplarındaki öğrencileri aynı salona düşmeyecek şekilde yeniden dağıt
+      if (conflictGroups.length > 0) {
+        for (const conflictGroup of conflictGroups) {
+          const conflictStudentIds = conflictGroup.studentIds || [];
+          if (conflictStudentIds.length < 2) continue;
+
+          // Bu öğrencilerin hangi salonlara atandığını bul
+          const conflictAssignments = [];
+          for (const ra of roomUsage) {
+            for (const student of ra.students) {
+              if (conflictStudentIds.includes(student.id)) {
+                conflictAssignments.push({
+                  student,
+                  roomId: ra.roomId,
+                });
+              }
+            }
+          }
+
+          // Aynı salona düşenleri tespit et
+          const roomMap = {};
+          conflictAssignments.forEach(item => {
+            if (!roomMap[item.roomId]) roomMap[item.roomId] = [];
+            roomMap[item.roomId].push(item.student);
+          });
+
+          // Aynı salonda 2'den fazla çakışma öğrencisi varsa, birini başka salona taşı
+          for (const roomId of Object.keys(roomMap)) {
+            const studentsInRoom = roomMap[roomId];
+            if (studentsInRoom.length > 1) {
+              // İlk öğrenciyi başka bir salona taşı
+              const studentToMove = studentsInRoom[0];
+              const targetRoom = roomUsage.find(r => 
+                r.roomId !== roomId && 
+                r.students.length < r.capacity
+              );
+              if (targetRoom) {
+                // Öğrenciyi eski salonundan çıkar
+                const oldRoom = roomUsage.find(r => r.roomId === roomId);
+                oldRoom.students = oldRoom.students.filter(s => s.id !== studentToMove.id);
+                // Yeni salona ekle
+                targetRoom.students.push(studentToMove);
+              } else {
+                setMessage('Çakışma düzeltilemedi: yeterli kapasite yok.');
+                setLoading(false);
+                return;
+              }
+            }
+          }
+        }
+      }
+
+      // 3. Assignments listesini oluştur
       roomUsage.forEach(ra => {
         ra.students.forEach((student, idx) => {
           assignments.push({
@@ -205,7 +287,7 @@ const SeatingDistribution = () => {
       });
 
       setDistributions(assignments);
-      setMessage(`${assignments.length} öğrenci dağıtıldı.`);
+      setMessage(`${assignments.length} öğrenci başarıyla dağıtıldı.`);
     } catch (error) {
       console.error('Karma hatası:', error);
       setMessage('Karma sırasında hata oluştu: ' + error.message);
@@ -235,55 +317,130 @@ const SeatingDistribution = () => {
         </select>
       </div>
 
-      {/* Şube Grupları ve Salon Seçimi */}
-      {selectedExam && groups.length > 0 && (
-        <div style={{ marginBottom: '2rem' }}>
-          <h4>Şube Grupları ve Salon Atamaları</h4>
-          <p style={{ fontSize: '0.9rem', color: '#666' }}>
-            Her grup için hangi salonların kullanılacağını seçin. Bir salon birden fazla gruba atanabilir.
-          </p>
-
-          {groups.map((group) => (
-            <div key={group.id} style={{ marginBottom: '1.5rem', padding: '1rem', background: '#f8f9fa', borderRadius: '8px', border: '1px solid #ddd' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                <strong style={{ fontSize: '1.1rem' }}>{group.class}</strong>
-                <button
-                  onClick={() => removeGroup(group.id)}
-                  style={{ background: 'transparent', border: 'none', color: '#dc3545', cursor: 'pointer' }}
-                >
-                  <FaTrash /> Grubu Sil
-                </button>
-              </div>
-
-              <div>
-                <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '0.3rem' }}>Salonlar:</label>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-                  {rooms.map(room => (
-                    <button
-                      key={room.id}
-                      onClick={() => toggleRoomForGroup(group.id, room.id)}
-                      style={{
-                        padding: '0.3rem 0.8rem',
-                        background: group.roomIds.includes(room.id) ? '#007bff' : '#e9ecef',
-                        color: group.roomIds.includes(room.id) ? 'white' : '#333',
-                        border: '1px solid #ddd',
-                        borderRadius: '4px',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      {room.name} ({room.capacity + (room.extraSeatsAdded || 0)})
-                      {room.class && ` - ${room.class}`}
-                    </button>
-                  ))}
-                </div>
-                <div style={{ fontSize: '0.8rem', color: '#666', marginTop: '0.3rem' }}>
-                  Seçili: {group.roomIds.length} salon
-                </div>
-              </div>
-            </div>
-          ))}
+      {/* Tüm Şubeler */}
+      {selectedExam && allClasses.length > 0 && (
+        <div style={{ marginBottom: '1.5rem', padding: '1rem', background: '#f8f9fa', borderRadius: '8px' }}>
+          <h4>Tüm Şubeler</h4>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+            {allClasses.map(cls => (
+              <span key={cls} style={{ padding: '0.3rem 0.8rem', background: '#e9ecef', borderRadius: '4px', fontSize: '0.9rem' }}>
+                {cls}
+              </span>
+            ))}
+          </div>
         </div>
       )}
+
+      {/* Salon Listesi */}
+      {selectedExam && rooms.length > 0 && (
+        <div style={{ marginBottom: '1.5rem', padding: '1rem', background: '#f8f9fa', borderRadius: '8px' }}>
+          <h4>Mevcut Salonlar</h4>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+            {rooms.map(room => (
+              <span key={room.id} style={{ padding: '0.3rem 0.8rem', background: '#e9ecef', borderRadius: '4px', fontSize: '0.9rem' }}>
+                {room.name} ({room.capacity + (room.extraSeatsAdded || 0)})
+                {room.class && ` - ${room.class}`}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Grup Oluşturma */}
+      <div style={{ marginBottom: '2rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+          <h4>Şube Grupları ve Salon Atamaları</h4>
+          <button
+            onClick={addGroup}
+            style={{
+              padding: '0.4rem 1rem',
+              background: '#28a745',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+            }}
+          >
+            <FaPlus /> Grup Ekle
+          </button>
+        </div>
+
+        {groups.map((group) => (
+          <div key={group.id} style={{ marginBottom: '1.5rem', padding: '1rem', background: '#fff', borderRadius: '8px', border: '1px solid #ddd' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+              <strong style={{ fontSize: '1.1rem' }}>{group.name}</strong>
+              <button
+                onClick={() => removeGroup(group.id)}
+                style={{ background: 'transparent', border: 'none', color: '#dc3545', cursor: 'pointer' }}
+              >
+                <FaTrash /> Grubu Sil
+              </button>
+            </div>
+
+            {/* Şube Seçimi */}
+            <div style={{ marginBottom: '0.8rem' }}>
+              <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '0.3rem' }}>Şubeler:</label>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                {allClasses.map(cls => (
+                  <button
+                    key={cls}
+                    onClick={() => toggleClassForGroup(group.id, cls)}
+                    style={{
+                      padding: '0.3rem 0.8rem',
+                      background: group.classes.includes(cls) ? '#007bff' : '#e9ecef',
+                      color: group.classes.includes(cls) ? 'white' : '#333',
+                      border: '1px solid #ddd',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {cls}
+                  </button>
+                ))}
+              </div>
+              <div style={{ fontSize: '0.8rem', color: '#666', marginTop: '0.3rem' }}>
+                Seçili: {group.classes.length} şube
+              </div>
+            </div>
+
+            {/* Salon Seçimi */}
+            <div>
+              <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '0.3rem' }}>Salonlar:</label>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                {rooms.map(room => (
+                  <button
+                    key={room.id}
+                    onClick={() => toggleRoomForGroup(group.id, room.id)}
+                    style={{
+                      padding: '0.3rem 0.8rem',
+                      background: group.roomIds.includes(room.id) ? '#007bff' : '#e9ecef',
+                      color: group.roomIds.includes(room.id) ? 'white' : '#333',
+                      border: '1px solid #ddd',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {room.name} ({room.capacity + (room.extraSeatsAdded || 0)})
+                    {room.class && ` - ${room.class}`}
+                  </button>
+                ))}
+              </div>
+              <div style={{ fontSize: '0.8rem', color: '#666', marginTop: '0.3rem' }}>
+                Seçili: {group.roomIds.length} salon
+              </div>
+            </div>
+          </div>
+        ))}
+
+        {groups.length === 0 && (
+          <p style={{ textAlign: 'center', color: '#666' }}>
+            Henüz grup oluşturulmamış. "Grup Ekle" butonuna tıklayarak başlayın.
+          </p>
+        )}
+      </div>
 
       {/* Karma Butonu */}
       <button
