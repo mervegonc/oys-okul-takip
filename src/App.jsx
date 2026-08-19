@@ -8,6 +8,7 @@ import Students from './pages/Students';
 import DisciplineTracking from './pages/DisciplineTracking';
 import DisciplineReports from './pages/DisciplineReports';
 import { hasPermission } from './utils/permissions';
+import Exams from './pages/Exams';
 
 function App() {
   const [user, setUser] = useState(null);
@@ -45,7 +46,9 @@ function App() {
                   <Route path="/discipline-reports" element={
                     (hasPermission(userEmail, 'attendance') || hasPermission(userEmail, 'exam')) ? <DisciplineReports /> : <Navigate to="/" />
                   } />
-                  {/* Diğer rotalar ileride eklenecek */}
+                  <Route path="/exams" element={
+  hasPermission(userEmail, 'exam') ? <Exams /> : <Navigate to="/" />
+} />
                   <Route path="/" element={<Navigate to="/students" />} />
                 </Routes>
               </>
