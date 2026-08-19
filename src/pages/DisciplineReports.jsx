@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { collection, getDocs, query, orderBy } from 'firebase/firestore';
+import { collection, getDocs, query, orderBy, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Bar } from 'react-chartjs-2';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend } from 'chart.js';
-import { FaCalendarAlt, FaUsers, FaFilter, FaFileCsv, FaClock } from 'react-icons/fa';
+import { FaCalendarAlt, FaUsers, FaFilter, FaFileCsv, FaEdit, FaTrash } from 'react-icons/fa';
 import { format, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns';
-import { tr } from 'date-fns/locale';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
 
@@ -18,6 +17,9 @@ const DisciplineReports = () => {
   const [endDate, setEndDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [selectedGrade, setSelectedGrade] = useState('all');
   const [selectedClass, setSelectedClass] = useState('all');
+  const [editingId, setEditingId] = useState(null);
+  const [editNote, setEditNote] = useState('');
+  const [editType, setEditType] = useState('');
 
   useEffect(() => {
     const fetchRecords = async () => {
@@ -136,7 +138,6 @@ const DisciplineReports = () => {
     },
   };
 
-  // En çok geç kalanlar
   const lateLeaders = filteredRecords
     .filter((r) => r.type === 'late' || r.type === 'both')
     .reduce((acc, r) => {
@@ -179,12 +180,47 @@ const DisciplineReports = () => {
     link.click();
   };
 
+  const handleEdit = (record) => {
+    setEditingId(record.id);
+    setEditNote(record.note || '');
+    setEditType(record.type);
+  };
+
+  const handleUpdate = async (id) => {
+    try {
+      await updateDoc(doc(db, 'discipline', id), {
+        note: editNote,
+        type: editType,
+      });
+      // Güncellenmiş veriyi çek
+      const q = query(collection(db, 'discipline'), orderBy('createdAt', 'desc'));
+      const snapshot = await getDocs(q);
+      const data = [];
+      snapshot.forEach((doc) => data.push({ id: doc.id, ...doc.data() }));
+      setRecords(data);
+      setEditingId(null);
+    } catch (error) {
+      console.error('Güncelleme hatası:', error);
+    }
+  };
+
+  const handleDelete = async (id) => {
+    if (!window.confirm('Bu kaydı silmek istediğinize emin misiniz?')) return;
+    try {
+      await deleteDoc(doc(db, 'discipline', id));
+      setRecords(records.filter((r) => r.id !== id));
+    } catch (error) {
+      console.error('Silme hatası:', error);
+    }
+  };
+
   if (loading) return <div style={{ padding: '2rem', textAlign: 'center' }}>Yükleniyor...</div>;
 
   return (
     <div style={{ padding: '1rem', maxWidth: '1400px', margin: '0 auto' }}>
-      <h2>📊 Geç Kalma / Kıyafet Raporları</h2>
+      <h2>Geç Kalma / Kıyafet Raporları</h2>
 
+      {/* Filtreler */}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.5rem', padding: '1rem', background: '#f8f9fa', borderRadius: '12px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <FaCalendarAlt />
@@ -229,6 +265,7 @@ const DisciplineReports = () => {
         </button>
       </div>
 
+      {/* Özet Kartlar */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px,1fr))', gap: '1rem', marginBottom: '2rem' }}>
         <div style={{ padding: '1rem', background: '#fff3cd', borderRadius: '8px', textAlign: 'center' }}>
           <div style={{ fontSize: '0.9rem', color: '#856404' }}>Geç Kalan</div>
@@ -248,6 +285,7 @@ const DisciplineReports = () => {
         </div>
       </div>
 
+      {/* Sınıf Bazlı */}
       <div style={{ marginBottom: '2rem' }}>
         <h4>Sınıf Düzeyine Göre</h4>
         <table style={{ width: '100%', borderCollapse: 'collapse', background: 'white', borderRadius: '8px', overflow: 'hidden', boxShadow: '0 0 10px rgba(0,0,0,0.05)' }}>
@@ -268,6 +306,7 @@ const DisciplineReports = () => {
         </table>
       </div>
 
+      {/* Şube Bazlı */}
       <div style={{ marginBottom: '2rem' }}>
         <h4>Şubeye Göre</h4>
         <table style={{ width: '100%', borderCollapse: 'collapse', background: 'white', borderRadius: '8px', overflow: 'hidden', boxShadow: '0 0 10px rgba(0,0,0,0.05)' }}>
@@ -288,13 +327,15 @@ const DisciplineReports = () => {
         </table>
       </div>
 
+      {/* Grafik */}
       <div style={{ marginBottom: '2rem', background: 'white', padding: '1rem', borderRadius: '12px', boxShadow: '0 0 10px rgba(0,0,0,0.05)' }}>
         <Bar data={chartData} options={chartOptions} />
       </div>
 
+      {/* En Çok Geç Kalanlar */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px,1fr))', gap: '1.5rem', marginBottom: '2rem' }}>
         <div style={{ background: 'white', padding: '1rem', borderRadius: '12px', boxShadow: '0 0 10px rgba(0,0,0,0.05)' }}>
-          <h4>⏰ En Çok Geç Kalanlar</h4>
+          <h4>En Çok Geç Kalanlar</h4>
           {lateLeaderList.length > 0 ? (
             <ol style={{ paddingLeft: '1.2rem' }}>
               {lateLeaderList.map((item, idx) => (
@@ -306,7 +347,7 @@ const DisciplineReports = () => {
           ) : <p>Veri yok</p>}
         </div>
         <div style={{ background: 'white', padding: '1rem', borderRadius: '12px', boxShadow: '0 0 10px rgba(0,0,0,0.05)' }}>
-          <h4>👔 En Çok Kıyafet İhlali Yapanlar</h4>
+          <h4>En Çok Kıyafet İhlali Yapanlar</h4>
           {dressLeaderList.length > 0 ? (
             <ol style={{ paddingLeft: '1.2rem' }}>
               {dressLeaderList.map((item, idx) => (
@@ -317,6 +358,74 @@ const DisciplineReports = () => {
             </ol>
           ) : <p>Veri yok</p>}
         </div>
+      </div>
+
+      {/* Tüm Kayıtlar Listesi */}
+      <div style={{ marginTop: '2rem', background: 'white', borderRadius: '12px', padding: '1rem', boxShadow: '0 0 10px rgba(0,0,0,0.05)' }}>
+        <h4>Tüm Kayıtlar</h4>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead style={{ background: '#f1f1f1' }}>
+            <tr>
+              <th>Öğrenci</th>
+              <th>Sınıf</th>
+              <th>Tür</th>
+              <th>Not</th>
+              <th>Tarih</th>
+              <th>Saat</th>
+              <th>İşlem</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredRecords.map((record) => (
+              <tr key={record.id} style={{ borderBottom: '1px solid #eee' }}>
+                <td>{record.studentName}</td>
+                <td>{record.grade}-{record.class}</td>
+                <td>
+                  {editingId === record.id ? (
+                    <select value={editType} onChange={(e) => setEditType(e.target.value)}>
+                      <option value="late">Geç Kaldı</option>
+                      <option value="dress">Kıyafet İhlali</option>
+                      <option value="both">Her İkisi</option>
+                    </select>
+                  ) : (
+                    record.type === 'late' ? 'Geç Kaldı' : record.type === 'dress' ? 'Kıyafet İhlali' : 'Her İkisi'
+                  )}
+                </td>
+                <td>
+                  {editingId === record.id ? (
+                    <input type="text" value={editNote} onChange={(e) => setEditNote(e.target.value)} />
+                  ) : (
+                    record.note || '-'
+                  )}
+                </td>
+                <td>{record.createdAt?.toDate?.() ? format(record.createdAt.toDate(), 'dd.MM.yyyy') : '-'}</td>
+                <td>{record.createdAt?.toDate?.() ? format(record.createdAt.toDate(), 'HH:mm') : '-'}</td>
+                <td>
+                  {editingId === record.id ? (
+                    <>
+                      <button onClick={() => handleUpdate(record.id)} style={{ background: '#28a745', color: 'white', border: 'none', borderRadius: '4px', padding: '0.2rem 0.5rem', marginRight: '0.3rem' }}>
+                        Kaydet
+                      </button>
+                      <button onClick={() => setEditingId(null)} style={{ background: '#6c757d', color: 'white', border: 'none', borderRadius: '4px', padding: '0.2rem 0.5rem' }}>
+                        İptal
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button onClick={() => handleEdit(record)} style={{ background: 'transparent', border: 'none', color: '#ffc107', cursor: 'pointer', marginRight: '0.5rem' }}>
+                        <FaEdit />
+                      </button>
+                      <button onClick={() => handleDelete(record.id)} style={{ background: 'transparent', border: 'none', color: '#dc3545', cursor: 'pointer' }}>
+                        <FaTrash />
+                      </button>
+                    </>
+                  )}
+                </td>
+              </tr>
+            ))}
+            {filteredRecords.length === 0 && <tr><td colSpan="7" style={{ textAlign: 'center', padding: '1rem' }}>Kayıt yok</td></tr>}
+          </tbody>
+        </table>
       </div>
     </div>
   );

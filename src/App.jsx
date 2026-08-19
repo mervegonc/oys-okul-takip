@@ -4,9 +4,10 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from './firebase';
 import Login from './components/Login';
 import Dashboard from './components/Dashboard';
-import Students from './pages/Students'; 
+import Students from './pages/Students';
 import DisciplineTracking from './pages/DisciplineTracking';
 import DisciplineReports from './pages/DisciplineReports';
+import Navbar from './components/Navbar';
 
 function App() {
   const [user, setUser] = useState(null);
@@ -24,13 +25,14 @@ function App() {
 
   return (
     <BrowserRouter>
-   <Routes>
-  <Route path="/login" element={!user ? <Login /> : <Navigate to="/" />} />
-  <Route path="/" element={user ? <Dashboard user={user} /> : <Navigate to="/login" />} />
-  <Route path="/students" element={user ? <Students /> : <Navigate to="/login" />} />
-  <Route path="/discipline" element={user ? <DisciplineTracking /> : <Navigate to="/login" />} />
-  <Route path="/discipline-reports" element={user ? <DisciplineReports /> : <Navigate to="/login" />} />
-</Routes>
+      {user && <Navbar />}
+      <Routes>
+        <Route path="/login" element={!user ? <Login /> : <Navigate to="/" />} />
+        <Route path="/" element={user ? <Dashboard user={user} /> : <Navigate to="/login" />} />
+        <Route path="/students" element={user ? <Students /> : <Navigate to="/login" />} />
+        <Route path="/discipline" element={user ? <DisciplineTracking /> : <Navigate to="/login" />} />
+        <Route path="/discipline-reports" element={user ? <DisciplineReports /> : <Navigate to="/login" />} />
+      </Routes>
     </BrowserRouter>
   );
 }
