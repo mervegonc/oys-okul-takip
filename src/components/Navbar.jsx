@@ -5,6 +5,8 @@ import { signOut } from 'firebase/auth';
 import { auth } from '../firebase';
 import { hasPermission } from '../utils/permissions';
 import { FaBuilding } from 'react-icons/fa';
+import { FaChair } from 'react-icons/fa';
+
 
 const Navbar = ({ userEmail }) => {
   const location = useLocation();
@@ -15,6 +17,7 @@ const Navbar = ({ userEmail }) => {
     { path: '/discipline-reports', label: 'Geç Kalan İstatistik', icon: <FaChartBar />, module: 'attendance' },
     { path: '/exams', label: 'Sınavlar', icon: <FaBook />, module: 'exam' },
     { path: '/rooms', label: 'Salonlar', icon: <FaBuilding />, module: 'seating' },
+    { path: '/seating', label: 'Karma Dağıtım', icon: <FaChair />, module: 'seating' },
     { path: '/calendar', label: 'Takvim', icon: <FaCalendarAlt />, module: 'calendar' },
     { path: '/candidates', label: 'Adaylar', icon: <FaUserPlus />, module: 'candidates' },
     { path: '/yds', label: 'YDS', icon: <FaLanguage />, module: 'exam' },

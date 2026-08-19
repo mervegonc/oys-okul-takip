@@ -10,6 +10,7 @@ import DisciplineReports from './pages/DisciplineReports';
 import { hasPermission } from './utils/permissions';
 import Exams from './pages/Exams';
 import Rooms from './pages/Rooms';
+import SeatingDistribution from './pages/SeatingDistribution';
 
 function App() {
   const [user, setUser] = useState(null);
@@ -52,6 +53,9 @@ function App() {
 } />
 <Route path="/rooms" element={
   hasPermission(userEmail, 'seating') ? <Rooms /> : <Navigate to="/" />
+} />
+<Route path="/seating" element={
+  hasPermission(userEmail, 'seating') ? <SeatingDistribution /> : <Navigate to="/" />
 } />
 
                   <Route path="/" element={<Navigate to="/students" />} />
