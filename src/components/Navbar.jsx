@@ -7,6 +7,8 @@ import { hasPermission } from '../utils/permissions';
 import { FaBuilding } from 'react-icons/fa';
 import { FaChair } from 'react-icons/fa';
 import { FaBan } from 'react-icons/fa';
+import { FaEdit } from 'react-icons/fa';
+
 
 
 const Navbar = ({ userEmail }) => {
@@ -20,6 +22,7 @@ const Navbar = ({ userEmail }) => {
     { path: '/rooms', label: 'Salonlar', icon: <FaBuilding />, module: 'seating' },
     { path: '/seating', label: 'Karma Dağıtım', icon: <FaChair />, module: 'seating' },
     { path: '/conflict-groups', label: 'Çakışma Listesi', icon: <FaBan />, module: 'seating' },
+    { path: '/manual-edit', label: 'Manuel Düzenle', icon: <FaEdit />, module: 'seating' },
     { path: '/calendar', label: 'Takvim', icon: <FaCalendarAlt />, module: 'calendar' },
     { path: '/candidates', label: 'Adaylar', icon: <FaUserPlus />, module: 'candidates' },
     { path: '/yds', label: 'YDS', icon: <FaLanguage />, module: 'exam' },

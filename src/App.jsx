@@ -12,6 +12,9 @@ import Exams from './pages/Exams';
 import Rooms from './pages/Rooms';
 import SeatingDistribution from './pages/SeatingDistribution';
 import ConflictGroups from './pages/ConflictGroups';
+import ManualEdit from './pages/ManualEdit';
+
+
 
 function App() {
   const [user, setUser] = useState(null);
@@ -60,6 +63,9 @@ function App() {
 } />
 <Route path="/conflict-groups" element={
   hasPermission(userEmail, 'seating') ? <ConflictGroups /> : <Navigate to="/" />
+} />
+<Route path="/manual-edit" element={
+  hasPermission(userEmail, 'seating') ? <ManualEdit /> : <Navigate to="/" />
 } />
 
                   <Route path="/" element={<Navigate to="/students" />} />
