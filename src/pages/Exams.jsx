@@ -88,34 +88,32 @@ const Exams = () => {
     <div style={{ padding: '1rem', maxWidth: '1200px', margin: '0 auto' }}>
       <h2>📋 Sınav Yönetimi</h2>
 
-      {/* Form */}
-      <form onSubmit={handleSubmit} style={{ background: '#f8f9fa', padding: '1rem', borderRadius: '8px', marginBottom: '2rem' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px,1fr))', gap: '1rem' }}>
-          <input name="title" placeholder="Sınav Başlığı" value={form.title} onChange={handleChange} required />
-          <input name="date" type="date" value={form.date} onChange={handleChange} required />
-          <select name="type" value={form.type} onChange={handleChange}>
-            <option value="academic">Akademik</option>
-            <option value="foreign_lang">Yabancı Dil</option>
-            <option value="written">Yazılı</option>
-          </select>
-          <select name="level" value={form.level} onChange={handleChange}>
-            <option value="high">Lise</option>
-            <option value="middle">Ortaokul</option>
-          </select>
-          <input name="sessionCount" type="number" placeholder="Oturum Sayısı" value={form.sessionCount} onChange={handleChange} min="1" max="2" />
-          <label>
-            <input name="isMixed" type="checkbox" checked={form.isMixed} onChange={handleChange} /> Karma
-          </label>
-        </div>
-        <button type="submit" style={{ marginTop: '1rem', padding: '0.5rem 1rem', background: '#007bff', color: 'white', border: 'none', borderRadius: '4px' }}>
-          {editingId ? <><FaSave /> Güncelle</> : <><FaPlus /> Ekle</>}
-        </button>
-        {editingId && (
-          <button type="button" onClick={() => { setEditingId(null); setForm({ title: '', date: '', type: 'academic', level: 'high', sessionCount: 1, isMixed: false, gradeLevels: [] }); }} style={{ marginLeft: '0.5rem', padding: '0.5rem 1rem', background: '#6c757d', color: 'white', border: 'none', borderRadius: '4px' }}>
-            <FaTimes /> İptal
-          </button>
-        )}
-      </form>
+      // src/pages/Exams.jsx - sadece form kısmı
+<form>
+  <input type="text" placeholder="Sınav Başlığı" />
+  <input type="date" />
+  <select>
+    <option>Akademik</option>
+    <option>Yabancı Dil</option>
+    <option>Yazılı</option>
+  </select>
+  <select>
+    <option>Lise (9-12)</option>
+    <option>Ortaokul (5-8)</option>
+  </select>
+  <select multiple>
+    <option>9</option>
+    <option>10</option>
+    <option>11</option>
+    <option>12</option>
+  </select>
+  <select>
+    <option>Karma Yap</option>
+    <option>Karma Yapma</option>
+  </select>
+  <input type="number" placeholder="Oturum Sayısı (1 veya 2)" />
+  <button type="submit">Sınav Oluştur</button>
+</form>
 
       {/* Liste */}
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
