@@ -27,35 +27,38 @@ const Students = () => {
   });
 
   // Öğrencileri getir (TC ve telefonları çöz)
-  const fetchStudents = async () => {
-    try {
-      const q = query(collection(db, 'students'), orderBy('lastName', 'asc'));
-      const snapshot = await getDocs(q);
-      const data = [];
-      snapshot.forEach((doc) => {
-        const raw = doc.data();
-        // Şifreli alanları çöz (admin ise çöz, değilse gizle)
-        const isAdmin = true; // Şimdilik admin varsayalım, ileride rol kontrolü eklenecek
-        const tcNo = isAdmin ? decrypt(raw.tcNo) : '***';
-        const phone = isAdmin ? decrypt(raw.phone) : '***';
-        const parentPhone = isAdmin ? decrypt(raw.parentPhone) : '***';
-        const parentPhone2 = isAdmin ? decrypt(raw.parentPhone2) : '***';
-        data.push({
-          id: doc.id,
-          ...raw,
-          tcNo,
-          phone,
-          parentPhone,
-          parentPhone2,
-        });
+};
+const fetchStudents = async () => {
+  try {
+    const q = query(collection(db, 'students'), orderBy('lastName', 'asc'));
+    const snapshot = await getDocs(q);
+    const data = [];
+    snapshot.forEach((doc) => {
+      const raw = doc.data();
+      const isAdmin = true; // Admin kontrolü (ileride role göre yapılacak)
+      
+      // Sadece şifreli olan alanları çöz
+      const tcNo = isAdmin && isEncrypted(raw.tcNo) ? decrypt(raw.tcNo) : raw.tcNo || '***';
+      const phone = isAdmin && isEncrypted(raw.phone) ? decrypt(raw.phone) : raw.phone || '***';
+      const parentPhone = isAdmin && isEncrypted(raw.parentPhone) ? decrypt(raw.parentPhone) : raw.parentPhone || '***';
+      const parentPhone2 = isAdmin && isEncrypted(raw.parentPhone2) ? decrypt(raw.parentPhone2) : raw.parentPhone2 || '***';
+      
+      data.push({
+        id: doc.id,
+        ...raw,
+        tcNo,
+        phone,
+        parentPhone,
+        parentPhone2,
       });
-      setStudents(data);
-    } catch (error) {
-      console.error('Öğrenciler alınamadı:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+    });
+    setStudents(data);
+  } catch (error) {
+    console.error('Öğrenciler alınamadı:', error);
+  } finally {
+    setLoading(false);
+  }
+
 
   useEffect(() => {
     fetchStudents();
