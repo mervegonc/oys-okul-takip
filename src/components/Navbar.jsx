@@ -1,83 +1,72 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { FaUsers, FaClock, FaChartBar, FaSignOutAlt } from 'react-icons/fa';
+import { FaUsers, FaClock, FaChartBar, FaCalendarAlt, FaUserPlus, FaBook, FaLanguage } from 'react-icons/fa';
 import { signOut } from 'firebase/auth';
 import { auth } from '../firebase';
 
 const Navbar = () => {
   const location = useLocation();
 
+  const menuItems = [
+    { path: '/students', label: 'Öğrenciler', icon: <FaUsers /> },
+    { path: '/discipline', label: 'Geç Kalan Kayıt', icon: <FaClock /> },
+    { path: '/discipline-reports', label: 'Geç Kalan İstatistik', icon: <FaChartBar /> },
+    { path: '/exams', label: 'Sınavlar', icon: <FaBook /> }, // ileride eklenecek
+    { path: '/calendar', label: 'Takvim', icon: <FaCalendarAlt /> }, // ileride
+    { path: '/candidates', label: 'Adaylar', icon: <FaUserPlus /> }, // ileride
+    { path: '/yds', label: 'YDS', icon: <FaLanguage /> }, // ileride
+  ];
+
   const handleLogout = async () => {
     await signOut(auth);
   };
 
-  const isActive = (path) => location.pathname === path;
-
   return (
     <nav style={{
       display: 'flex',
-      alignItems: 'center',
       justifyContent: 'space-between',
-      padding: '0.8rem 2rem',
+      alignItems: 'center',
+      padding: '0.5rem 2rem',
       background: '#ffffff',
-      boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-      borderBottom: '1px solid #eee',
+      borderBottom: '1px solid #e0e0e0',
+      boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
+      position: 'sticky',
+      top: 0,
+      zIndex: 1000,
       flexWrap: 'wrap',
-      gap: '0.5rem'
     }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', flexWrap: 'wrap' }}>
         <Link to="/" style={{ fontWeight: 'bold', fontSize: '1.2rem', color: '#2c3e50', textDecoration: 'none' }}>
           OYS
         </Link>
-        <Link to="/students" style={{ 
-          display: 'flex', alignItems: 'center', gap: '0.4rem',
-          padding: '0.4rem 0.8rem',
-          borderRadius: '6px',
-          background: isActive('/students') ? '#e9ecef' : 'transparent',
-          color: isActive('/students') ? '#007bff' : '#495057',
-          textDecoration: 'none',
-          fontWeight: isActive('/students') ? '600' : '400'
-        }}>
-          <FaUsers /> Öğrenciler
-        </Link>
-        <Link to="/discipline" style={{
-          display: 'flex', alignItems: 'center', gap: '0.4rem',
-          padding: '0.4rem 0.8rem',
-          borderRadius: '6px',
-          background: isActive('/discipline') ? '#e9ecef' : 'transparent',
-          color: isActive('/discipline') ? '#007bff' : '#495057',
-          textDecoration: 'none',
-          fontWeight: isActive('/discipline') ? '600' : '400'
-        }}>
-          <FaClock /> Geç Kalan Kayıt
-        </Link>
-        <Link to="/discipline-reports" style={{
-          display: 'flex', alignItems: 'center', gap: '0.4rem',
-          padding: '0.4rem 0.8rem',
-          borderRadius: '6px',
-          background: isActive('/discipline-reports') ? '#e9ecef' : 'transparent',
-          color: isActive('/discipline-reports') ? '#007bff' : '#495057',
-          textDecoration: 'none',
-          fontWeight: isActive('/discipline-reports') ? '600' : '400'
-        }}>
-          <FaChartBar /> Geç Kalan İstatistik
-        </Link>
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+          {menuItems.map((item) => (
+            <Link
+              key={item.path}
+              to={item.path}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.3rem',
+                padding: '0.4rem 0.8rem',
+                borderRadius: '4px',
+                textDecoration: 'none',
+                color: location.pathname === item.path ? '#007bff' : '#555',
+                background: location.pathname === item.path ? '#e7f3ff' : 'transparent',
+                fontWeight: location.pathname === item.path ? '600' : '400',
+                transition: 'all 0.2s',
+              }}
+            >
+              {item.icon}
+              {item.label}
+            </Link>
+          ))}
+        </div>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-        <span style={{ fontSize: '0.9rem', color: '#6c757d' }}>{auth.currentUser?.email}</span>
-        <button onClick={handleLogout} style={{
-          background: 'transparent',
-          border: 'none',
-          color: '#dc3545',
-          cursor: 'pointer',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '0.3rem',
-          padding: '0.3rem 0.6rem',
-          borderRadius: '4px',
-          transition: 'background 0.2s'
-        }} onMouseOver={(e) => e.currentTarget.style.background = '#f8d7da'} onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}>
-          <FaSignOutAlt /> Çıkış
+        <span style={{ fontSize: '0.9rem', color: '#555' }}>merve.gnc.946@gmail.com</span>
+        <button onClick={handleLogout} style={{ padding: '0.3rem 0.8rem', background: '#dc3545', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
+          Çıkış
         </button>
       </div>
     </nav>

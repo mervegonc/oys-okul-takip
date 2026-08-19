@@ -3,11 +3,10 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from './firebase';
 import Login from './components/Login';
-import Dashboard from './components/Dashboard';
+import Navbar from './components/Navbar';
 import Students from './pages/Students';
 import DisciplineTracking from './pages/DisciplineTracking';
 import DisciplineReports from './pages/DisciplineReports';
-import Navbar from './components/Navbar';
 
 function App() {
   const [user, setUser] = useState(null);
@@ -25,13 +24,27 @@ function App() {
 
   return (
     <BrowserRouter>
-      {user && <Navbar />}
       <Routes>
-        <Route path="/login" element={!user ? <Login /> : <Navigate to="/" />} />
-        <Route path="/" element={user ? <Dashboard user={user} /> : <Navigate to="/login" />} />
-        <Route path="/students" element={user ? <Students /> : <Navigate to="/login" />} />
-        <Route path="/discipline" element={user ? <DisciplineTracking /> : <Navigate to="/login" />} />
-        <Route path="/discipline-reports" element={user ? <DisciplineReports /> : <Navigate to="/login" />} />
+        <Route path="/login" element={!user ? <Login /> : <Navigate to="/students" />} />
+        <Route
+          path="/*"
+          element={
+            user ? (
+              <>
+                <Navbar />
+                <Routes>
+                  <Route path="/students" element={<Students />} />
+                  <Route path="/discipline" element={<DisciplineTracking />} />
+                  <Route path="/discipline-reports" element={<DisciplineReports />} />
+                  {/* Diğer route'lar ileride eklenecek */}
+                  <Route path="/" element={<Navigate to="/students" />} />
+                </Routes>
+              </>
+            ) : (
+              <Navigate to="/login" />
+            )
+          }
+        />
       </Routes>
     </BrowserRouter>
   );
