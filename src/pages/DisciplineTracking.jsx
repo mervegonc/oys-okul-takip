@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, orderBy, where, Timestamp } from 'firebase/firestore';
 import { db } from '../firebase';
-import { FiSearch, FiClock, FiUser, FiCalendar, FiEdit2, FiTrash2, FiDownload } from 'react-icons/fi';
-import './DisciplineTracking.css'; // Stil dosyası
+import { FaSearch, FaTimes, FaEdit, FaTrash, FaSave, FaUndo } from 'react-icons/fa';
+import './DisciplineTracking.css'; // İstersen CSS dosyası oluştur
 
 const DisciplineTracking = () => {
   const [students, setStudents] = useState([]);
@@ -10,17 +10,11 @@ const DisciplineTracking = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [note, setNote] = useState('');
-  const [recordType, setRecordType] = useState({ late: false, dress: false });
+  const [selectedTypes, setSelectedTypes] = useState({ late: false, dress: false });
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [records, setRecords] = useState([]);
   const [editingRecord, setEditingRecord] = useState(null);
-  const [showStats, setShowStats] = useState(false);
-  const [statsData, setStatsData] = useState(null);
-  const [statsFilter, setStatsFilter] = useState('daily'); // daily, weekly, monthly, term, yearly, custom
-  const [customDateRange, setCustomDateRange] = useState({ start: '', end: '' });
-  const [selectedGrade, setSelectedGrade] = useState('');
-  const [selectedClass, setSelectedClass] = useState('');
 
   // Tüm öğrencileri getir
   useEffect(() => {
@@ -40,11 +34,18 @@ const DisciplineTracking = () => {
     fetchStudents();
   }, []);
 
-  // Kayıtları getir
+  // Kayıtları getir (bugünün)
   useEffect(() => {
     const fetchRecords = async () => {
       try {
-        const q = query(collection(db, 'discipline'), orderBy('createdAt', 'desc'));
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const startOfDay = Timestamp.fromDate(today);
+        const q = query(
+          collection(db, 'discipline'),
+          where('createdAt', '>=', startOfDay),
+          orderBy('createdAt', 'desc')
+        );
         const querySnapshot = await getDocs(q);
         const data = [];
         querySnapshot.forEach((doc) => {
@@ -69,59 +70,57 @@ const DisciplineTracking = () => {
           s.firstName?.toLowerCase().includes(term) ||
           s.lastName?.toLowerCase().includes(term) ||
           s.studentNo?.includes(term) ||
-          `${s.firstName} ${s.lastName}`.toLowerCase().includes(term)
+          s.tcNo?.includes(term)
       );
       setFilteredStudents(filtered);
     }
   }, [searchTerm, students]);
 
-  // Öğrenci seç
   const handleSelectStudent = (student) => {
     setSelectedStudent(student);
     setNote('');
-    setRecordType({ late: false, dress: false });
+    setSelectedTypes({ late: false, dress: false });
     setMessage('');
     setEditingRecord(null);
   };
 
-  // Kaydet
-  const handleSaveRecord = async () => {
+  const handleClosePanel = () => {
+    setSelectedStudent(null);
+    setNote('');
+    setSelectedTypes({ late: false, dress: false });
+    setEditingRecord(null);
+  };
+
+  const handleSave = async () => {
     if (!selectedStudent) {
       setMessage('Lütfen bir öğrenci seçin.');
       return;
     }
-    if (!recordType.late && !recordType.dress) {
-      setMessage('En az bir seçenek işaretleyin (Geç Kaldı / Kıyafet).');
+    if (!selectedTypes.late && !selectedTypes.dress) {
+      setMessage('En az bir işlem seçin (Geç Kaldı / Kıyafet Uygunsuz).');
       return;
     }
+
     setLoading(true);
     try {
-      let type = 'both';
-      if (recordType.late && !recordType.dress) type = 'late';
-      else if (!recordType.late && recordType.dress) type = 'dress';
-      
-      if (editingRecord) {
-        // Güncelle
-        await updateDoc(doc(db, 'discipline', editingRecord.id), {
-          type,
-          note: note || '',
-        });
-        setMessage('Kayıt güncellendi.');
-        setEditingRecord(null);
-      } else {
-        // Yeni kayıt
-        await addDoc(collection(db, 'discipline'), {
-          studentId: selectedStudent.id,
-          studentName: `${selectedStudent.firstName} ${selectedStudent.lastName}`,
-          class: selectedStudent.class,
-          grade: selectedStudent.grade,
-          type: type,
-          note: note || '',
-          createdAt: new Date(),
-        });
-        setMessage('Kayıt başarıyla eklendi.');
-      }
-      // Listeyi yenile
+      const types = [];
+      if (selectedTypes.late) types.push('late');
+      if (selectedTypes.dress) types.push('dress');
+      const type = types.length === 2 ? 'both' : types[0];
+
+      await addDoc(collection(db, 'discipline'), {
+        studentId: selectedStudent.id,
+        studentName: `${selectedStudent.firstName} ${selectedStudent.lastName}`,
+        class: selectedStudent.class,
+        grade: selectedStudent.grade,
+        type: type,
+        note: note || '',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      setMessage(`${selectedStudent.firstName} ${selectedStudent.lastName} kaydedildi.`);
+      // Kayıtları yeniden getir
       const q = query(collection(db, 'discipline'), orderBy('createdAt', 'desc'));
       const querySnapshot = await getDocs(q);
       const data = [];
@@ -129,9 +128,10 @@ const DisciplineTracking = () => {
         data.push({ id: doc.id, ...doc.data() });
       });
       setRecords(data);
-      setSelectedStudent(null);
-      setRecordType({ late: false, dress: false });
-      setNote('');
+
+      // Paneli kapat
+      handleClosePanel();
+      setSearchTerm('');
     } catch (error) {
       console.error('Kayıt hatası:', error);
       setMessage('Bir hata oluştu.');
@@ -140,21 +140,8 @@ const DisciplineTracking = () => {
     }
   };
 
-  // Sil
-  const handleDeleteRecord = async (id) => {
-    if (window.confirm('Bu kaydı silmek istediğinize emin misiniz?')) {
-      try {
-        await deleteDoc(doc(db, 'discipline', id));
-        setRecords(records.filter(r => r.id !== id));
-        setMessage('Kayıt silindi.');
-      } catch (error) {
-        console.error('Silme hatası:', error);
-      }
-    }
-  };
-
-  // Düzenleme başlat
-  const handleEditRecord = (record) => {
+  const handleEdit = (record) => {
+    setEditingRecord(record);
     setSelectedStudent({
       id: record.studentId,
       firstName: record.studentName.split(' ')[0],
@@ -162,331 +149,275 @@ const DisciplineTracking = () => {
       class: record.class,
       grade: record.grade,
     });
-    setRecordType({
+    setNote(record.note || '');
+    setSelectedTypes({
       late: record.type === 'late' || record.type === 'both',
       dress: record.type === 'dress' || record.type === 'both',
     });
-    setNote(record.note || '');
-    setEditingRecord(record);
-    setMessage('');
   };
 
-  // İstatistikleri hesapla
-  const calculateStats = () => {
-    let filtered = [...records];
-    const now = new Date();
-    let startDate, endDate = new Date();
+  const handleUpdate = async () => {
+    if (!editingRecord) return;
+    setLoading(true);
+    try {
+      const types = [];
+      if (selectedTypes.late) types.push('late');
+      if (selectedTypes.dress) types.push('dress');
+      const type = types.length === 2 ? 'both' : types[0];
 
-    switch (statsFilter) {
-      case 'daily':
-        startDate = new Date(now);
-        startDate.setHours(0, 0, 0, 0);
-        endDate = new Date(now);
-        endDate.setHours(23, 59, 59, 999);
-        break;
-      case 'weekly':
-        const day = now.getDay() || 7;
-        startDate = new Date(now);
-        startDate.setDate(now.getDate() - day + 1);
-        startDate.setHours(0, 0, 0, 0);
-        endDate = new Date(now);
-        endDate.setHours(23, 59, 59, 999);
-        break;
-      case 'monthly':
-        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-        endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-        endDate.setHours(23, 59, 59, 999);
-        break;
-      case 'term':
-        // Örnek: son 4 ay
-        startDate = new Date(now);
-        startDate.setMonth(now.getMonth() - 4);
-        break;
-      case 'yearly':
-        startDate = new Date(now.getFullYear(), 0, 1);
-        endDate = new Date(now.getFullYear(), 11, 31);
-        endDate.setHours(23, 59, 59, 999);
-        break;
-      case 'custom':
-        if (customDateRange.start && customDateRange.end) {
-          startDate = new Date(customDateRange.start);
-          endDate = new Date(customDateRange.end);
-          endDate.setHours(23, 59, 59, 999);
-        } else {
-          setMessage('Lütfen başlangıç ve bitiş tarihi seçin.');
-          return;
-        }
-        break;
-      default:
-        startDate = new Date(0);
-        endDate = new Date(8640000000000000);
+      await updateDoc(doc(db, 'discipline', editingRecord.id), {
+        type: type,
+        note: note || '',
+        updatedAt: new Date(),
+      });
+
+      setMessage('Kayıt güncellendi.');
+      // Kayıtları yeniden getir
+      const q = query(collection(db, 'discipline'), orderBy('createdAt', 'desc'));
+      const querySnapshot = await getDocs(q);
+      const data = [];
+      querySnapshot.forEach((doc) => {
+        data.push({ id: doc.id, ...doc.data() });
+      });
+      setRecords(data);
+
+      handleClosePanel();
+      setSearchTerm('');
+    } catch (error) {
+      console.error('Güncelleme hatası:', error);
+      setMessage('Güncelleme sırasında hata oluştu.');
+    } finally {
+      setLoading(false);
+      setEditingRecord(null);
     }
-
-    filtered = filtered.filter(r => {
-      const date = r.createdAt?.toDate?.() || new Date(r.createdAt);
-      return date >= startDate && date <= endDate;
-    });
-
-    if (selectedGrade) {
-      filtered = filtered.filter(r => r.grade === selectedGrade);
-    }
-    if (selectedClass) {
-      filtered = filtered.filter(r => r.class === selectedClass);
-    }
-
-    const lateCount = filtered.filter(r => r.type === 'late' || r.type === 'both').length;
-    const dressCount = filtered.filter(r => r.type === 'dress' || r.type === 'both').length;
-
-    // Saat bazlı dağılım
-    const hourly = {};
-    filtered.forEach(r => {
-      const date = r.createdAt?.toDate?.() || new Date(r.createdAt);
-      const hour = date.getHours();
-      hourly[hour] = (hourly[hour] || 0) + 1;
-    });
-
-    // En çok geç kalanlar
-    const lateStudents = {};
-    filtered.filter(r => r.type === 'late' || r.type === 'both').forEach(r => {
-      const key = r.studentName;
-      lateStudents[key] = (lateStudents[key] || 0) + 1;
-    });
-    const topLate = Object.entries(lateStudents).sort((a, b) => b[1] - a[1]).slice(0, 5);
-
-    const dressStudents = {};
-    filtered.filter(r => r.type === 'dress' || r.type === 'both').forEach(r => {
-      const key = r.studentName;
-      dressStudents[key] = (dressStudents[key] || 0) + 1;
-    });
-    const topDress = Object.entries(dressStudents).sort((a, b) => b[1] - a[1]).slice(0, 5);
-
-    setStatsData({
-      totalLate: lateCount,
-      totalDress: dressCount,
-      hourly,
-      topLate,
-      topDress,
-      filtered,
-    });
-    setShowStats(true);
   };
 
-  // CSV indir
-  const downloadCSV = () => {
-    if (!statsData) return;
-    const headers = ['Öğrenci', 'Sınıf', 'Tür', 'Not', 'Tarih'];
-    const rows = statsData.filtered.map(r => [
-      r.studentName,
-      `${r.grade}-${r.class}`,
-      r.type === 'late' ? 'Geç Kaldı' : r.type === 'dress' ? 'Kıyafet' : 'Her İkisi',
-      r.note || '',
-      new Date(r.createdAt?.toDate?.() || r.createdAt).toLocaleString('tr-TR'),
-    ]);
-    const csvContent = [headers, ...rows].map(row => row.join(',')).join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `gec-kalma-istatistik.csv`;
-    link.click();
+  const handleDelete = async (id) => {
+    if (!window.confirm('Bu kaydı silmek istediğinize emin misiniz?')) return;
+    try {
+      await deleteDoc(doc(db, 'discipline', id));
+      setRecords(records.filter((r) => r.id !== id));
+      setMessage('Kayıt silindi.');
+    } catch (error) {
+      console.error('Silme hatası:', error);
+      setMessage('Silme sırasında hata oluştu.');
+    }
   };
 
   return (
-    <div className="discipline-container">
-      <div className="discipline-header">
-        <h2>⏰ Geç Kalma / Kıyafet Takibi</h2>
-        <div className="discipline-tabs">
-          <button className={!showStats ? 'active' : ''} onClick={() => setShowStats(false)}>Kayıt Gir</button>
-          <button className={showStats ? 'active' : ''} onClick={() => { setShowStats(true); calculateStats(); }}>İstatistikler</button>
-        </div>
+    <div style={{ padding: '1rem', maxWidth: '1200px', margin: '0 auto' }}>
+      <h2>⏱️ Geç Kalma / Kıyafet Takibi</h2>
+
+      {/* Arama Çubuğu */}
+      <div style={{ position: 'relative', marginBottom: '1rem' }}>
+        <input
+          type="text"
+          placeholder="Öğrenci ad, soyad veya numarası..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          style={{
+            width: '100%',
+            padding: '0.8rem 2.5rem 0.8rem 1rem',
+            border: '1px solid #ddd',
+            borderRadius: '8px',
+            fontSize: '1rem',
+          }}
+        />
+        <FaSearch style={{ position: 'absolute', right: '1rem', top: '50%', transform: 'translateY(-50%)', color: '#aaa' }} />
       </div>
 
-      {!showStats ? (
-        // KAYIT GİR EKRANI
-        <div className="discipline-content">
-          <div className="search-area">
-            <div className="search-box">
-              <FiSearch className="search-icon" />
-              <input
-                type="text"
-                placeholder="Öğrenci ad, soyad veya numarası..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
+      {/* Öğrenci Listesi (arama sonuçları) */}
+      {searchTerm && filteredStudents.length > 0 && !selectedStudent && (
+        <div style={{ maxHeight: '300px', overflowY: 'auto', border: '1px solid #ddd', borderRadius: '8px', marginBottom: '1rem' }}>
+          {filteredStudents.map((student) => (
+            <div
+              key={student.id}
+              onClick={() => handleSelectStudent(student)}
+              style={{
+                padding: '0.6rem 1rem',
+                borderBottom: '1px solid #eee',
+                cursor: 'pointer',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = '#f5f5f5')}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+            >
+              <span>
+                <strong>{student.firstName} {student.lastName}</strong>
+              </span>
+              <span style={{ fontSize: '0.9rem', color: '#666' }}>
+                No: {student.studentNo} - {student.grade}. Sınıf / Şube {student.class}
+              </span>
             </div>
-            <div className="student-list">
-              {filteredStudents.map((student, index) => (
-                <div
-                  key={student.id}
-                  className={`student-item ${selectedStudent?.id === student.id ? 'selected' : ''}`}
-                  onClick={() => handleSelectStudent(student)}
-                >
-                  <span className="student-name">{student.firstName} {student.lastName}</span>
-                  <span className="student-info">No: {student.studentNo} · {student.grade}. Sınıf / Şube {student.class}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {selectedStudent && (
-            <div className="record-card">
-              <div className="record-header">
-                <h3>{selectedStudent.firstName} {selectedStudent.lastName}</h3>
-                <span className="record-sub">No: {selectedStudent.studentNo} · {selectedStudent.grade}. Sınıf / Şube {selectedStudent.class}</span>
-              </div>
-              <div className="record-options">
-                <label className="checkbox-label">
-                  <input
-                    type="checkbox"
-                    checked={recordType.late}
-                    onChange={(e) => setRecordType({ ...recordType, late: e.target.checked })}
-                  />
-                  <span>⏰ Geç Kaldı</span>
-                </label>
-                <label className="checkbox-label">
-                  <input
-                    type="checkbox"
-                    checked={recordType.dress}
-                    onChange={(e) => setRecordType({ ...recordType, dress: e.target.checked })}
-                  />
-                  <span>👔 Kıyafet Uygunsuz</span>
-                </label>
-              </div>
-              <div className="record-note">
-                <input
-                  type="text"
-                  placeholder="Not (opsiyonel)"
-                  value={note}
-                  onChange={(e) => setNote(e.target.value)}
-                />
-              </div>
-              <div className="record-actions">
-                <button onClick={handleSaveRecord} disabled={loading} className="btn-save">
-                  {loading ? 'Kaydediliyor...' : 'Kaydet'}
-                </button>
-                {editingRecord && (
-                  <button onClick={() => setEditingRecord(null)} className="btn-cancel">İptal</button>
-                )}
-                {message && <p className="message">{message}</p>}
-              </div>
-            </div>
-          )}
-        </div>
-      ) : (
-        // İSTATİSTİK EKRANI
-        <div className="stats-content">
-          <div className="stats-filters">
-            <div className="filter-group">
-              <label>Zaman Aralığı</label>
-              <select value={statsFilter} onChange={(e) => setStatsFilter(e.target.value)}>
-                <option value="daily">Günlük</option>
-                <option value="weekly">Haftalık</option>
-                <option value="monthly">Aylık</option>
-                <option value="term">Dönemlik</option>
-                <option value="yearly">Yıllık</option>
-                <option value="custom">Özel Aralık</option>
-              </select>
-            </div>
-            {statsFilter === 'custom' && (
-              <div className="filter-group">
-                <label>Başlangıç</label>
-                <input type="date" value={customDateRange.start} onChange={(e) => setCustomDateRange({ ...customDateRange, start: e.target.value })} />
-                <label>Bitiş</label>
-                <input type="date" value={customDateRange.end} onChange={(e) => setCustomDateRange({ ...customDateRange, end: e.target.value })} />
-              </div>
-            )}
-            <div className="filter-group">
-              <label>Sınıf</label>
-              <select value={selectedGrade} onChange={(e) => setSelectedGrade(e.target.value)}>
-                <option value="">Tümü</option>
-                {Array.from(new Set(students.map(s => s.grade))).sort().map(g => (
-                  <option key={g} value={g}>{g}. Sınıf</option>
-                ))}
-              </select>
-            </div>
-            <div className="filter-group">
-              <label>Şube</label>
-              <select value={selectedClass} onChange={(e) => setSelectedClass(e.target.value)}>
-                <option value="">Tümü</option>
-                {Array.from(new Set(students.map(s => s.class))).sort().map(c => (
-                  <option key={c} value={c}>{c}</option>
-                ))}
-              </select>
-            </div>
-            <button onClick={calculateStats} className="btn-stats">İstatistikleri Göster</button>
-            <button onClick={downloadCSV} className="btn-csv"><FiDownload /> CSV</button>
-          </div>
-
-          {statsData && (
-            <div className="stats-results">
-              <div className="stats-summary">
-                <div className="stat-card">
-                  <span className="stat-label">Toplam Geç Kalma</span>
-                  <span className="stat-number">{statsData.totalLate}</span>
-                </div>
-                <div className="stat-card">
-                  <span className="stat-label">Toplam Kıyafet İhlali</span>
-                  <span className="stat-number">{statsData.totalDress}</span>
-                </div>
-              </div>
-
-              <div className="stats-chart">
-                <h4>Saatlik Dağılım</h4>
-                <div className="chart-bars">
-                  {Object.entries(statsData.hourly).sort((a, b) => a[0] - b[0]).map(([hour, count]) => (
-                    <div key={hour} className="bar-item" style={{ height: `${Math.min(count * 30, 200)}px` }}>
-                      <span className="bar-label">{hour}:00</span>
-                      <span className="bar-count">{count}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="stats-tables">
-                <div className="top-list">
-                  <h4>En Çok Geç Kalanlar</h4>
-                  <ul>
-                    {statsData.topLate.map(([name, count], idx) => (
-                      <li key={idx}>{idx+1}. {name} ({count} kez)</li>
-                    ))}
-                  </ul>
-                </div>
-                <div className="top-list">
-                  <h4>En Çok Kıyafet İhlali Yapanlar</h4>
-                  <ul>
-                    {statsData.topDress.map(([name, count], idx) => (
-                      <li key={idx}>{idx+1}. {name} ({count} kez)</li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
-
-              <div className="records-list">
-                <h4>Kayıt Listesi</h4>
-                <table>
-                  <thead>
-                    <tr><th>Öğrenci</th><th>Sınıf</th><th>Tür</th><th>Not</th><th>Tarih</th><th>İşlem</th></tr>
-                  </thead>
-                  <tbody>
-                    {statsData.filtered.map(record => (
-                      <tr key={record.id}>
-                        <td>{record.studentName}</td>
-                        <td>{record.grade}-{record.class}</td>
-                        <td>{record.type === 'late' ? '⏰ Geç Kaldı' : record.type === 'dress' ? '👔 Kıyafet' : '⚠️ Her İkisi'}</td>
-                        <td>{record.note || '-'}</td>
-                        <td>{new Date(record.createdAt?.toDate?.() || record.createdAt).toLocaleString('tr-TR')}</td>
-                        <td>
-                          <button onClick={() => handleEditRecord(record)} className="btn-edit"><FiEdit2 /></button>
-                          <button onClick={() => handleDeleteRecord(record.id)} className="btn-delete"><FiTrash2 /></button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
+          ))}
         </div>
       )}
+
+      {/* Seçili Öğrenci Paneli */}
+      {selectedStudent && (
+        <div
+          style={{
+            padding: '1.5rem',
+            border: '1px solid #007bff',
+            borderRadius: '12px',
+            background: '#f8fcff',
+            marginBottom: '1rem',
+            position: 'relative',
+          }}
+        >
+          <button
+            onClick={handleClosePanel}
+            style={{
+              position: 'absolute',
+              top: '0.5rem',
+              right: '0.5rem',
+              background: 'transparent',
+              border: 'none',
+              fontSize: '1.5rem',
+              cursor: 'pointer',
+              color: '#999',
+            }}
+          >
+            <FaTimes />
+          </button>
+
+          <h3 style={{ marginTop: 0 }}>
+            {selectedStudent.firstName} {selectedStudent.lastName}
+          </h3>
+          <p style={{ margin: '0.2rem 0', color: '#555' }}>
+            No: {selectedStudent.studentNo} · {selectedStudent.grade}. Sınıf / Şube {selectedStudent.class}
+          </p>
+
+          <div style={{ display: 'flex', gap: '1rem', margin: '1rem 0' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+              <input
+                type="checkbox"
+                checked={selectedTypes.late}
+                onChange={(e) => setSelectedTypes({ ...selectedTypes, late: e.target.checked })}
+              />
+              Geç Kaldı
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+              <input
+                type="checkbox"
+                checked={selectedTypes.dress}
+                onChange={(e) => setSelectedTypes({ ...selectedTypes, dress: e.target.checked })}
+              />
+              Kıyafet Uygunsuz
+            </label>
+          </div>
+
+          <div style={{ marginBottom: '1rem' }}>
+            <input
+              type="text"
+              placeholder="Not (opsiyonel)"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              style={{ width: '100%', padding: '0.5rem', border: '1px solid #ddd', borderRadius: '6px' }}
+            />
+          </div>
+
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <button
+              onClick={editingRecord ? handleUpdate : handleSave}
+              disabled={loading}
+              style={{
+                padding: '0.5rem 1.5rem',
+                background: editingRecord ? '#ffc107' : '#007bff',
+                color: 'white',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.3rem',
+              }}
+            >
+              {editingRecord ? <FaSave /> : <FaSave />} {editingRecord ? 'Güncelle' : 'Kaydet'}
+            </button>
+            <button
+              onClick={handleClosePanel}
+              style={{
+                padding: '0.5rem 1.5rem',
+                background: '#6c757d',
+                color: 'white',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.3rem',
+              }}
+            >
+              <FaUndo /> İptal
+            </button>
+          </div>
+
+          {message && <p style={{ marginTop: '0.5rem', color: message.includes('hata') ? 'red' : 'green' }}>{message}</p>}
+        </div>
+      )}
+
+      {/* Kayıt Listesi (Bugün) */}
+      <div style={{ marginTop: '2rem' }}>
+        <h4>📋 Bugünkü Kayıtlar</h4>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead style={{ background: '#f1f1f1' }}>
+            <tr>
+              <th style={{ padding: '0.5rem' }}>Öğrenci</th>
+              <th style={{ padding: '0.5rem' }}>Sınıf</th>
+              <th style={{ padding: '0.5rem' }}>Tür</th>
+              <th style={{ padding: '0.5rem' }}>Not</th>
+              <th style={{ padding: '0.5rem' }}>Saat</th>
+              <th style={{ padding: '0.5rem' }}>İşlem</th>
+            </tr>
+          </thead>
+          <tbody>
+            {records.map((record) => (
+              <tr key={record.id} style={{ borderBottom: '1px solid #eee' }}>
+                <td style={{ padding: '0.5rem' }}>{record.studentName}</td>
+                <td style={{ padding: '0.5rem' }}>{record.grade}-{record.class}</td>
+                <td style={{ padding: '0.5rem' }}>
+                  {record.type === 'late' && '⏰ Geç'}
+                  {record.type === 'dress' && '👔 Kıyafet'}
+                  {record.type === 'both' && '⚠️ Her İkisi'}
+                </td>
+                <td style={{ padding: '0.5rem' }}>{record.note || '-'}</td>
+                <td style={{ padding: '0.5rem' }}>
+                  {record.createdAt?.toDate?.()?.toLocaleTimeString('tr-TR') || ''}
+                </td>
+                <td style={{ padding: '0.5rem' }}>
+                  <button
+                    onClick={() => handleEdit(record)}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      color: '#ffc107',
+                      cursor: 'pointer',
+                      marginRight: '0.5rem',
+                    }}
+                  >
+                    <FaEdit />
+                  </button>
+                  <button
+                    onClick={() => handleDelete(record.id)}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      color: '#dc3545',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <FaTrash />
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {records.length === 0 && <p style={{ textAlign: 'center', color: '#666' }}>Henüz bugün kayıt yok.</p>}
+      </div>
     </div>
   );
 };

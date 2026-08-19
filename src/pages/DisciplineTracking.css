@@ -299,3 +299,17 @@
 }
 .btn-edit { color: #ffc107; }
 .btn-delete { color: #dc3545; }
+
+/* Basit responsive düzenlemeler */
+@media (max-width: 600px) {
+  table {
+    font-size: 0.8rem;
+  }
+  table th,
+  table td {
+    padding: 0.3rem !important;
+  }
+  .search-input {
+    padding: 0.6rem 2rem 0.6rem 0.8rem !important;
+  }
+}
