@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { collection, getDocs, addDoc, deleteDoc, doc, query, orderBy } from 'firebase/firestore';
 import { db } from '../firebase';
-import { FaPlus, FaTrash, FaEdit, FaBuilding } from 'react-icons/fa';
+import { FaPlus, FaTrash, FaBuilding } from 'react-icons/fa';
 
 const Rooms = () => {
   const [rooms, setRooms] = useState([]);
@@ -9,6 +9,7 @@ const Rooms = () => {
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
+    branch: '',        // <-- YENİ: şube adı
     capacity: '',
     floor: '',
     hasExtraSeats: false,
@@ -55,7 +56,7 @@ const Rooms = () => {
         createdAt: new Date(),
       });
       setShowForm(false);
-      setFormData({ name: '', capacity: '', floor: '', hasExtraSeats: false, extraSeatsAdded: 0 });
+      setFormData({ name: '', branch: '', capacity: '', floor: '', hasExtraSeats: false, extraSeatsAdded: 0 });
       fetchRooms();
       alert('Salon başarıyla eklendi.');
     } catch (error) {
@@ -123,6 +124,18 @@ const Rooms = () => {
                 style={{ width: '100%', padding: '0.5rem', border: '1px solid #ddd', borderRadius: '4px' }}
                 required
               />
+            </div>
+            <div>
+              <label>Şube Adı</label>
+              <input
+                type="text"
+                name="branch"
+                value={formData.branch}
+                onChange={handleChange}
+                placeholder="Örn: 12-F, 9-A"
+                style={{ width: '100%', padding: '0.5rem', border: '1px solid #ddd', borderRadius: '4px' }}
+              />
+              <small style={{ fontSize: '0.8rem', color: '#666' }}>Ortaokul 2. dil sınavlarında kullanılır.</small>
             </div>
             <div>
               <label>Kapasite</label>
@@ -210,6 +223,7 @@ const Rooms = () => {
           <tr>
             <th style={{ padding: '0.5rem' }}>#</th>
             <th style={{ padding: '0.5rem' }}>Salon Adı</th>
+            <th style={{ padding: '0.5rem' }}>Şube Adı</th>
             <th style={{ padding: '0.5rem' }}>Kapasite</th>
             <th style={{ padding: '0.5rem' }}>Kat</th>
             <th style={{ padding: '0.5rem' }}>Ek Sıra</th>
@@ -221,6 +235,7 @@ const Rooms = () => {
             <tr key={room.id} style={{ borderBottom: '1px solid #eee' }}>
               <td style={{ padding: '0.5rem', textAlign: 'center' }}>{index + 1}</td>
               <td style={{ padding: '0.5rem' }}>{room.name}</td>
+              <td style={{ padding: '0.5rem' }}>{room.branch || '-'}</td>
               <td style={{ padding: '0.5rem' }}>{room.capacity}</td>
               <td style={{ padding: '0.5rem' }}>{room.floor || '-'}</td>
               <td style={{ padding: '0.5rem' }}>{room.hasExtraSeats ? `${room.extraSeatsAdded || 0} adet` : 'Yok'}</td>
@@ -241,7 +256,7 @@ const Rooms = () => {
           ))}
           {rooms.length === 0 && (
             <tr>
-              <td colSpan="6" style={{ textAlign: 'center', padding: '1rem' }}>
+              <td colSpan="7" style={{ textAlign: 'center', padding: '1rem' }}>
                 Henüz salon eklenmemiş.
               </td>
             </tr>
