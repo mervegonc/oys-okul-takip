@@ -1,43 +1,43 @@
 import React, { useState, useEffect } from 'react';
 import { collection, getDocs, query, orderBy, where, doc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { FaEdit, FaSave, FaUndo, FaTrash } from 'react-icons/fa';
 
 const ManualEdit = () => {
   const [exams, setExams] = useState([]);
   const [selectedExam, setSelectedExam] = useState('');
-  const [seatingPlans, setSeatingPlans] = useState([]);
+  const [seatingPlan, setSeatingPlan] = useState(null);
   const [assignments, setAssignments] = useState([]);
-  const [editingIndex, setEditingIndex] = useState(null);
-  const [editRoomId, setEditRoomId] = useState('');
-  const [editSeatNumber, setEditSeatNumber] = useState('');
-  const [message, setMessage] = useState('');
+  const [rooms, setRooms] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState('');
+  const [editing, setEditing] = useState(false);
 
-  // Tüm sınavları getir
+  // Sınavları ve salonları getir
   useEffect(() => {
-    const fetchExams = async () => {
+    const fetchData = async () => {
       try {
-        const q = query(collection(db, 'exams'), orderBy('createdAt', 'desc'));
-        const snapshot = await getDocs(q);
-        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        setExams(data);
+        const examSnap = await getDocs(query(collection(db, 'exams'), orderBy('createdAt', 'desc')));
+        const examData = examSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setExams(examData);
+
+        const roomSnap = await getDocs(query(collection(db, 'rooms'), orderBy('name', 'asc')));
+        const roomData = roomSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setRooms(roomData);
       } catch (error) {
-        console.error('Sınavlar alınamadı:', error);
+        console.error('Veri alınamadı:', error);
       }
     };
-    fetchExams();
+    fetchData();
   }, []);
 
-  // Seçili sınava ait oturma planlarını getir
+  // Sınav seçilince oturma planını getir (en son oluşturulan)
   useEffect(() => {
     if (!selectedExam) {
-      setSeatingPlans([]);
+      setSeatingPlan(null);
       setAssignments([]);
       return;
     }
-
-    const fetchSeatingPlans = async () => {
+    const fetchSeatingPlan = async () => {
       setLoading(true);
       try {
         const q = query(
@@ -45,91 +45,89 @@ const ManualEdit = () => {
           where('examId', '==', selectedExam),
           orderBy('createdAt', 'desc')
         );
-        const snapshot = await getDocs(q);
-        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        setSeatingPlans(data);
-        if (data.length > 0) {
-          setAssignments(data[0].assignments || []);
-          setMessage(`${assignments.length} öğrenci bulundu.`);
-        } else {
+        const snap = await getDocs(q);
+        if (snap.empty) {
+          setMessage('Bu sınava ait oturma planı bulunamadı.');
+          setSeatingPlan(null);
           setAssignments([]);
-          setMessage('Bu sınav için oturma planı bulunamadı.');
+          setLoading(false);
+          return;
         }
+        const docData = snap.docs[0];
+        const data = { id: docData.id, ...docData.data() };
+        setSeatingPlan(data);
+        setAssignments(data.assignments || []);
+        setMessage(`${data.assignments?.length || 0} öğrenci bulundu.`);
       } catch (error) {
         console.error('Oturma planı alınamadı:', error);
-        setMessage('Oturma planı alınırken hata oluştu.');
+        setMessage('Oturma planı alınamadı: ' + error.message);
       } finally {
         setLoading(false);
       }
     };
-    fetchSeatingPlans();
+    fetchSeatingPlan();
   }, [selectedExam]);
 
-  // Düzenleme moduna geç
-  const startEditing = (index) => {
-    setEditingIndex(index);
-    setEditRoomId(assignments[index].roomId || '');
-    setEditSeatNumber(assignments[index].seatNumber || '');
+  // Öğrencinin salonunu değiştir
+  const handleRoomChange = (index, newRoomId) => {
+    const updated = [...assignments];
+    updated[index].roomId = newRoomId;
+    setAssignments(updated);
+    setEditing(true);
+  };
+
+  // Öğrencinin sıra numarasını değiştir
+  const handleSeatChange = (index, newSeat) => {
+    const updated = [...assignments];
+    updated[index].seatNumber = parseInt(newSeat);
+    setAssignments(updated);
+    setEditing(true);
   };
 
   // Değişiklikleri kaydet
-  const saveEdit = async (index) => {
-    if (!editRoomId || !editSeatNumber) {
-      setMessage('Salon ve sıra numarası boş olamaz.');
-      return;
-    }
-
-    const updatedAssignments = [...assignments];
-    updatedAssignments[index] = {
-      ...updatedAssignments[index],
-      roomId: editRoomId,
-      seatNumber: parseInt(editSeatNumber, 10),
-    };
-
+  const handleSave = async () => {
+    if (!seatingPlan) return;
+    setLoading(true);
     try {
-      // Firestore'da güncelle
-      const planId = seatingPlans[0].id;
-      await updateDoc(doc(db, 'seating_plans', planId), {
-        assignments: updatedAssignments,
+      await updateDoc(doc(db, 'seating_plans', seatingPlan.id), {
+        assignments: assignments,
+        updatedAt: new Date(),
       });
-
-      setAssignments(updatedAssignments);
-      setEditingIndex(null);
       setMessage('Değişiklikler kaydedildi.');
+      setEditing(false);
     } catch (error) {
-      console.error('Güncelleme hatası:', error);
-      setMessage('Güncelleme sırasında hata oluştu.');
+      console.error('Kaydetme hatası:', error);
+      setMessage('Kaydedilirken hata oluştu.');
+    } finally {
+      setLoading(false);
     }
   };
 
-  // Düzenlemeyi iptal et
-  const cancelEdit = () => {
-    setEditingIndex(null);
-    setEditRoomId('');
-    setEditSeatNumber('');
-  };
-
-  // Öğrenciyi sil (opsiyonel)
-  const removeStudent = async (index) => {
-    if (!window.confirm('Bu öğrenciyi oturma planından çıkarmak istediğinize emin misiniz?')) return;
-
-    const updatedAssignments = assignments.filter((_, i) => i !== index);
-    try {
-      const planId = seatingPlans[0].id;
-      await updateDoc(doc(db, 'seating_plans', planId), {
-        assignments: updatedAssignments,
-      });
-      setAssignments(updatedAssignments);
-      setMessage('Öğrenci çıkarıldı.');
-    } catch (error) {
-      console.error('Silme hatası:', error);
-      setMessage('Silme sırasında hata oluştu.');
+  // Değişiklikleri iptal et
+  const handleCancel = () => {
+    if (seatingPlan) {
+      setAssignments(seatingPlan.assignments || []);
+      setEditing(false);
+      setMessage('Değişiklikler iptal edildi.');
     }
   };
+
+  // Salon bazlı gruplama
+  const groupByRoom = () => {
+    const groups = {};
+    assignments.forEach(item => {
+      const roomName = rooms.find(r => r.id === item.roomId)?.name || item.roomId;
+      if (!groups[roomName]) groups[roomName] = [];
+      groups[roomName].push(item);
+    });
+    return groups;
+  };
+
+  const grouped = groupByRoom();
 
   return (
     <div style={{ padding: '1rem', maxWidth: '1400px', margin: '0 auto' }}>
-      <h2>🔄 Manuel Sıra / Salon Düzenleme</h2>
+      <h2>🖊️ Manuel Sıra / Salon Düzenleme</h2>
 
       {/* Sınav Seçimi */}
       <div style={{ marginBottom: '1.5rem' }}>
@@ -149,93 +147,98 @@ const ManualEdit = () => {
       </div>
 
       {loading && <p>Yükleniyor...</p>}
-
       {message && <p style={{ color: message.includes('hata') ? 'red' : 'green' }}>{message}</p>}
 
-      {/* Oturma Planı Listesi */}
+      {/* Salon Bazlı Liste */}
       {assignments.length > 0 && (
-        <div style={{ marginTop: '2rem' }}>
-          <h4>Oturma Planı ({assignments.length} öğrenci)</h4>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', background: 'white', borderRadius: '8px', overflow: 'hidden', boxShadow: '0 0 10px rgba(0,0,0,0.05)' }}>
-              <thead style={{ background: '#f1f1f1' }}>
-                <tr>
-                  <th>#</th>
-                  <th>Öğrenci</th>
-                  <th>Sınıf</th>
-                  <th>Salon</th>
-                  <th>Sıra No</th>
-                  <th>İşlem</th>
-                </tr>
-              </thead>
-              <tbody>
-                {assignments.map((item, index) => (
-                  <tr key={index} style={{ borderBottom: '1px solid #eee' }}>
-                    <td style={{ padding: '0.5rem', textAlign: 'center' }}>{index + 1}</td>
-                    <td style={{ padding: '0.5rem' }}>{item.studentName}</td>
-                    <td style={{ padding: '0.5rem' }}>{item.grade}-{item.class}</td>
-                    <td style={{ padding: '0.5rem' }}>
-                      {editingIndex === index ? (
-                        <input
-                          type="text"
-                          value={editRoomId}
-                          onChange={(e) => setEditRoomId(e.target.value)}
-                          style={{ width: '100%', padding: '0.3rem', border: '1px solid #ddd', borderRadius: '4px' }}
-                        />
-                      ) : (
-                        item.roomId
-                      )}
-                    </td>
-                    <td style={{ padding: '0.5rem' }}>
-                      {editingIndex === index ? (
-                        <input
-                          type="number"
-                          value={editSeatNumber}
-                          onChange={(e) => setEditSeatNumber(e.target.value)}
-                          style={{ width: '80px', padding: '0.3rem', border: '1px solid #ddd', borderRadius: '4px' }}
-                        />
-                      ) : (
-                        item.seatNumber
-                      )}
-                    </td>
-                    <td style={{ padding: '0.5rem' }}>
-                      {editingIndex === index ? (
-                        <>
-                          <button
-                            onClick={() => saveEdit(index)}
-                            style={{ background: 'transparent', border: 'none', color: '#28a745', cursor: 'pointer', marginRight: '0.5rem' }}
-                          >
-                            <FaSave />
-                          </button>
-                          <button
-                            onClick={cancelEdit}
-                            style={{ background: 'transparent', border: 'none', color: '#6c757d', cursor: 'pointer' }}
-                          >
-                            <FaUndo />
-                          </button>
-                        </>
-                      ) : (
-                        <>
-                          <button
-                            onClick={() => startEditing(index)}
-                            style={{ background: 'transparent', border: 'none', color: '#ffc107', cursor: 'pointer', marginRight: '0.5rem' }}
-                          >
-                            <FaEdit />
-                          </button>
-                          <button
-                            onClick={() => removeStudent(index)}
-                            style={{ background: 'transparent', border: 'none', color: '#dc3545', cursor: 'pointer' }}
-                          >
-                            <FaTrash />
-                          </button>
-                        </>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        <div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+            <h4>Oturma Planı ({assignments.length} öğrenci)</h4>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              {editing && (
+                <>
+                  <button
+                    onClick={handleSave}
+                    disabled={loading}
+                    style={{
+                      padding: '0.4rem 1rem',
+                      background: '#28a745',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    💾 Kaydet
+                  </button>
+                  <button
+                    onClick={handleCancel}
+                    style={{
+                      padding: '0.4rem 1rem',
+                      background: '#6c757d',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    ↩️ İptal
+                  </button>
+                </>
+              )}
+            </div>
           </div>
+
+          {Object.keys(grouped).map(roomName => (
+            <div key={roomName} style={{ marginBottom: '1.5rem', padding: '1rem', background: '#f8f9fa', borderRadius: '8px', border: '1px solid #ddd' }}>
+              <h4 style={{ marginTop: 0 }}>🏫 {roomName}</h4>
+              <table style={{ width: '100%', borderCollapse: 'collapse', background: 'white', borderRadius: '8px', overflow: 'hidden' }}>
+                <thead style={{ background: '#f1f1f1' }}>
+                  <tr>
+                    <th style={{ padding: '0.5rem' }}>#</th>
+                    <th style={{ padding: '0.5rem' }}>Öğrenci</th>
+                    <th style={{ padding: '0.5rem' }}>Sınıf</th>
+                    <th style={{ padding: '0.5rem' }}>Salon</th>
+                    <th style={{ padding: '0.5rem' }}>Sıra No</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {grouped[roomName].map((item, idx) => {
+                    const globalIndex = assignments.findIndex(a => a.studentId === item.studentId);
+                    return (
+                      <tr key={item.studentId} style={{ borderBottom: '1px solid #eee' }}>
+                        <td style={{ padding: '0.5rem', textAlign: 'center' }}>{idx + 1}</td>
+                        <td style={{ padding: '0.5rem' }}>{item.studentName}</td>
+                        <td style={{ padding: '0.5rem' }}>{item.grade}-{item.class}</td>
+                        <td style={{ padding: '0.5rem' }}>
+                          <select
+                            value={item.roomId}
+                            onChange={(e) => handleRoomChange(globalIndex, e.target.value)}
+                            style={{ padding: '0.2rem', borderRadius: '4px', border: '1px solid #ddd' }}
+                          >
+                            {rooms.map(room => (
+                              <option key={room.id} value={room.id}>
+                                {room.name} ({room.capacity})
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                        <td style={{ padding: '0.5rem' }}>
+                          <input
+                            type="number"
+                            min="1"
+                            value={item.seatNumber}
+                            onChange={(e) => handleSeatChange(globalIndex, e.target.value)}
+                            style={{ width: '60px', padding: '0.2rem', border: '1px solid #ddd', borderRadius: '4px' }}
+                          />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ))}
         </div>
       )}
     </div>
