@@ -7,6 +7,7 @@ import Navbar from './components/Navbar';
 import Students from './pages/Students';
 import DisciplineTracking from './pages/DisciplineTracking';
 import DisciplineReports from './pages/DisciplineReports';
+import { hasPermission } from './utils/permissions';
 
 function App() {
   const [user, setUser] = useState(null);
@@ -22,6 +23,8 @@ function App() {
 
   if (loading) return <div style={{ textAlign: 'center', marginTop: '2rem' }}>Yükleniyor...</div>;
 
+  const userEmail = user?.email || '';
+
   return (
     <BrowserRouter>
       <Routes>
@@ -31,12 +34,29 @@ function App() {
           element={
             user ? (
               <>
-                <Navbar />
+                <Navbar userEmail={userEmail} />
                 <Routes>
-                  <Route path="/students" element={<Students />} />
-                  <Route path="/discipline" element={<DisciplineTracking />} />
-                  <Route path="/discipline-reports" element={<DisciplineReports />} />
-                  {/* Diğer route'lar ileride eklenecek */}
+                  <Route path="/students" element={
+                    hasPermission(userEmail, 'admin') ? <Students /> : <Navigate to="/" />
+                  } />
+                  <Route path="/discipline" element={
+                    hasPermission(userEmail, 'attendance') ? <DisciplineTracking /> : <Navigate to="/" />
+                  } />
+                  <Route path="/discipline-reports" element={
+                    (hasPermission(userEmail, 'attendance') || hasPermission(userEmail, 'exam')) ? <DisciplineReports /> : <Navigate to="/" />
+                  } />
+                  <Route path="/exams" element={
+                    hasPermission(userEmail, 'exam') ? <DisciplineReports /> : <Navigate to="/" />
+                  } />
+                  <Route path="/calendar" element={
+                    hasPermission(userEmail, 'calendar') ? <DisciplineReports /> : <Navigate to="/" />
+                  } />
+                  <Route path="/candidates" element={
+                    hasPermission(userEmail, 'candidates') ? <DisciplineReports /> : <Navigate to="/" />
+                  } />
+                  <Route path="/yds" element={
+                    hasPermission(userEmail, 'exam') ? <DisciplineReports /> : <Navigate to="/" />
+                  } />
                   <Route path="/" element={<Navigate to="/students" />} />
                 </Routes>
               </>
