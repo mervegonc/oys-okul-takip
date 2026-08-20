@@ -23,19 +23,19 @@ const ExcelUpload = ({ onUploadComplete }) => {
   });
 
   const columnMapping = {
-    'tcNo': 'tcNo',
-    'okul numarası': 'studentNo',
+    'tcNo': 'tc_no',
+    'okul numarası': 'student_no',
     'Sınıf': 'grade',
     'Şube': 'class',
-    'Adı': 'firstName',
-    'Soyadı': 'lastName',
+    'Adı': 'first_name',
+    'Soyadı': 'last_name',
     'Öğrenim Alanı': 'field',
-    '2. Yab. Dil': 'secondLang',
+    '2. Yab. Dil': 'second_lang',
     'Telefon Numarası1': 'phone',
-    'Veli 1 Telefon Numarası': 'parentPhone',
-    'Veli 2 Telefon Numarası': 'parentPhone2',
+    'Veli 1 Telefon Numarası': 'parent_phone',
+    'Veli 2 Telefon Numarası': 'parent_phone2',
     'Cinsiyet': 'gender',
-    'İngilizce Seviyesi': 'englishLevel',
+    'İngilizce Seviyesi': 'english_level',
   };
 
   const handleFileUpload = async (event) => {
@@ -89,7 +89,7 @@ const ExcelUpload = ({ onUploadComplete }) => {
                 second_lang: row['2. Yab. Dil'] || '',
                 gender: row['Cinsiyet'] || '',
                 english_level: row['İngilizce Seviyesi'] || 'Core',
-                created_at: new Date().toISOString(),
+                created_at: new Date().toISOString()
               };
 
               if (!studentData.first_name || !studentData.last_name || !studentData.grade) {
@@ -100,7 +100,7 @@ const ExcelUpload = ({ onUploadComplete }) => {
               const { error } = await supabase
                 .from('students')
                 .insert(studentData);
-
+              
               if (error) throw error;
               addedCount++;
             } catch (err) {

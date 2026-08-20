@@ -17,22 +17,10 @@ const DisciplineTracking = () => {
       try {
         const { data, error } = await supabase
           .from('students')
-          .select('*')
-          .order('last_name', { ascending: true });
+          .select('*');
         if (error) throw error;
-
-        // snake_case'den camelCase'e dönüştür
-        const formatted = (data || []).map((raw) => ({
-          id: raw.id,
-          firstName: raw.first_name || '',
-          lastName: raw.last_name || '',
-          grade: raw.grade || '',
-          class: raw.class || '',
-          studentNo: raw.student_no || '',
-          tcNo: raw.tc_no || '',
-        }));
-        setStudents(formatted);
-        setFilteredStudents(formatted);
+        setStudents(data || []);
+        setFilteredStudents(data || []);
       } catch (error) {
         console.error('Öğrenciler alınamadı:', error);
       }
@@ -47,10 +35,10 @@ const DisciplineTracking = () => {
       const term = searchTerm.toLowerCase();
       const filtered = students.filter(
         (s) =>
-          s.firstName?.toLowerCase().includes(term) ||
-          s.lastName?.toLowerCase().includes(term) ||
-          s.studentNo?.includes(term) ||
-          s.tcNo?.includes(term)
+          s.first_name?.toLowerCase().includes(term) ||
+          s.last_name?.toLowerCase().includes(term) ||
+          s.student_no?.includes(term) ||
+          s.tc_no?.includes(term)
       );
       setFilteredStudents(filtered);
     }
@@ -90,7 +78,7 @@ const DisciplineTracking = () => {
         .from('discipline')
         .insert({
           student_id: selectedStudent.id,
-          student_name: `${selectedStudent.firstName} ${selectedStudent.lastName}`,
+          student_name: `${selectedStudent.first_name} ${selectedStudent.last_name}`,
           class: selectedStudent.class,
           grade: selectedStudent.grade,
           type: type,
@@ -101,7 +89,7 @@ const DisciplineTracking = () => {
 
       if (error) throw error;
 
-      setMessage(`${selectedStudent.firstName} ${selectedStudent.lastName} kaydedildi.`);
+      setMessage(`${selectedStudent.first_name} ${selectedStudent.last_name} kaydedildi.`);
       handleClosePanel();
       setSearchTerm('');
     } catch (error) {
@@ -152,9 +140,9 @@ const DisciplineTracking = () => {
               onMouseEnter={(e) => (e.currentTarget.style.background = '#f5f5f5')}
               onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
             >
-              <span><strong>{student.firstName} {student.lastName}</strong></span>
+              <span><strong>{student.first_name} {student.last_name}</strong></span>
               <span style={{ fontSize: '0.9rem', color: '#666' }}>
-                No: {student.studentNo} - {student.grade}. Sınıf / {student.class}
+                No: {student.student_no} - {student.grade}. Sınıf / {student.class}
               </span>
             </div>
           ))}
@@ -183,9 +171,9 @@ const DisciplineTracking = () => {
             <FaTimes />
           </button>
 
-          <h3 style={{ marginTop: 0 }}>{selectedStudent.firstName} {selectedStudent.lastName}</h3>
+          <h3 style={{ marginTop: 0 }}>{selectedStudent.first_name} {selectedStudent.last_name}</h3>
           <p style={{ margin: '0.2rem 0', color: '#555' }}>
-            No: {selectedStudent.studentNo} · {selectedStudent.grade}. Sınıf / {selectedStudent.class}
+            No: {selectedStudent.student_no} · {selectedStudent.grade}. Sınıf / {selectedStudent.class}
           </p>
 
           <div style={{ display: 'flex', gap: '1rem', margin: '1rem 0' }}>
