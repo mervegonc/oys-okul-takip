@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { onAuthStateChanged } from 'firebase/auth';
-import { auth } from './firebase';
+import { supabase } from './supabase'; // <-- Firebase importları kaldırıldı
 import Login from './components/Login';
 import Navbar from './components/Navbar';
 import Students from './pages/Students';
@@ -14,18 +13,26 @@ import SeatingDistribution from './pages/SeatingDistribution';
 import ConflictGroups from './pages/ConflictGroups';
 import ManualEdit from './pages/ManualEdit';
 
-
-
 function App() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setUser(user);
+    // 1. Oturum değişikliklerini dinle
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        setUser(session?.user ?? null);
+        setLoading(false);
+      }
+    );
+
+    // 2. Sayfa yenilendiğinde mevcut oturumu al
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
       setLoading(false);
     });
-    return unsubscribe;
+
+    return () => subscription.unsubscribe();
   }, []);
 
   if (loading) return <div style={{ textAlign: 'center', marginTop: '2rem' }}>Yükleniyor...</div>;
@@ -53,21 +60,20 @@ function App() {
                     (hasPermission(userEmail, 'attendance') || hasPermission(userEmail, 'exam')) ? <DisciplineReports /> : <Navigate to="/" />
                   } />
                   <Route path="/exams" element={
-  hasPermission(userEmail, 'exam') ? <Exams /> : <Navigate to="/" />
-} />
-<Route path="/rooms" element={
-  hasPermission(userEmail, 'seating') ? <Rooms /> : <Navigate to="/" />
-} />
-<Route path="/seating" element={
-  hasPermission(userEmail, 'seating') ? <SeatingDistribution /> : <Navigate to="/" />
-} />
-<Route path="/conflict-groups" element={
-  hasPermission(userEmail, 'seating') ? <ConflictGroups /> : <Navigate to="/" />
-} />
-<Route path="/manual-edit" element={
-  hasPermission(userEmail, 'seating') ? <ManualEdit /> : <Navigate to="/" />
-} />
-
+                    hasPermission(userEmail, 'exam') ? <Exams /> : <Navigate to="/" />
+                  } />
+                  <Route path="/rooms" element={
+                    hasPermission(userEmail, 'seating') ? <Rooms /> : <Navigate to="/" />
+                  } />
+                  <Route path="/seating" element={
+                    hasPermission(userEmail, 'seating') ? <SeatingDistribution /> : <Navigate to="/" />
+                  } />
+                  <Route path="/conflict-groups" element={
+                    hasPermission(userEmail, 'seating') ? <ConflictGroups /> : <Navigate to="/" />
+                  } />
+                  <Route path="/manual-edit" element={
+                    hasPermission(userEmail, 'seating') ? <ManualEdit /> : <Navigate to="/" />
+                  } />
                   <Route path="/" element={<Navigate to="/students" />} />
                 </Routes>
               </>

@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, getDocs, addDoc, deleteDoc, doc, query, orderBy } from 'firebase/firestore';
-import { db } from '../firebase';
+import { supabase } from '../supabase';
 import { FaPlus, FaTrash, FaEdit, FaEye } from 'react-icons/fa';
 
 const Exams = () => {
@@ -12,14 +11,13 @@ const Exams = () => {
     date: '',
     type: 'academic',
     level: 'high',
-    gradeLevels: [], // Çoklu seçim için dizi
+    gradeLevels: [],
     isMixed: false,
     sessionCount: 1,
     customHeader: '',
     customFooter: '',
   });
 
-  // Seviyeye göre sınıf seçenekleri
   const gradeOptions = {
     high: [9, 10, 11, 12],
     middle: [5, 6, 7, 8],
@@ -31,11 +29,12 @@ const Exams = () => {
 
   const fetchExams = async () => {
     try {
-      const q = query(collection(db, 'exams'), orderBy('createdAt', 'desc'));
-      const snapshot = await getDocs(q);
-      const data = [];
-      snapshot.forEach((doc) => data.push({ id: doc.id, ...doc.data() }));
-      setExams(data);
+      const { data, error } = await supabase
+        .from('exams')
+        .select('*')
+        .order('createdAt', { ascending: false });
+      if (error) throw error;
+      setExams(data || []);
     } catch (error) {
       console.error('Sınavlar alınamadı:', error);
     } finally {
@@ -51,7 +50,6 @@ const Exams = () => {
     });
   };
 
-  // Sınıf seviyesi checkbox değişimi
   const handleGradeChange = (grade) => {
     const current = formData.gradeLevels;
     const updated = current.includes(grade)
@@ -67,10 +65,22 @@ const Exams = () => {
       return;
     }
     try {
-      await addDoc(collection(db, 'exams'), {
-        ...formData,
-        createdAt: new Date(),
-      });
+      const { error } = await supabase
+        .from('exams')
+        .insert({
+          title: formData.title,
+          date: formData.date,
+          type: formData.type,
+          level: formData.level,
+          gradeLevels: formData.gradeLevels,
+          isMixed: formData.isMixed,
+          sessionCount: formData.sessionCount,
+          customHeader: formData.customHeader || '',
+          customFooter: formData.customFooter || '',
+          createdAt: new Date().toISOString(),
+        });
+      if (error) throw error;
+
       setShowForm(false);
       setFormData({
         title: '',
@@ -87,14 +97,18 @@ const Exams = () => {
       alert('Sınav başarıyla oluşturuldu.');
     } catch (error) {
       console.error('Sınav oluşturulamadı:', error);
-      alert('Bir hata oluştu.');
+      alert('Bir hata oluştu: ' + error.message);
     }
   };
 
   const handleDelete = async (id) => {
     if (!window.confirm('Bu sınavı silmek istediğinize emin misiniz?')) return;
     try {
-      await deleteDoc(doc(db, 'exams', id));
+      const { error } = await supabase
+        .from('exams')
+        .delete()
+        .eq('id', id);
+      if (error) throw error;
       fetchExams();
     } catch (error) {
       console.error('Silme hatası:', error);
@@ -235,7 +249,6 @@ const Exams = () => {
         </form>
       )}
 
-      {/* Sınav Listesi */}
       <table style={{ width: '100%', borderCollapse: 'collapse', background: 'white', borderRadius: '8px', overflow: 'hidden', boxShadow: '0 0 10px rgba(0,0,0,0.05)' }}>
         <thead style={{ background: '#f1f1f1' }}>
           <tr>

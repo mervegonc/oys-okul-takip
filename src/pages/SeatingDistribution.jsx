@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, getDocs, query, orderBy, where, addDoc } from 'firebase/firestore';
-import { db } from '../firebase';
+import { supabase } from '../supabase';
 import { FaSync, FaPlus, FaTrash, FaSave } from 'react-icons/fa';
 
 const SeatingDistribution = () => {
@@ -8,8 +7,8 @@ const SeatingDistribution = () => {
   const [rooms, setRooms] = useState([]);
   const [selectedExam, setSelectedExam] = useState('');
   const [students, setStudents] = useState([]);
-  const [allClasses, setAllClasses] = useState([]); // Tüm şubeler
-  const [groups, setGroups] = useState([]); // [{ id, name, classes: [], roomIds: [] }]
+  const [allClasses, setAllClasses] = useState([]);
+  const [groups, setGroups] = useState([]);
   const [distributions, setDistributions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
@@ -18,13 +17,19 @@ const SeatingDistribution = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const examSnap = await getDocs(query(collection(db, 'exams'), orderBy('createdAt', 'desc')));
-        const examData = examSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        setExams(examData);
+        const { data: examData, error: examError } = await supabase
+          .from('exams')
+          .select('*')
+          .order('createdAt', { ascending: false });
+        if (examError) throw examError;
+        setExams(examData || []);
 
-        const roomSnap = await getDocs(query(collection(db, 'rooms'), orderBy('name', 'asc')));
-        const roomData = roomSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        setRooms(roomData);
+        const { data: roomData, error: roomError } = await supabase
+          .from('rooms')
+          .select('*')
+          .order('name', { ascending: true });
+        if (roomError) throw roomError;
+        setRooms(roomData || []);
       } catch (error) {
         console.error('Veri alınamadı:', error);
       }
@@ -50,24 +55,23 @@ const SeatingDistribution = () => {
         return;
       }
       try {
-        const q = query(
-          collection(db, 'students'),
-          where('grade', 'in', gradeLevels.map(String))
-        );
-        const snap = await getDocs(q);
-        const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        setStudents(data);
+        const { data, error } = await supabase
+          .from('students')
+          .select('*')
+          .in('grade', gradeLevels.map(String));
+        if (error) throw error;
+
+        setStudents(data || []);
 
         // Benzersiz şubeleri çıkar (grade + class)
         const classSet = new Set();
-        data.forEach(s => classSet.add(`${s.grade}-${s.class}`));
+        (data || []).forEach(s => classSet.add(`${s.grade}-${s.class}`));
         const sortedClasses = Array.from(classSet).sort();
         setAllClasses(sortedClasses);
 
-        // Grupları sıfırla (kullanıcı yeniden oluştursun)
         setGroups([]);
         setDistributions([]);
-        setMessage(`${data.length} öğrenci, ${sortedClasses.length} farklı şube bulundu.`);
+        setMessage(`${data?.length || 0} öğrenci, ${sortedClasses.length} farklı şube bulundu.`);
       } catch (error) {
         console.error('Öğrenciler alınamadı:', error);
         setMessage('Öğrenciler alınırken hata oluştu.');
@@ -123,7 +127,7 @@ const SeatingDistribution = () => {
     }));
   };
 
-  // Karma dağıtım (çakışma kontrolü ile)
+  // Karma dağıtım
   const runDistribution = async () => {
     if (!selectedExam) {
       setMessage('Lütfen bir sınav seçin.');
@@ -134,7 +138,6 @@ const SeatingDistribution = () => {
       return;
     }
 
-    // Her grubun en az bir şubesi ve bir salonu olmalı
     for (const group of groups) {
       if (group.classes.length === 0) {
         setMessage(`"${group.name}" için şube seçilmemiş.`);
@@ -150,15 +153,13 @@ const SeatingDistribution = () => {
     setMessage('Karma dağıtım başlatılıyor...');
 
     try {
-      // 1. ÇAKIŞMA KONTROLÜ (ConflictManagement'ten gelen grupları kontrol et)
-      const conflictSnap = await getDocs(collection(db, 'conflict_groups'));
-      const conflictGroups = [];
-      conflictSnap.forEach(doc => {
-        conflictGroups.push({ id: doc.id, ...doc.data() });
-      });
+      // 1. ÇAKIŞMA KONTROLÜ
+      const { data: conflictGroups, error: conflictError } = await supabase
+        .from('conflict_groups')
+        .select('*');
+      if (conflictError) throw conflictError;
 
-      // Çakışma kontrolü: Aynı gruptaki öğrenciler farklı salonlara atanmalı
-      // Önce tüm öğrencileri şubelerine göre grupla
+      // Öğrencileri şubelerine göre grupla
       const studentMap = {};
       students.forEach(s => {
         const key = `${s.grade}-${s.class}`;
@@ -166,7 +167,7 @@ const SeatingDistribution = () => {
         studentMap[key].push(s);
       });
 
-      // Her grup için salonları hazırla
+      // Salonları hazırla
       const allRoomIds = [...new Set(groups.flatMap(g => g.roomIds))];
       const roomData = rooms.filter(r => allRoomIds.includes(r.id));
       const roomUsage = roomData.map(room => ({
@@ -175,7 +176,7 @@ const SeatingDistribution = () => {
         students: [],
       }));
 
-      // Önce normal dağıtım (çakışma yokmuş gibi)
+      // Normal dağıtım
       const assignments = [];
       for (const group of groups) {
         const groupStudents = [];
@@ -213,47 +214,37 @@ const SeatingDistribution = () => {
       }
 
       // 2. ÇAKIŞMA DÜZELTMESİ
-      // Çakışma gruplarındaki öğrencileri aynı salona düşmeyecek şekilde yeniden dağıt
-      if (conflictGroups.length > 0) {
+      if (conflictGroups && conflictGroups.length > 0) {
         for (const conflictGroup of conflictGroups) {
           const conflictStudentIds = conflictGroup.studentIds || [];
           if (conflictStudentIds.length < 2) continue;
 
-          // Bu öğrencilerin hangi salonlara atandığını bul
           const conflictAssignments = [];
           for (const ra of roomUsage) {
             for (const student of ra.students) {
               if (conflictStudentIds.includes(student.id)) {
-                conflictAssignments.push({
-                  student,
-                  roomId: ra.roomId,
-                });
+                conflictAssignments.push({ student, roomId: ra.roomId });
               }
             }
           }
 
-          // Aynı salona düşenleri tespit et
           const roomMap = {};
           conflictAssignments.forEach(item => {
             if (!roomMap[item.roomId]) roomMap[item.roomId] = [];
             roomMap[item.roomId].push(item.student);
           });
 
-          // Aynı salonda 2'den fazla çakışma öğrencisi varsa, birini başka salona taşı
           for (const roomId of Object.keys(roomMap)) {
             const studentsInRoom = roomMap[roomId];
             if (studentsInRoom.length > 1) {
-              // İlk öğrenciyi başka bir salona taşı
               const studentToMove = studentsInRoom[0];
-              const targetRoom = roomUsage.find(r => 
-                r.roomId !== roomId && 
+              const targetRoom = roomUsage.find(r =>
+                r.roomId !== roomId &&
                 r.students.length < r.capacity
               );
               if (targetRoom) {
-                // Öğrenciyi eski salonundan çıkar
                 const oldRoom = roomUsage.find(r => r.roomId === roomId);
                 oldRoom.students = oldRoom.students.filter(s => s.id !== studentToMove.id);
-                // Yeni salona ekle
                 targetRoom.students.push(studentToMove);
               } else {
                 setMessage('Çakışma düzeltilemedi: yeterli kapasite yok.');
@@ -279,12 +270,15 @@ const SeatingDistribution = () => {
         });
       });
 
-      // Firestore'a kaydet
-      await addDoc(collection(db, 'seating_plans'), {
-        examId: selectedExam,
-        createdAt: new Date(),
-        assignments: assignments,
-      });
+      // Supabase'e kaydet
+      const { error: insertError } = await supabase
+        .from('seating_plans')
+        .insert({
+          examId: selectedExam,
+          createdAt: new Date().toISOString(),
+          assignments: assignments,
+        });
+      if (insertError) throw insertError;
 
       setDistributions(assignments);
       setMessage(`${assignments.length} öğrenci başarıyla dağıtıldı.`);

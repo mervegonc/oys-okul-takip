@@ -1,15 +1,12 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { FaUsers, FaClock, FaChartBar, FaCalendarAlt, FaUserPlus, FaBook, FaLanguage } from 'react-icons/fa';
-import { signOut } from 'firebase/auth';
-import { auth } from '../firebase';
+import { 
+  FaUsers, FaClock, FaChartBar, FaCalendarAlt, 
+  FaUserPlus, FaBook, FaLanguage, FaBuilding, 
+  FaChair, FaBan, FaEdit 
+} from 'react-icons/fa';
+import { supabase } from '../supabase';
 import { hasPermission } from '../utils/permissions';
-import { FaBuilding } from 'react-icons/fa';
-import { FaChair } from 'react-icons/fa';
-import { FaBan } from 'react-icons/fa';
-import { FaEdit } from 'react-icons/fa';
-
-
 
 const Navbar = ({ userEmail }) => {
   const location = useLocation();
@@ -33,7 +30,7 @@ const Navbar = ({ userEmail }) => {
   );
 
   const handleLogout = async () => {
-    await signOut(auth);
+    await supabase.auth.signOut();
   };
 
   return (

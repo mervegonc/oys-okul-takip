@@ -1,11 +1,10 @@
 import React from 'react';
-import { signOut } from 'firebase/auth';
-import { auth } from '../firebase';
+import { supabase } from '../supabase'; // Supabase import
 import { Link } from 'react-router-dom'; 
 
 const Dashboard = ({ user }) => {
   const handleLogout = async () => {
-    await signOut(auth);
+    await supabase.auth.signOut(); // Supabase çıkış
   };
 
   return (
@@ -24,23 +23,23 @@ const Dashboard = ({ user }) => {
         <h3>📋 Modüller (İskelet)</h3>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px,1fr))', gap: '1rem', marginTop: '1rem' }}>
           <Link to="/students" style={{ textDecoration: 'none' }}>
-  <div style={{ padding: '1rem', background: '#f8f9fa', borderRadius: '8px', border: '1px solid #ddd', cursor: 'pointer' }}>
-    👨‍🎓 Öğrenci Yönetimi
-  </div>
-</Link>
+            <div style={{ padding: '1rem', background: '#f8f9fa', borderRadius: '8px', border: '1px solid #ddd', cursor: 'pointer' }}>
+              👨‍🎓 Öğrenci Yönetimi
+            </div>
+          </Link>
           <div style={{ padding: '1rem', background: '#f8f9fa', borderRadius: '8px', border: '1px solid #ddd' }}>📝 Sınav Tanımla</div>
           <div style={{ padding: '1rem', background: '#f8f9fa', borderRadius: '8px', border: '1px solid #ddd' }}>🪑 Salon & Karma</div>
           <div style={{ padding: '1rem', background: '#f8f9fa', borderRadius: '8px', border: '1px solid #ddd' }}>✅ Yoklama Listeleri</div>
-   <Link to="/discipline" style={{ textDecoration: 'none' }}>
-  <div style={{ padding: '1rem', background: '#f8f9fa', borderRadius: '8px', border: '1px solid #ddd', cursor: 'pointer' }}>
-    ⏰ Geç Kalma Takibi
-  </div>
-</Link>
-<Link to="/discipline-reports" style={{ textDecoration: 'none' }}>
-  <div style={{ padding: '1rem', background: '#f8f9fa', borderRadius: '8px', border: '1px solid #ddd', cursor: 'pointer' }}>
-    📊 Geç Kalma Raporları
-  </div>
-</Link>
+          <Link to="/discipline" style={{ textDecoration: 'none' }}>
+            <div style={{ padding: '1rem', background: '#f8f9fa', borderRadius: '8px', border: '1px solid #ddd', cursor: 'pointer' }}>
+              ⏰ Geç Kalma Takibi
+            </div>
+          </Link>
+          <Link to="/discipline-reports" style={{ textDecoration: 'none' }}>
+            <div style={{ padding: '1rem', background: '#f8f9fa', borderRadius: '8px', border: '1px solid #ddd', cursor: 'pointer' }}>
+              📊 Geç Kalma Raporları
+            </div>
+          </Link>
           <div style={{ padding: '1rem', background: '#f8f9fa', borderRadius: '8px', border: '1px solid #ddd' }}>📊 Raporlar</div>
         </div>
         <p style={{ marginTop: '2rem', color: '#666', fontStyle: 'italic' }}>

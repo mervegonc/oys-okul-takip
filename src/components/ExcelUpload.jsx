@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import * as XLSX from 'xlsx';
-import { collection, getDocs, addDoc, updateDoc, doc, query, where } from 'firebase/firestore';
-import { db } from '../firebase';
+import { supabase } from '../supabase';
+import { encrypt } from '../utils/encryption';
 
 const ExcelUpload = ({ onUploadComplete }) => {
   const [uploading, setUploading] = useState(false);
@@ -96,15 +96,15 @@ const ExcelUpload = ({ onUploadComplete }) => {
                 grade: row['Sınıf'] ? String(row['Sınıf']) : '',
                 class: row['Şube'] || '',
                 studentNo: row['okul numarası'] ? String(row['okul numarası']) : '',
-                tcNo: row['tcNo'] ? String(row['tcNo']) : '',
-                phone: row['Telefon Numarası1'] ? String(row['Telefon Numarası1']) : '',
-                parentPhone: row['Veli 1 Telefon Numarası'] ? String(row['Veli 1 Telefon Numarası']) : '',
-                parentPhone2: row['Veli 2 Telefon Numarası'] ? String(row['Veli 2 Telefon Numarası']) : '',
+                tcNo: encrypt(row['tcNo'] ? String(row['tcNo']) : ''),
+                phone: encrypt(row['Telefon Numarası1'] ? String(row['Telefon Numarası1']) : ''),
+                parentPhone: encrypt(row['Veli 1 Telefon Numarası'] ? String(row['Veli 1 Telefon Numarası']) : ''),
+                parentPhone2: encrypt(row['Veli 2 Telefon Numarası'] ? String(row['Veli 2 Telefon Numarası']) : ''),
                 field: row['Öğrenim Alanı'] || '',
                 secondLang: row['2. Yab. Dil'] || '',
                 gender: row['Cinsiyet'] || '',
                 englishLevel: row['İngilizce Seviyesi'] || 'Core',
-                createdAt: new Date()
+                createdAt: new Date().toISOString()
               };
 
               if (!studentData.firstName || !studentData.lastName || !studentData.grade) {
@@ -112,7 +112,9 @@ const ExcelUpload = ({ onUploadComplete }) => {
                 continue;
               }
 
-              await addDoc(collection(db, 'students'), studentData);
+              // Supabase insert
+              const { error } = await supabase.from('students').insert([studentData]);
+              if (error) throw error;
               addedCount++;
               console.log(`✅ Eklendi: ${studentData.firstName} ${studentData.lastName}`);
             } catch (err) {
@@ -132,27 +134,31 @@ const ExcelUpload = ({ onUploadComplete }) => {
                 continue;
               }
 
-              const q = query(collection(db, 'students'), where('tcNo', '==', tcNo));
-              const querySnapshot = await getDocs(q);
+              // TC'yi şifrele ve ara
+              const encryptedTc = encrypt(tcNo);
+              const { data: existing, error: findError } = await supabase
+                .from('students')
+                .select('*')
+                .eq('tcNo', encryptedTc)
+                .maybeSingle();
 
-              if (querySnapshot.empty) {
+              if (findError) throw findError;
+              if (!existing) {
                 errorCount++;
                 console.log(`⚠️ TC bulunamadı: ${tcNo}`);
                 continue;
               }
 
-              const studentDoc = querySnapshot.docs[0];
               const updateData = {};
-
               if (updateFields.firstName) updateData.firstName = row['Adı'] || '';
               if (updateFields.lastName) updateData.lastName = row['Soyadı'] || '';
               if (updateFields.grade) updateData.grade = row['Sınıf'] ? String(row['Sınıf']) : '';
               if (updateFields.class) updateData.class = row['Şube'] || '';
               if (updateFields.field) updateData.field = row['Öğrenim Alanı'] || '';
               if (updateFields.secondLang) updateData.secondLang = row['2. Yab. Dil'] || '';
-              if (updateFields.phone) updateData.phone = row['Telefon Numarası1'] ? String(row['Telefon Numarası1']) : '';
-              if (updateFields.parentPhone) updateData.parentPhone = row['Veli 1 Telefon Numarası'] ? String(row['Veli 1 Telefon Numarası']) : '';
-              if (updateFields.parentPhone2) updateData.parentPhone2 = row['Veli 2 Telefon Numarası'] ? String(row['Veli 2 Telefon Numarası']) : '';
+              if (updateFields.phone) updateData.phone = encrypt(row['Telefon Numarası1'] ? String(row['Telefon Numarası1']) : '');
+              if (updateFields.parentPhone) updateData.parentPhone = encrypt(row['Veli 1 Telefon Numarası'] ? String(row['Veli 1 Telefon Numarası']) : '');
+              if (updateFields.parentPhone2) updateData.parentPhone2 = encrypt(row['Veli 2 Telefon Numarası'] ? String(row['Veli 2 Telefon Numarası']) : '');
               if (updateFields.gender) updateData.gender = row['Cinsiyet'] || '';
               if (updateFields.englishLevel) updateData.englishLevel = row['İngilizce Seviyesi'] || 'Core';
 
@@ -161,7 +167,13 @@ const ExcelUpload = ({ onUploadComplete }) => {
                 continue;
               }
 
-              await updateDoc(doc(db, 'students', studentDoc.id), updateData);
+              // Supabase update
+              const { error: updateError } = await supabase
+                .from('students')
+                .update(updateData)
+                .eq('id', existing.id);
+
+              if (updateError) throw updateError;
               updatedCount++;
               console.log(`✅ Güncellendi: TC ${tcNo}`);
             } catch (err) {

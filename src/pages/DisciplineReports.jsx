@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, getDocs, query, orderBy, updateDoc, deleteDoc, doc } from 'firebase/firestore';
-import { db } from '../firebase';
+import { supabase } from '../supabase';
 import { Bar } from 'react-chartjs-2';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend } from 'chart.js';
 import { FaCalendarAlt, FaUsers, FaFilter, FaFileCsv, FaEdit, FaTrash } from 'react-icons/fa';
@@ -24,11 +23,26 @@ const DisciplineReports = () => {
   useEffect(() => {
     const fetchRecords = async () => {
       try {
-        const q = query(collection(db, 'discipline'), orderBy('createdAt', 'desc'));
-        const snapshot = await getDocs(q);
-        const data = [];
-        snapshot.forEach((doc) => data.push({ id: doc.id, ...doc.data() }));
-        setRecords(data);
+        const { data, error } = await supabase
+          .from('discipline')
+          .select('*')
+          .order('created_at', { ascending: false });
+
+        if (error) throw error;
+
+        // Supabase'den gelen verileri Firestore formatına benzet
+        const formattedData = data.map(item => ({
+          ...item,
+          id: item.id,
+          createdAt: new Date(item.created_at),
+          grade: item.grade,
+          class: item.class,
+          studentName: item.student_name,
+          type: item.type,
+          note: item.note,
+        }));
+
+        setRecords(formattedData);
       } catch (error) {
         console.error('Kayıtlar alınamadı:', error);
       } finally {
@@ -38,6 +52,7 @@ const DisciplineReports = () => {
     fetchRecords();
   }, []);
 
+  // Filtreleme (client-side)
   useEffect(() => {
     let filtered = [...records];
     const now = new Date();
@@ -67,7 +82,7 @@ const DisciplineReports = () => {
     }
 
     filtered = filtered.filter((r) => {
-      const date = r.createdAt?.toDate?.() || new Date(r.createdAt);
+      const date = r.createdAt instanceof Date ? r.createdAt : new Date(r.createdAt);
       return date >= start && date <= end;
     });
 
@@ -110,7 +125,7 @@ const DisciplineReports = () => {
 
   const hourStats = Array(24).fill(0);
   filteredRecords.forEach((r) => {
-    const date = r.createdAt?.toDate?.() || new Date(r.createdAt);
+    const date = r.createdAt instanceof Date ? r.createdAt : new Date(r.createdAt);
     hourStats[date.getHours()]++;
   });
 
@@ -141,7 +156,7 @@ const DisciplineReports = () => {
   const lateLeaders = filteredRecords
     .filter((r) => r.type === 'late' || r.type === 'both')
     .reduce((acc, r) => {
-      const key = r.studentId || r.studentName;
+      const key = r.student_id || r.studentName;
       if (!acc[key]) acc[key] = { name: r.studentName, class: `${r.grade}/${r.class}`, count: 0 };
       acc[key].count++;
       return acc;
@@ -151,7 +166,7 @@ const DisciplineReports = () => {
   const dressLeaders = filteredRecords
     .filter((r) => r.type === 'dress' || r.type === 'both')
     .reduce((acc, r) => {
-      const key = r.studentId || r.studentName;
+      const key = r.student_id || r.studentName;
       if (!acc[key]) acc[key] = { name: r.studentName, class: `${r.grade}/${r.class}`, count: 0 };
       acc[key].count++;
       return acc;
@@ -162,7 +177,7 @@ const DisciplineReports = () => {
     if (filteredRecords.length === 0) return alert('Dışa aktarılacak veri yok.');
     const headers = ['Öğrenci', 'Sınıf', 'Tür', 'Not', 'Tarih', 'Saat'];
     const rows = filteredRecords.map((r) => {
-      const date = r.createdAt?.toDate?.() || new Date(r.createdAt);
+      const date = r.createdAt instanceof Date ? r.createdAt : new Date(r.createdAt);
       return [
         r.studentName,
         `${r.grade}-${r.class}`,
@@ -188,16 +203,36 @@ const DisciplineReports = () => {
 
   const handleUpdate = async (id) => {
     try {
-      await updateDoc(doc(db, 'discipline', id), {
-        note: editNote,
-        type: editType,
-      });
+      const { error } = await supabase
+        .from('discipline')
+        .update({
+          note: editNote,
+          type: editType,
+        })
+        .eq('id', id);
+
+      if (error) throw error;
+
       // Güncellenmiş veriyi çek
-      const q = query(collection(db, 'discipline'), orderBy('createdAt', 'desc'));
-      const snapshot = await getDocs(q);
-      const data = [];
-      snapshot.forEach((doc) => data.push({ id: doc.id, ...doc.data() }));
-      setRecords(data);
+      const { data, error: fetchError } = await supabase
+        .from('discipline')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (fetchError) throw fetchError;
+
+      const formattedData = data.map(item => ({
+        ...item,
+        id: item.id,
+        createdAt: new Date(item.created_at),
+        grade: item.grade,
+        class: item.class,
+        studentName: item.student_name,
+        type: item.type,
+        note: item.note,
+      }));
+
+      setRecords(formattedData);
       setEditingId(null);
     } catch (error) {
       console.error('Güncelleme hatası:', error);
@@ -207,7 +242,12 @@ const DisciplineReports = () => {
   const handleDelete = async (id) => {
     if (!window.confirm('Bu kaydı silmek istediğinize emin misiniz?')) return;
     try {
-      await deleteDoc(doc(db, 'discipline', id));
+      const { error } = await supabase
+        .from('discipline')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
       setRecords(records.filter((r) => r.id !== id));
     } catch (error) {
       console.error('Silme hatası:', error);
@@ -220,7 +260,7 @@ const DisciplineReports = () => {
     <div style={{ padding: '1rem', maxWidth: '1400px', margin: '0 auto' }}>
       <h2>Geç Kalma / Kıyafet Raporları</h2>
 
-      {/* Filtreler */}
+      {/* Filtreler - aynı */}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.5rem', padding: '1rem', background: '#f8f9fa', borderRadius: '12px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <FaCalendarAlt />
@@ -332,7 +372,7 @@ const DisciplineReports = () => {
         <Bar data={chartData} options={chartOptions} />
       </div>
 
-      {/* En Çok Geç Kalanlar */}
+      {/* En Çok Geç Kalanlar / Kıyafet İhlali Yapanlar */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px,1fr))', gap: '1.5rem', marginBottom: '2rem' }}>
         <div style={{ background: 'white', padding: '1rem', borderRadius: '12px', boxShadow: '0 0 10px rgba(0,0,0,0.05)' }}>
           <h4>En Çok Geç Kalanlar</h4>
@@ -398,8 +438,8 @@ const DisciplineReports = () => {
                     record.note || '-'
                   )}
                 </td>
-                <td>{record.createdAt?.toDate?.() ? format(record.createdAt.toDate(), 'dd.MM.yyyy') : '-'}</td>
-                <td>{record.createdAt?.toDate?.() ? format(record.createdAt.toDate(), 'HH:mm') : '-'}</td>
+                <td>{record.createdAt ? format(record.createdAt, 'dd.MM.yyyy') : '-'}</td>
+                <td>{record.createdAt ? format(record.createdAt, 'HH:mm') : '-'}</td>
                 <td>
                   {editingId === record.id ? (
                     <>

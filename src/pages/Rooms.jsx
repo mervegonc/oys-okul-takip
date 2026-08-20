@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, getDocs, addDoc, deleteDoc, doc, updateDoc, query, orderBy } from 'firebase/firestore';
-import { db } from '../firebase';
+import { supabase } from '../supabase';
 import { FaPlus, FaTrash, FaEdit, FaSave, FaTimes } from 'react-icons/fa';
 
 const Rooms = () => {
@@ -12,7 +11,7 @@ const Rooms = () => {
     name: '',
     capacity: '',
     floor: '',
-    class: '', // Şube Kodu
+    class: '',
     hasExtraSeats: false,
     extraSeatsAdded: 0,
   });
@@ -23,11 +22,12 @@ const Rooms = () => {
 
   const fetchRooms = async () => {
     try {
-      const q = query(collection(db, 'rooms'), orderBy('name', 'asc'));
-      const snapshot = await getDocs(q);
-      const data = [];
-      snapshot.forEach((doc) => data.push({ id: doc.id, ...doc.data() }));
-      setRooms(data);
+      const { data, error } = await supabase
+        .from('rooms')
+        .select('*')
+        .order('name', { ascending: true });
+      if (error) throw error;
+      setRooms(data || []);
     } catch (error) {
       console.error('Salonlar alınamadı:', error);
     } finally {
@@ -62,32 +62,49 @@ const Rooms = () => {
       alert('Salon adı ve kapasite zorunludur.');
       return;
     }
-    try {
-      const data = {
-        ...formData,
-        capacity: Number(formData.capacity),
-        extraSeatsAdded: Number(formData.extraSeatsAdded || 0),
-      };
 
+    const data = {
+      ...formData,
+      capacity: Number(formData.capacity),
+      extraSeatsAdded: Number(formData.extraSeatsAdded || 0),
+    };
+
+    try {
       if (editingId) {
-        await updateDoc(doc(db, 'rooms', editingId), data);
+        // Güncelleme
+        const { error } = await supabase
+          .from('rooms')
+          .update(data)
+          .eq('id', editingId);
+        if (error) throw error;
         alert('Salon güncellendi.');
       } else {
-        await addDoc(collection(db, 'rooms'), { ...data, createdAt: new Date() });
+        // Ekleme
+        const { error } = await supabase
+          .from('rooms')
+          .insert({
+            ...data,
+            createdAt: new Date().toISOString(),
+          });
+        if (error) throw error;
         alert('Salon eklendi.');
       }
       resetForm();
       fetchRooms();
     } catch (error) {
       console.error('Salon kaydedilirken hata:', error);
-      alert('Bir hata oluştu.');
+      alert('Bir hata oluştu: ' + error.message);
     }
   };
 
   const handleDelete = async (id) => {
     if (!window.confirm('Bu salonu silmek istediğinize emin misiniz?')) return;
     try {
-      await deleteDoc(doc(db, 'rooms', id));
+      const { error } = await supabase
+        .from('rooms')
+        .delete()
+        .eq('id', id);
+      if (error) throw error;
       fetchRooms();
     } catch (error) {
       console.error('Silme hatası:', error);

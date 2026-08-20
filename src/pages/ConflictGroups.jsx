@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, getDocs, addDoc, deleteDoc, doc, query, where, updateDoc } from 'firebase/firestore';
-import { db } from '../firebase';
+import { supabase } from '../supabase';
 import { FaPlus, FaTrash, FaUserPlus, FaSave } from 'react-icons/fa';
 
 const ConflictGroups = () => {
@@ -10,15 +9,17 @@ const ConflictGroups = () => {
   const [exams, setExams] = useState([]);
   const [loading, setLoading] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
-  const [selectedStudents, setSelectedStudents] = useState([]);
 
   // Tüm sınavları getir
   useEffect(() => {
     const fetchExams = async () => {
       try {
-        const snapshot = await getDocs(collection(db, 'exams'));
-        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        setExams(data);
+        const { data, error } = await supabase
+          .from('exams')
+          .select('*')
+          .order('created_at', { ascending: false });
+        if (error) throw error;
+        setExams(data || []);
       } catch (error) {
         console.error('Sınavlar alınamadı:', error);
       }
@@ -35,16 +36,15 @@ const ConflictGroups = () => {
     const fetchStudents = async () => {
       const exam = exams.find(e => e.id === selectedExam);
       if (!exam) return;
-      const gradeLevels = exam.gradeLevels || [];
+      const gradeLevels = exam.grade_levels || [];
       if (gradeLevels.length === 0) return;
       try {
-        const q = query(
-          collection(db, 'students'),
-          where('grade', 'in', gradeLevels.map(String))
-        );
-        const snapshot = await getDocs(q);
-        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        setStudents(data);
+        const { data, error } = await supabase
+          .from('students')
+          .select('*')
+          .in('grade', gradeLevels.map(String));
+        if (error) throw error;
+        setStudents(data || []);
       } catch (error) {
         console.error('Öğrenciler alınamadı:', error);
       }
@@ -60,13 +60,12 @@ const ConflictGroups = () => {
     }
     const fetchGroups = async () => {
       try {
-        const q = query(
-          collection(db, 'conflict_groups'),
-          where('examId', '==', selectedExam)
-        );
-        const snapshot = await getDocs(q);
-        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        setGroups(data);
+        const { data, error } = await supabase
+          .from('conflict_groups')
+          .select('*')
+          .eq('exam_id', selectedExam);
+        if (error) throw error;
+        setGroups(data || []);
       } catch (error) {
         console.error('Gruplar alınamadı:', error);
       }
@@ -84,69 +83,79 @@ const ConflictGroups = () => {
       return;
     }
     try {
-      await addDoc(collection(db, 'conflict_groups'), {
-        name: newGroupName.trim(),
-        examId: selectedExam,
-        studentIds: [],
-        createdAt: new Date(),
-      });
+      const { data, error } = await supabase
+        .from('conflict_groups')
+        .insert({
+          name: newGroupName.trim(),
+          exam_id: selectedExam,
+          student_ids: [],
+          created_at: new Date(),
+        })
+        .select()
+        .single();
+      if (error) throw error;
       setNewGroupName('');
-      // Yeniden getir
-      const q = query(
-        collection(db, 'conflict_groups'),
-        where('examId', '==', selectedExam)
-      );
-      const snapshot = await getDocs(q);
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setGroups(data);
+      setGroups([...groups, data]);
     } catch (error) {
       console.error('Grup eklenirken hata:', error);
+      alert('Grup eklenirken hata oluştu.');
     }
   };
 
   const handleDeleteGroup = async (groupId) => {
     if (!window.confirm('Bu grubu silmek istediğinize emin misiniz?')) return;
     try {
-      await deleteDoc(doc(db, 'conflict_groups', groupId));
+      const { error } = await supabase
+        .from('conflict_groups')
+        .delete()
+        .eq('id', groupId);
+      if (error) throw error;
       setGroups(groups.filter(g => g.id !== groupId));
     } catch (error) {
       console.error('Grup silinirken hata:', error);
+      alert('Grup silinirken hata oluştu.');
     }
   };
 
   const handleAddStudentToGroup = async (groupId, studentId) => {
     const group = groups.find(g => g.id === groupId);
     if (!group) return;
-    if (group.studentIds.includes(studentId)) {
+    if (group.student_ids.includes(studentId)) {
       alert('Bu öğrenci zaten grupta.');
       return;
     }
     try {
-      const updatedStudentIds = [...group.studentIds, studentId];
-      await updateDoc(doc(db, 'conflict_groups', groupId), {
-        studentIds: updatedStudentIds,
-      });
+      const updatedStudentIds = [...group.student_ids, studentId];
+      const { error } = await supabase
+        .from('conflict_groups')
+        .update({ student_ids: updatedStudentIds })
+        .eq('id', groupId);
+      if (error) throw error;
       setGroups(groups.map(g =>
-        g.id === groupId ? { ...g, studentIds: updatedStudentIds } : g
+        g.id === groupId ? { ...g, student_ids: updatedStudentIds } : g
       ));
     } catch (error) {
       console.error('Öğrenci eklenirken hata:', error);
+      alert('Öğrenci eklenirken hata oluştu.');
     }
   };
 
   const handleRemoveStudentFromGroup = async (groupId, studentId) => {
     const group = groups.find(g => g.id === groupId);
     if (!group) return;
-    const updatedStudentIds = group.studentIds.filter(id => id !== studentId);
+    const updatedStudentIds = group.student_ids.filter(id => id !== studentId);
     try {
-      await updateDoc(doc(db, 'conflict_groups', groupId), {
-        studentIds: updatedStudentIds,
-      });
+      const { error } = await supabase
+        .from('conflict_groups')
+        .update({ student_ids: updatedStudentIds })
+        .eq('id', groupId);
+      if (error) throw error;
       setGroups(groups.map(g =>
-        g.id === groupId ? { ...g, studentIds: updatedStudentIds } : g
+        g.id === groupId ? { ...g, student_ids: updatedStudentIds } : g
       ));
     } catch (error) {
       console.error('Öğrenci çıkarılırken hata:', error);
+      alert('Öğrenci çıkarılırken hata oluştu.');
     }
   };
 
@@ -207,8 +216,8 @@ const ConflictGroups = () => {
           {/* Grup Listesi */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px,1fr))', gap: '1rem' }}>
             {groups.map((group) => {
-              const groupStudents = students.filter(s => group.studentIds.includes(s.id));
-              const availableStudents = students.filter(s => !group.studentIds.includes(s.id));
+              const groupStudents = students.filter(s => group.student_ids?.includes(s.id));
+              const availableStudents = students.filter(s => !group.student_ids?.includes(s.id));
 
               return (
                 <div
@@ -244,7 +253,7 @@ const ConflictGroups = () => {
                       <ul style={{ paddingLeft: '1.2rem', margin: '0.3rem 0' }}>
                         {groupStudents.map(s => (
                           <li key={s.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span>{s.firstName} {s.lastName} ({s.grade}-{s.class})</span>
+                            <span>{s.first_name} {s.last_name} ({s.grade}-{s.class})</span>
                             <button
                               onClick={() => handleRemoveStudentFromGroup(group.id, s.id)}
                               style={{
@@ -278,29 +287,10 @@ const ConflictGroups = () => {
                         <option value="">Öğrenci ekle...</option>
                         {availableStudents.map(s => (
                           <option key={s.id} value={s.id}>
-                            {s.firstName} {s.lastName} ({s.grade}-{s.class})
+                            {s.first_name} {s.last_name} ({s.grade}-{s.class})
                           </option>
                         ))}
                       </select>
-                      <button
-                        onClick={() => {
-                          const select = document.querySelector(`select[data-group="${group.id}"]`);
-                          if (select && select.value) {
-                            handleAddStudentToGroup(group.id, select.value);
-                            select.value = '';
-                          }
-                        }}
-                        style={{
-                          padding: '0.3rem 0.6rem',
-                          background: '#007bff',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '4px',
-                          cursor: 'pointer',
-                        }}
-                      >
-                        <FaUserPlus />
-                      </button>
                     </div>
                   )}
                 </div>

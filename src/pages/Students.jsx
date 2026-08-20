@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, getDocs, addDoc, deleteDoc, doc, query, orderBy } from 'firebase/firestore';
-import { db } from '../firebase';
+import { supabase } from '../supabase';
 import ExcelUpload from '../components/ExcelUpload';
 import { encrypt, decrypt } from '../utils/encryption';
 import { FaTrash, FaUserPlus } from 'react-icons/fa';
@@ -29,14 +28,14 @@ const Students = () => {
   // Öğrencileri getir (TC ve telefonları çöz - admin kontrolü true)
   const fetchStudents = async () => {
     try {
-      const q = query(collection(db, 'students'), orderBy('lastName', 'asc'));
-      const snapshot = await getDocs(q);
-      const data = [];
-      snapshot.forEach((doc) => {
-        const raw = doc.data();
-        const isAdmin = true; // İleride role göre ayarlanacak
+      const { data, error } = await supabase
+        .from('students')
+        .select('*')
+        .order('lastName', { ascending: true });
+      if (error) throw error;
 
-        // Sadece şifreli olan alanları çözmeye çalış, hata olursa orijinali göster
+      const isAdmin = true; // İleride role göre ayarlanacak
+      const processed = (data || []).map((raw) => {
         let tcNo = raw.tcNo || '';
         let phone = raw.phone || '';
         let parentPhone = raw.parentPhone || '';
@@ -52,23 +51,23 @@ const Students = () => {
             console.warn('Çözümleme hatası:', e);
           }
         } else {
-          // Admin değilse gizle
           if (tcNo) tcNo = '***';
           if (phone) phone = '***';
           if (parentPhone) parentPhone = '***';
           if (parentPhone2) parentPhone2 = '***';
         }
 
-        data.push({
-          id: doc.id,
+        return {
+          id: raw.id,
           ...raw,
           tcNo,
           phone,
           parentPhone,
           parentPhone2,
-        });
+        };
       });
-      setStudents(data);
+
+      setStudents(processed);
     } catch (error) {
       console.error('Öğrenciler alınamadı:', error);
     } finally {
@@ -94,11 +93,29 @@ const Students = () => {
         phone: encrypt(newStudent.phone),
         parentPhone: encrypt(newStudent.parentPhone),
         parentPhone2: encrypt(newStudent.parentPhone2),
-        createdAt: new Date(),
+        createdAt: new Date().toISOString(),
       };
-      const docRef = await addDoc(collection(db, 'students'), encryptedData);
-      // Listeye eklerken şifresiz halini göster
-      setStudents([...students, { id: docRef.id, ...newStudent }]);
+
+      const { data, error } = await supabase
+        .from('students')
+        .insert(encryptedData)
+        .select();
+
+      if (error) throw error;
+
+      // Listeye eklerken şifresiz halini göster (çünkü admin)
+      const newRecord = data[0];
+      setStudents([
+        ...students,
+        {
+          ...newRecord,
+          tcNo: newStudent.tcNo,
+          phone: newStudent.phone,
+          parentPhone: newStudent.parentPhone,
+          parentPhone2: newStudent.parentPhone2,
+        },
+      ]);
+
       setNewStudent({
         firstName: '',
         lastName: '',
@@ -117,7 +134,7 @@ const Students = () => {
       alert('Öğrenci başarıyla eklendi.');
     } catch (error) {
       console.error('Öğrenci eklenirken hata:', error);
-      alert('Bir hata oluştu.');
+      alert('Bir hata oluştu: ' + error.message);
     }
   };
 
@@ -125,7 +142,11 @@ const Students = () => {
   const handleDelete = async (id) => {
     if (!window.confirm('Bu öğrenciyi silmek istediğinize emin misiniz?')) return;
     try {
-      await deleteDoc(doc(db, 'students', id));
+      const { error } = await supabase
+        .from('students')
+        .delete()
+        .eq('id', id);
+      if (error) throw error;
       setStudents(students.filter((s) => s.id !== id));
     } catch (error) {
       console.error('Silme hatası:', error);
@@ -140,9 +161,11 @@ const Students = () => {
     }
     if (!window.confirm(`${selectedIds.length} öğrenciyi silmek istediğinize emin misiniz?`)) return;
     try {
-      for (const id of selectedIds) {
-        await deleteDoc(doc(db, 'students', id));
-      }
+      const { error } = await supabase
+        .from('students')
+        .delete()
+        .in('id', selectedIds);
+      if (error) throw error;
       setStudents(students.filter((s) => !selectedIds.includes(s.id)));
       setSelectedIds([]);
       alert(`${selectedIds.length} öğrenci silindi.`);

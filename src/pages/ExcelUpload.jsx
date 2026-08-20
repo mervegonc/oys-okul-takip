@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import * as XLSX from 'xlsx';
-import { collection, getDocs, addDoc, updateDoc, doc, query, where } from 'firebase/firestore';
-import { db } from '../firebase';
+import { supabase } from '../supabase';
 import { encrypt } from '../utils/encryption';
 
 const ExcelUpload = ({ onUploadComplete }) => {
@@ -74,6 +73,7 @@ const ExcelUpload = ({ onUploadComplete }) => {
         let errorCount = 0;
 
         if (mode === 'add') {
+          // EKLEME MODU
           for (const row of jsonData) {
             try {
               const studentData = {
@@ -90,7 +90,7 @@ const ExcelUpload = ({ onUploadComplete }) => {
                 secondLang: row['2. Yab. Dil'] || '',
                 gender: row['Cinsiyet'] || '',
                 englishLevel: row['İngilizce Seviyesi'] || 'Core',
-                createdAt: new Date()
+                createdAt: new Date().toISOString()
               };
 
               if (!studentData.firstName || !studentData.lastName || !studentData.grade) {
@@ -98,7 +98,11 @@ const ExcelUpload = ({ onUploadComplete }) => {
                 continue;
               }
 
-              await addDoc(collection(db, 'students'), studentData);
+              const { error } = await supabase
+                .from('students')
+                .insert(studentData);
+              
+              if (error) throw error;
               addedCount++;
             } catch (err) {
               console.error('Öğrenci eklenirken hata:', err);
@@ -107,6 +111,7 @@ const ExcelUpload = ({ onUploadComplete }) => {
           }
           setMessage(`${addedCount} öğrenci başarıyla eklendi. ${errorCount} hata oluştu.`);
         } else if (mode === 'update') {
+          // GÜNCELLEME MODU
           for (const row of jsonData) {
             try {
               const tcNo = row['tcNo'] ? String(row['tcNo']) : '';
@@ -115,15 +120,20 @@ const ExcelUpload = ({ onUploadComplete }) => {
                 continue;
               }
 
-              const q = query(collection(db, 'students'), where('tcNo', '==', encrypt(tcNo)));
-              const querySnapshot = await getDocs(q);
+              const encryptedTc = encrypt(tcNo);
+              const { data: existingStudents, error: fetchError } = await supabase
+                .from('students')
+                .select('*')
+                .eq('tcNo', encryptedTc);
 
-              if (querySnapshot.empty) {
+              if (fetchError) throw fetchError;
+
+              if (!existingStudents || existingStudents.length === 0) {
                 errorCount++;
                 continue;
               }
 
-              const studentDoc = querySnapshot.docs[0];
+              const studentDoc = existingStudents[0];
               const updateData = {};
 
               if (updateFields.firstName) updateData.firstName = row['Adı'] || '';
@@ -143,7 +153,12 @@ const ExcelUpload = ({ onUploadComplete }) => {
                 continue;
               }
 
-              await updateDoc(doc(db, 'students', studentDoc.id), updateData);
+              const { error: updateError } = await supabase
+                .from('students')
+                .update(updateData)
+                .eq('id', studentDoc.id);
+
+              if (updateError) throw updateError;
               updatedCount++;
             } catch (err) {
               console.error('Güncelleme hatası:', err);

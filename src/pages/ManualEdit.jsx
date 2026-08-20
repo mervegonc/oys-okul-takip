@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, getDocs, query, orderBy, where, doc, updateDoc } from 'firebase/firestore';
-import { db } from '../firebase';
+import { supabase } from '../supabase';
 
 const ManualEdit = () => {
   const [exams, setExams] = useState([]);
@@ -16,13 +15,21 @@ const ManualEdit = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const examSnap = await getDocs(query(collection(db, 'exams'), orderBy('createdAt', 'desc')));
-        const examData = examSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        setExams(examData);
+        // Sınavları getir
+        const { data: examData, error: examError } = await supabase
+          .from('exams')
+          .select('*')
+          .order('createdAt', { ascending: false });
+        if (examError) throw examError;
+        setExams(examData || []);
 
-        const roomSnap = await getDocs(query(collection(db, 'rooms'), orderBy('name', 'asc')));
-        const roomData = roomSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        setRooms(roomData);
+        // Salonları getir
+        const { data: roomData, error: roomError } = await supabase
+          .from('rooms')
+          .select('*')
+          .order('name', { ascending: true });
+        if (roomError) throw roomError;
+        setRooms(roomData || []);
       } catch (error) {
         console.error('Veri alınamadı:', error);
       }
@@ -40,24 +47,27 @@ const ManualEdit = () => {
     const fetchSeatingPlan = async () => {
       setLoading(true);
       try {
-        const q = query(
-          collection(db, 'seating_plans'),
-          where('examId', '==', selectedExam),
-          orderBy('createdAt', 'desc')
-        );
-        const snap = await getDocs(q);
-        if (snap.empty) {
+        const { data, error } = await supabase
+          .from('seating_plans')
+          .select('*')
+          .eq('examId', selectedExam)
+          .order('createdAt', { ascending: false })
+          .limit(1);
+
+        if (error) throw error;
+
+        if (!data || data.length === 0) {
           setMessage('Bu sınava ait oturma planı bulunamadı.');
           setSeatingPlan(null);
           setAssignments([]);
           setLoading(false);
           return;
         }
-        const docData = snap.docs[0];
-        const data = { id: docData.id, ...docData.data() };
-        setSeatingPlan(data);
-        setAssignments(data.assignments || []);
-        setMessage(`${data.assignments?.length || 0} öğrenci bulundu.`);
+
+        const plan = data[0];
+        setSeatingPlan(plan);
+        setAssignments(plan.assignments || []);
+        setMessage(`${plan.assignments?.length || 0} öğrenci bulundu.`);
       } catch (error) {
         console.error('Oturma planı alınamadı:', error);
         setMessage('Oturma planı alınamadı: ' + error.message);
@@ -89,10 +99,16 @@ const ManualEdit = () => {
     if (!seatingPlan) return;
     setLoading(true);
     try {
-      await updateDoc(doc(db, 'seating_plans', seatingPlan.id), {
-        assignments: assignments,
-        updatedAt: new Date(),
-      });
+      const { error } = await supabase
+        .from('seating_plans')
+        .update({
+          assignments: assignments,
+          updatedAt: new Date().toISOString(),
+        })
+        .eq('id', seatingPlan.id);
+
+      if (error) throw error;
+
       setMessage('Değişiklikler kaydedildi.');
       setEditing(false);
     } catch (error) {
