@@ -31,13 +31,12 @@ const Students = () => {
   });
 
   // 📊 İstatistikleri getir (Sınıf bazında toplam ve Yeni Kayıt sayısı)
- const fetchStats = async () => {
+const fetchStats = async () => {
   try {
-    // Tüm kayıtları almak için limit(10000) ekledik
     const { data, error } = await supabase
       .from('students')
       .select('grade, class')
-      .limit(10000); // <-- BU SATIR EKLENDİ
+      .limit(10000); // Tüm kayıtları al
 
     if (error) throw error;
 
@@ -45,6 +44,7 @@ const Students = () => {
     console.log('📊 Gelen veri (ilk 5):', data?.slice(0, 5));
     console.log('📊 Toplam kayıt:', data?.length);
     
+    // Grade değerlerini incele
     const gradeValues = data?.map(s => `"${s.grade}"`).slice(0, 20);
     console.log('📊 Grade değerleri (ilk 20):', gradeValues.join(', '));
 
