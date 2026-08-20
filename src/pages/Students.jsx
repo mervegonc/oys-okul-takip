@@ -33,36 +33,51 @@ const Students = () => {
   // 📊 İstatistikleri getir (Sınıf bazında toplam ve Yeni Kayıt sayısı)
   const fetchStats = async () => {
     try {
+      console.log("📊 fetchStats başladı...");
       const { data, error } = await supabase
         .from('students')
         .select('grade, class');
 
-      if (error) throw error;
+      if (error) {
+        console.error("❌ fetchStats hatası:", error);
+        throw error;
+      }
+
+      console.log("📊 Gelen veri (ilk 5):", data?.slice(0, 5));
+      console.log("📊 Toplam kayıt:", data?.length);
 
       const stats = {};
-      data?.forEach(student => {
-        // GRADE normalize: sayısal kısmı al (örnek: "12" veya "12." veya "12. Sınıf" -> "12")
+      data?.forEach((student, index) => {
+        // 1. GRADE normalize et
         let grade = student.grade || 'Belirsiz';
         const gradeMatch = grade.match(/(\d+)/);
         if (gradeMatch) {
-          grade = gradeMatch[1]; // sadece rakamları al
+          grade = gradeMatch[1];
         }
 
+        // 2. İstatistik nesnesini hazırla
         if (!stats[grade]) {
           stats[grade] = { total: 0, newCount: 0 };
         }
         stats[grade].total += 1;
 
-        // "Yeni Kayıt" kontrolü (class içinde "YK" veya "YENİ KAYIT" geçiyorsa)
+        // 3. Yeni Kayıt kontrolü
         const classText = student.class || '';
-        if (classText.toUpperCase().includes('YK') || classText.toUpperCase().includes('YENİ KAYIT')) {
+        const isNew = classText.toUpperCase().includes('YK') || classText.toUpperCase().includes('YENİ KAYIT');
+        if (isNew) {
           stats[grade].newCount += 1;
+        }
+
+        // İlk 10 kayıt için log (debug)
+        if (index < 10) {
+          console.log(`📌 Örnek ${index+1}: grade="${student.grade}" -> normalize="${grade}", class="${student.class}", isNew=${isNew}`);
         }
       });
 
+      console.log("📊 Hesaplanan istatistikler:", stats);
       setClassStats(stats);
     } catch (error) {
-      console.error('İstatistikler alınamadı:', error);
+      console.error('❌ İstatistikler alınamadı:', error);
     }
   };
 
@@ -134,7 +149,7 @@ const Students = () => {
 
       setStudents(processed);
     } catch (error) {
-      console.error('Öğrenciler alınamadı:', error);
+      console.error('❌ Öğrenciler alınamadı:', error);
     } finally {
       setLoading(false);
     }
@@ -218,7 +233,7 @@ const Students = () => {
       fetchStudents(currentPage);
       alert('Öğrenci başarıyla eklendi.');
     } catch (error) {
-      console.error('Öğrenci eklenirken hata:', error);
+      console.error('❌ Öğrenci eklenirken hata:', error);
       alert('Bir hata oluştu: ' + error.message);
     }
   };
@@ -236,7 +251,7 @@ const Students = () => {
       fetchStats();
       fetchStudents(currentPage);
     } catch (error) {
-      console.error('Silme hatası:', error);
+      console.error('❌ Silme hatası:', error);
     }
   };
 
@@ -263,7 +278,7 @@ const Students = () => {
       const errors = results.filter(result => result.error);
 
       if (errors.length > 0) {
-        console.error('Toplu silme hataları:', errors);
+        console.error('❌ Toplu silme hataları:', errors);
         alert(`${errors.length} öğrenci silinirken hata oluştu. Detaylar konsolda.`);
       } else {
         setStudents(students.filter(s => !validIds.includes(s.id)));
@@ -273,7 +288,7 @@ const Students = () => {
         alert(`${validIds.length} öğrenci başarıyla silindi.`);
       }
     } catch (error) {
-      console.error('Toplu silme hatası:', error);
+      console.error('❌ Toplu silme hatası:', error);
       alert('Silme işlemi sırasında bir hata oluştu: ' + error.message);
     }
   };
