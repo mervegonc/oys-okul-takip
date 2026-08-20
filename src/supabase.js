@@ -1,11 +1,12 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-const supabaseServiceRoleKey = import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY;
+// Geçici olarak değerleri direkt yaz (SADECE TEST İÇİN!)
+const supabaseUrl = 'https://ztjdsnwtdmdasclveume.supabase.co';
+const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp0amRzbnd0ZG1kYXNjbHZldW1lIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODcxOTMyODksImV4cCI6MjEwMjc2OTI4OX0.LJw3ezE-n2qBYRuorBPJAMMYFvS0NikP3QeelarOgQ8';
+const supabaseServiceRoleKey = 'sb_publishable_LazklBcp_ZUQ8LjC_q6jnw_hMkF555C';
 
-if (!supabaseUrl) {
-  throw new Error('supabaseUrl is required. Check your environment variables.');
+if (!supabaseUrl || !supabaseAnonKey) {
+  throw new Error('supabaseUrl or supabaseKey is required. Check your environment variables.');
 }
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
