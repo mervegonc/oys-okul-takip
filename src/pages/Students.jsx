@@ -33,11 +33,11 @@ const Students = () => {
   // 📊 İstatistikleri getir (Sınıf bazında toplam ve Yeni Kayıt sayısı)
  const fetchStats = async () => {
   try {
-    // Tüm kayıtları almak için limit(10000) ekleyelim
+    // Tüm kayıtları almak için limit(10000) ekledik
     const { data, error } = await supabase
       .from('students')
       .select('grade, class')
-      .limit(10000); // <--- BU SATIR EKLENDİ
+      .limit(10000); // <-- BU SATIR EKLENDİ
 
     if (error) throw error;
 
