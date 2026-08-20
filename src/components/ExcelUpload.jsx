@@ -24,19 +24,19 @@ const ExcelUpload = ({ onUploadComplete }) => {
   });
 
   const columnMapping = {
-    'tcNo': 'tcNo',
-    'okul numarası': 'studentNo',
+    'tcNo': 'tc_no',
+    'okul numarası': 'student_no',
     'Sınıf': 'grade',
     'Şube': 'class',
-    'Adı': 'firstName',
-    'Soyadı': 'lastName',
+    'Adı': 'first_name',
+    'Soyadı': 'last_name',
     'Öğrenim Alanı': 'field',
-    '2. Yab. Dil': 'secondLang',
+    '2. Yab. Dil': 'second_lang',
     'Telefon Numarası1': 'phone',
-    'Veli 1 Telefon Numarası': 'parentPhone',
-    'Veli 2 Telefon Numarası': 'parentPhone2',
+    'Veli 1 Telefon Numarası': 'parent_phone',
+    'Veli 2 Telefon Numarası': 'parent_phone2',
     'Cinsiyet': 'gender',
-    'İngilizce Seviyesi': 'englishLevel',
+    'İngilizce Seviyesi': 'english_level',
   };
 
   const handleFileUpload = async (event) => {
@@ -91,32 +91,34 @@ const ExcelUpload = ({ onUploadComplete }) => {
           for (const row of jsonData) {
             try {
               const studentData = {
-                firstName: row['Adı'] || '',
-                lastName: row['Soyadı'] || '',
+                first_name: row['Adı'] || '',
+                last_name: row['Soyadı'] || '',
                 grade: row['Sınıf'] ? String(row['Sınıf']) : '',
                 class: row['Şube'] || '',
-                studentNo: row['okul numarası'] ? String(row['okul numarası']) : '',
-                tcNo: encrypt(row['tcNo'] ? String(row['tcNo']) : ''),
+                student_no: row['okul numarası'] ? String(row['okul numarası']) : '',
+                tc_no: encrypt(row['tcNo'] ? String(row['tcNo']) : ''),
                 phone: encrypt(row['Telefon Numarası1'] ? String(row['Telefon Numarası1']) : ''),
-                parentPhone: encrypt(row['Veli 1 Telefon Numarası'] ? String(row['Veli 1 Telefon Numarası']) : ''),
-                parentPhone2: encrypt(row['Veli 2 Telefon Numarası'] ? String(row['Veli 2 Telefon Numarası']) : ''),
+                parent_phone: encrypt(row['Veli 1 Telefon Numarası'] ? String(row['Veli 1 Telefon Numarası']) : ''),
+                parent_phone2: encrypt(row['Veli 2 Telefon Numarası'] ? String(row['Veli 2 Telefon Numarası']) : ''),
                 field: row['Öğrenim Alanı'] || '',
-                secondLang: row['2. Yab. Dil'] || '',
+                second_lang: row['2. Yab. Dil'] || '',
                 gender: row['Cinsiyet'] || '',
-                englishLevel: row['İngilizce Seviyesi'] || 'Core',
-                createdAt: new Date().toISOString()
+                english_level: row['İngilizce Seviyesi'] || 'Core',
+                created_at: new Date().toISOString()
               };
 
-              if (!studentData.firstName || !studentData.lastName || !studentData.grade) {
+              if (!studentData.first_name || !studentData.last_name || !studentData.grade) {
                 errorCount++;
                 continue;
               }
 
-              // Supabase insert
-              const { error } = await supabase.from('students').insert([studentData]);
+              const { error } = await supabase
+                .from('students')
+                .insert(studentData);
+              
               if (error) throw error;
               addedCount++;
-              console.log(`✅ Eklendi: ${studentData.firstName} ${studentData.lastName}`);
+              console.log(`✅ Eklendi: ${studentData.first_name} ${studentData.last_name}`);
             } catch (err) {
               console.error('❌ Öğrenci eklenirken hata:', err);
               errorCount++;
@@ -134,12 +136,11 @@ const ExcelUpload = ({ onUploadComplete }) => {
                 continue;
               }
 
-              // TC'yi şifrele ve ara
               const encryptedTc = encrypt(tcNo);
               const { data: existing, error: findError } = await supabase
                 .from('students')
                 .select('*')
-                .eq('tcNo', encryptedTc)
+                .eq('tc_no', encryptedTc)
                 .maybeSingle();
 
               if (findError) throw findError;
@@ -150,24 +151,23 @@ const ExcelUpload = ({ onUploadComplete }) => {
               }
 
               const updateData = {};
-              if (updateFields.firstName) updateData.firstName = row['Adı'] || '';
-              if (updateFields.lastName) updateData.lastName = row['Soyadı'] || '';
+              if (updateFields.firstName) updateData.first_name = row['Adı'] || '';
+              if (updateFields.lastName) updateData.last_name = row['Soyadı'] || '';
               if (updateFields.grade) updateData.grade = row['Sınıf'] ? String(row['Sınıf']) : '';
               if (updateFields.class) updateData.class = row['Şube'] || '';
               if (updateFields.field) updateData.field = row['Öğrenim Alanı'] || '';
-              if (updateFields.secondLang) updateData.secondLang = row['2. Yab. Dil'] || '';
+              if (updateFields.secondLang) updateData.second_lang = row['2. Yab. Dil'] || '';
               if (updateFields.phone) updateData.phone = encrypt(row['Telefon Numarası1'] ? String(row['Telefon Numarası1']) : '');
-              if (updateFields.parentPhone) updateData.parentPhone = encrypt(row['Veli 1 Telefon Numarası'] ? String(row['Veli 1 Telefon Numarası']) : '');
-              if (updateFields.parentPhone2) updateData.parentPhone2 = encrypt(row['Veli 2 Telefon Numarası'] ? String(row['Veli 2 Telefon Numarası']) : '');
+              if (updateFields.parentPhone) updateData.parent_phone = encrypt(row['Veli 1 Telefon Numarası'] ? String(row['Veli 1 Telefon Numarası']) : '');
+              if (updateFields.parentPhone2) updateData.parent_phone2 = encrypt(row['Veli 2 Telefon Numarası'] ? String(row['Veli 2 Telefon Numarası']) : '');
               if (updateFields.gender) updateData.gender = row['Cinsiyet'] || '';
-              if (updateFields.englishLevel) updateData.englishLevel = row['İngilizce Seviyesi'] || 'Core';
+              if (updateFields.englishLevel) updateData.english_level = row['İngilizce Seviyesi'] || 'Core';
 
               if (Object.keys(updateData).length === 0) {
                 errorCount++;
                 continue;
               }
 
-              // Supabase update
               const { error: updateError } = await supabase
                 .from('students')
                 .update(updateData)

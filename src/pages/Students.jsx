@@ -35,7 +35,6 @@ const Students = () => {
 
       const isAdmin = true;
       const processed = (data || []).map((raw) => {
-        // Supabase'den gelen snake_case alanları camelCase'e dönüştür
         const student = {
           id: raw.id,
           firstName: raw.first_name || '',
@@ -54,7 +53,6 @@ const Students = () => {
           createdAt: raw.created_at,
         };
 
-        // Şifreli alanları çöz
         let tcNo = student.tcNo || '';
         let phone = student.phone || '';
         let parentPhone = student.parentPhone || '';
@@ -128,7 +126,6 @@ const Students = () => {
 
       if (error) throw error;
 
-      // Listeye eklerken şifresiz halini göster
       const newRecord = data[0];
       setStudents([
         ...students,
@@ -374,7 +371,6 @@ const Students = () => {
           </tbody>
         </table>
       </div>
-      
     </div>
   );
 };
