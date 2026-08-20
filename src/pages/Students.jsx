@@ -5,10 +5,21 @@ import { encrypt, decrypt } from '../utils/encryption';
 import { FaTrash, FaUserPlus } from 'react-icons/fa';
 
 const Students = () => {
+  // Öğrenci listesi ve sayfalama state'leri
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedIds, setSelectedIds] = useState([]);
   const [showForm, setShowForm] = useState(false);
+  
+  // Sayfalama state'leri
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [pageSize] = useState(20);
+  
+  // Sınıf istatistikleri state'i
+  const [classStats, setClassStats] = useState({});
+
+  // Yeni öğrenci form state'i
   const [newStudent, setNewStudent] = useState({
     firstName: '',
     lastName: '',
@@ -25,12 +36,55 @@ const Students = () => {
     englishLevel: 'Core',
   });
 
-  const fetchStudents = async () => {
+  // İstatistikleri getir (Sınıf bazında toplam ve Yeni Kayıt sayısı)
+  const fetchStats = async () => {
     try {
       const { data, error } = await supabase
         .from('students')
+        .select('grade, class');
+
+      if (error) throw error;
+
+      const stats = {};
+      data?.forEach(student => {
+        const grade = student.grade || 'Belirsiz';
+        if (!stats[grade]) {
+          stats[grade] = { total: 0, newCount: 0 };
+        }
+        stats[grade].total += 1;
+        if (student.class && student.class.toUpperCase().includes('YENİ KAYIT')) {
+          stats[grade].newCount += 1;
+        }
+      });
+
+      setClassStats(stats);
+    } catch (error) {
+      console.error('İstatistikler alınamadı:', error);
+    }
+  };
+
+  // Öğrencileri getir (sayfalama ile)
+  const fetchStudents = async (page = 1) => {
+    setLoading(true);
+    try {
+      // 1. Toplam sayıyı al
+      const { count, error: countError } = await supabase
+        .from('students')
+        .select('*', { count: 'exact', head: true });
+
+      if (countError) throw countError;
+      setTotalCount(count || 0);
+
+      // 2. Sayfadaki verileri al
+      const from = (page - 1) * pageSize;
+      const to = from + pageSize - 1;
+
+      const { data, error } = await supabase
+        .from('students')
         .select('*')
-        .order('last_name', { ascending: true });
+        .order('last_name', { ascending: true })
+        .range(from, to);
+
       if (error) throw error;
 
       const isAdmin = true;
@@ -74,13 +128,7 @@ const Students = () => {
           if (parentPhone2) parentPhone2 = '***';
         }
 
-        return {
-          ...student,
-          tcNo,
-          phone,
-          parentPhone,
-          parentPhone2,
-        };
+        return { ...student, tcNo, phone, parentPhone, parentPhone2 };
       });
 
       setStudents(processed);
@@ -91,10 +139,13 @@ const Students = () => {
     }
   };
 
+  // Sayfa veya sıralama değiştiğinde yeniden getir
   useEffect(() => {
-    fetchStudents();
-  }, []);
+    fetchStudents(currentPage);
+    fetchStats();
+  }, [currentPage]);
 
+  // Yeni öğrenci ekle
   const handleAddStudent = async (e) => {
     e.preventDefault();
     if (!newStudent.firstName || !newStudent.lastName || !newStudent.grade) {
@@ -162,6 +213,9 @@ const Students = () => {
         gender: '',
         englishLevel: 'Core',
       });
+      
+      fetchStats();
+      fetchStudents(currentPage);
       alert('Öğrenci başarıyla eklendi.');
     } catch (error) {
       console.error('Öğrenci eklenirken hata:', error);
@@ -169,6 +223,7 @@ const Students = () => {
     }
   };
 
+  // Tekil sil
   const handleDelete = async (id) => {
     if (!window.confirm('Bu öğrenciyi silmek istediğinize emin misiniz?')) return;
     try {
@@ -178,29 +233,49 @@ const Students = () => {
         .eq('id', id);
       if (error) throw error;
       setStudents(students.filter((s) => s.id !== id));
+      fetchStats();
+      fetchStudents(currentPage);
     } catch (error) {
       console.error('Silme hatası:', error);
+      alert('Silme sırasında bir hata oluştu.');
     }
   };
 
+  // Toplu sil (tek tek silme ile)
   const handleBulkDelete = async () => {
     if (selectedIds.length === 0) {
       alert('Lütfen silmek için en az bir öğrenci seçin.');
       return;
     }
     if (!window.confirm(`${selectedIds.length} öğrenciyi silmek istediğinize emin misiniz?`)) return;
+    
     try {
-      const { error } = await supabase
-        .from('students')
-        .delete()
-        .in('id', selectedIds);
-      if (error) throw error;
-      setStudents(students.filter((s) => !selectedIds.includes(s.id)));
-      setSelectedIds([]);
-      alert(`${selectedIds.length} öğrenci silindi.`);
+      const validIds = selectedIds.filter(id => id && typeof id === 'string');
+      if (validIds.length === 0) {
+        alert('Geçerli öğrenci seçilmedi.');
+        return;
+      }
+
+      const deletePromises = validIds.map(id => 
+        supabase.from('students').delete().eq('id', id)
+      );
+      
+      const results = await Promise.all(deletePromises);
+      const errors = results.filter(result => result.error);
+      
+      if (errors.length > 0) {
+        console.error('Toplu silme hataları:', errors);
+        alert(`${errors.length} öğrenci silinirken hata oluştu. Detaylar konsolda.`);
+      } else {
+        setStudents(students.filter(s => !validIds.includes(s.id)));
+        setSelectedIds([]);
+        fetchStats();
+        fetchStudents(currentPage);
+        alert(`${validIds.length} öğrenci başarıyla silindi.`);
+      }
     } catch (error) {
       console.error('Toplu silme hatası:', error);
-      alert('Bir hata oluştu.');
+      alert('Silme işlemi sırasında bir hata oluştu: ' + error.message);
     }
   };
 
@@ -218,52 +293,100 @@ const Students = () => {
     }
   };
 
-  if (loading) return <div style={{ padding: '2rem', textAlign: 'center' }}>Yükleniyor...</div>;
+  const totalPages = Math.ceil(totalCount / pageSize);
+
+  const goToPage = (page) => {
+    if (page < 1 || page > totalPages) return;
+    setCurrentPage(page);
+    setSelectedIds([]);
+  };
+
+  if (loading && students.length === 0) return <div style={{ padding: '2rem', textAlign: 'center' }}>Yükleniyor...</div>;
 
   return (
     <div style={{ padding: '1rem', maxWidth: '1200px', margin: '0 auto' }}>
       <h2>👨‍🎓 Öğrenci Yönetimi</h2>
 
-      <ExcelUpload onUploadComplete={fetchStudents} />
+      {/* Sınıf İstatistikleri */}
+      <div style={{ 
+        display: 'flex', 
+        flexWrap: 'wrap', 
+        gap: '0.5rem', 
+        marginBottom: '1rem', 
+        padding: '0.8rem', 
+        background: '#f8f9fa', 
+        borderRadius: '8px',
+        border: '1px solid #e0e0e0'
+      }}>
+        {Object.keys(classStats)
+          .sort((a, b) => Number(a) - Number(b))
+          .map((grade) => (
+            <div key={grade} style={{ 
+              background: 'white', 
+              padding: '0.3rem 0.8rem', 
+              borderRadius: '16px',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+              fontSize: '0.9rem'
+            }}>
+              <strong>{grade}. Sınıf</strong>: {classStats[grade].total} kişi 
+              {classStats[grade].newCount > 0 && (
+                <span style={{ color: '#856404', marginLeft: '0.3rem' }}>
+                  ({classStats[grade].newCount} Y.K.)
+                </span>
+              )}
+            </div>
+          ))}
+      </div>
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-        <button
-          onClick={() => setShowForm(!showForm)}
-          style={{
-            padding: '0.4rem 1rem',
-            background: '#007bff',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.5rem',
-          }}
-        >
-          <FaUserPlus /> Yeni Öğrenci
-        </button>
+      <ExcelUpload onUploadComplete={() => {
+        fetchStudents(currentPage);
+        fetchStats();
+      }} />
 
-        {selectedIds.length > 0 && (
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+        <div>
           <button
-            onClick={handleBulkDelete}
+            onClick={() => setShowForm(!showForm)}
             style={{
               padding: '0.4rem 1rem',
-              background: '#dc3545',
+              background: '#007bff',
               color: 'white',
               border: 'none',
               borderRadius: '4px',
               cursor: 'pointer',
-              display: 'flex',
+              display: 'inline-flex',
               alignItems: 'center',
               gap: '0.5rem',
             }}
           >
-            <FaTrash /> Seçileni Sil ({selectedIds.length})
+            <FaUserPlus /> Yeni Öğrenci
           </button>
-        )}
+          {selectedIds.length > 0 && (
+            <button
+              onClick={handleBulkDelete}
+              style={{
+                padding: '0.4rem 1rem',
+                background: '#dc3545',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                marginLeft: '0.5rem',
+              }}
+            >
+              <FaTrash /> Seçileni Sil ({selectedIds.length})
+            </button>
+          )}
+        </div>
+        <div style={{ fontSize: '0.9rem', color: '#666' }}>
+          Toplam {totalCount} öğrenci | Sayfa {currentPage} / {totalPages || 1}
+        </div>
       </div>
 
+      {/* Yeni Öğrenci Formu */}
       {showForm && (
         <form
           onSubmit={handleAddStudent}
@@ -310,6 +433,7 @@ const Students = () => {
         </form>
       )}
 
+      {/* Öğrenci Listesi */}
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', background: 'white', borderRadius: '8px', overflow: 'hidden', boxShadow: '0 0 10px rgba(0,0,0,0.05)' }}>
           <thead style={{ background: '#f1f1f1' }}>
@@ -340,7 +464,7 @@ const Students = () => {
                 <td style={{ padding: '0.5rem', textAlign: 'center' }}>
                   <input type="checkbox" checked={selectedIds.includes(student.id)} onChange={() => toggleSelect(student.id)} />
                 </td>
-                <td style={{ padding: '0.5rem', textAlign: 'center' }}>{index + 1}</td>
+                <td style={{ padding: '0.5rem', textAlign: 'center' }}>{(currentPage - 1) * pageSize + index + 1}</td>
                 <td style={{ padding: '0.5rem' }}>{student.firstName}</td>
                 <td style={{ padding: '0.5rem' }}>{student.lastName}</td>
                 <td style={{ padding: '0.5rem' }}>{student.grade}</td>
@@ -371,6 +495,29 @@ const Students = () => {
           </tbody>
         </table>
       </div>
+
+      {/* Sayfalama */}
+      {totalPages > 1 && (
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem', marginTop: '1rem' }}>
+          <button
+            onClick={() => goToPage(currentPage - 1)}
+            disabled={currentPage === 1}
+            style={{ padding: '0.3rem 0.8rem', border: '1px solid #ddd', borderRadius: '4px', background: 'white', cursor: 'pointer' }}
+          >
+            Önceki
+          </button>
+          <span style={{ fontSize: '0.9rem' }}>
+            Sayfa {currentPage} / {totalPages}
+          </span>
+          <button
+            onClick={() => goToPage(currentPage + 1)}
+            disabled={currentPage === totalPages}
+            style={{ padding: '0.3rem 0.8rem', border: '1px solid #ddd', borderRadius: '4px', background: 'white', cursor: 'pointer' }}
+          >
+            Sonraki
+          </button>
+        </div>
+      )}
     </div>
   );
 };
