@@ -31,55 +31,57 @@ const Students = () => {
   });
 
   // 📊 İstatistikleri getir (Sınıf bazında toplam ve Yeni Kayıt sayısı)
-  const fetchStats = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('students')
-        .select('grade, class');
+ const fetchStats = async () => {
+  try {
+    // Tüm kayıtları almak için limit(10000) ekleyelim
+    const { data, error } = await supabase
+      .from('students')
+      .select('grade, class')
+      .limit(10000); // <--- BU SATIR EKLENDİ
 
-      if (error) throw error;
+    if (error) throw error;
 
-      console.log('📊 fetchStats başladı...');
-      console.log('📊 Gelen veri (ilk 5):', data?.slice(0, 5));
-      console.log('📊 Toplam kayıt:', data?.length);
+    console.log('📊 fetchStats başladı...');
+    console.log('📊 Gelen veri (ilk 5):', data?.slice(0, 5));
+    console.log('📊 Toplam kayıt:', data?.length);
+    
+    const gradeValues = data?.map(s => `"${s.grade}"`).slice(0, 20);
+    console.log('📊 Grade değerleri (ilk 20):', gradeValues.join(', '));
+
+    const stats = {};
+    data?.forEach((student, index) => {
+      let grade = student.grade || 'Belirsiz';
+      const gradeMatch = String(grade).match(/(\d+)/);
+      if (gradeMatch) {
+        grade = gradeMatch[1];
+      }
+
+      if (!stats[grade]) {
+        stats[grade] = { total: 0, newCount: 0 };
+      }
+      stats[grade].total += 1;
+
+      const classText = student.class || '';
+      const upperClass = classText.toUpperCase();
+      const isNew = upperClass.includes('YK') || 
+                    upperClass.includes('Y.K') || 
+                    upperClass.includes('YENİ KAYIT');
       
-      const gradeValues = data?.map(s => `"${s.grade}"`).slice(0, 20);
-      console.log('📊 Grade değerleri (ilk 20):', gradeValues.join(', '));
+      if (isNew) {
+        stats[grade].newCount += 1;
+      }
 
-      const stats = {};
-      data?.forEach((student, index) => {
-        let grade = student.grade || 'Belirsiz';
-        const gradeMatch = String(grade).match(/(\d+)/);
-        if (gradeMatch) {
-          grade = gradeMatch[1];
-        }
+      if (index < 10) {
+        console.log(`📌 Örnek ${index+1}: grade="${student.grade}" -> normalize="${grade}", class="${classText}", isNew=${isNew}`);
+      }
+    });
 
-        if (!stats[grade]) {
-          stats[grade] = { total: 0, newCount: 0 };
-        }
-        stats[grade].total += 1;
-
-        const classText = student.class || '';
-        const upperClass = classText.toUpperCase();
-        const isNew = upperClass.includes('YK') || 
-                      upperClass.includes('Y.K') || 
-                      upperClass.includes('YENİ KAYIT');
-        
-        if (isNew) {
-          stats[grade].newCount += 1;
-        }
-
-        if (index < 10) {
-          console.log(`📌 Örnek ${index+1}: grade="${student.grade}" -> normalize="${grade}", class="${classText}", isNew=${isNew}`);
-        }
-      });
-
-      console.log('📊 Hesaplanan istatistikler:', stats);
-      setClassStats(stats);
-    } catch (error) {
-      console.error('İstatistikler alınamadı:', error);
-    }
-  };
+    console.log('📊 Hesaplanan istatistikler:', stats);
+    setClassStats(stats);
+  } catch (error) {
+    console.error('İstatistikler alınamadı:', error);
+  }
+};
 
   // 📋 Öğrencileri getir (sayfalama ile)
   const fetchStudents = async (page = 1) => {
