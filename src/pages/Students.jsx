@@ -33,30 +33,29 @@ const Students = () => {
   // İstatistikleri getir (Sınıf bazında toplam ve Yeni Kayıt sayısı)
   const fetchStats = async () => {
     try {
+      // Tüm öğrencilerin sınıf ve şube bilgilerini al
       const { data, error } = await supabase
         .from('students')
         .select('grade, class');
 
       if (error) throw error;
 
-      console.log('📊 Tüm öğrenci verileri (grade, class):', data);
-
       const stats = {};
       data?.forEach(student => {
+        // grade'ı string'e çevir ve trim yap
         const grade = student.grade ? String(student.grade).trim() : 'Belirsiz';
         if (!stats[grade]) {
           stats[grade] = { total: 0, newCount: 0 };
         }
         stats[grade].total += 1;
-        
-        // "Yeni Kayıt" kontrolü - class içinde "YENİ KAYIT" veya "YK" geçiyorsa (büyük/küçük harf duyarsız)
-        const classUpper = (student.class || '').toUpperCase();
-        if (classUpper.includes('YENİ KAYIT') || classUpper.includes('YK')) {
+
+        // "YK" veya "YENİ KAYIT" kontrolü (büyük/küçük harf duyarsız)
+        const classText = (student.class || '').toUpperCase().trim();
+        if (classText.includes('YK') || classText.includes('YENİ KAYIT')) {
           stats[grade].newCount += 1;
         }
       });
 
-      console.log('📊 Hesaplanan istatistikler:', stats);
       setClassStats(stats);
     } catch (error) {
       console.error('İstatistikler alınamadı:', error);
@@ -70,7 +69,6 @@ const Students = () => {
       const { count, error: countError } = await supabase
         .from('students')
         .select('*', { count: 'exact', head: true });
-
       if (countError) throw countError;
       setTotalCount(count || 0);
 
@@ -91,7 +89,7 @@ const Students = () => {
           id: raw.id,
           firstName: raw.first_name || '',
           lastName: raw.last_name || '',
-          grade: raw.grade ? String(raw.grade).trim() : '',
+          grade: raw.grade || '',
           class: raw.class || '',
           studentNo: raw.student_no || '',
           tcNo: raw.tc_no || '',
@@ -152,8 +150,8 @@ const Students = () => {
       const encryptedData = {
         first_name: newStudent.firstName,
         last_name: newStudent.lastName,
-        grade: newStudent.grade.trim(),
-        class: newStudent.class.trim(),
+        grade: newStudent.grade,
+        class: newStudent.class,
         student_no: newStudent.studentNo,
         tc_no: encrypt(newStudent.tcNo),
         phone: encrypt(newStudent.phone),
@@ -180,8 +178,8 @@ const Students = () => {
           id: newRecord.id,
           firstName: newStudent.firstName,
           lastName: newStudent.lastName,
-          grade: newStudent.grade.trim(),
-          class: newStudent.class.trim(),
+          grade: newStudent.grade,
+          class: newStudent.class,
           studentNo: newStudent.studentNo,
           tcNo: newStudent.tcNo,
           phone: newStudent.phone,
@@ -232,7 +230,6 @@ const Students = () => {
       fetchStudents(currentPage);
     } catch (error) {
       console.error('Silme hatası:', error);
-      alert('Silme sırasında hata oluştu.');
     }
   };
 
@@ -242,7 +239,6 @@ const Students = () => {
       return;
     }
     if (!window.confirm(`${selectedIds.length} öğrenciyi silmek istediğinize emin misiniz?`)) return;
-
     try {
       const validIds = selectedIds.filter(id => id && typeof id === 'string');
       if (validIds.length === 0) {
@@ -253,7 +249,6 @@ const Students = () => {
       const deletePromises = validIds.map(id =>
         supabase.from('students').delete().eq('id', id)
       );
-
       const results = await Promise.all(deletePromises);
       const errors = results.filter(result => result.error);
       if (errors.length > 0) {
