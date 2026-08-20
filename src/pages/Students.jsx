@@ -30,10 +30,9 @@ const Students = () => {
     englishLevel: 'Core',
   });
 
-  // İstatistikleri getir (Sınıf bazında toplam ve Yeni Kayıt sayısı)
+  // 📊 İstatistikleri getir (Sınıf bazında toplam ve Yeni Kayıt sayısı)
   const fetchStats = async () => {
     try {
-      // Tüm öğrencilerin sınıf ve şube bilgilerini al
       const { data, error } = await supabase
         .from('students')
         .select('grade, class');
@@ -42,16 +41,21 @@ const Students = () => {
 
       const stats = {};
       data?.forEach(student => {
-        // grade'ı string'e çevir ve trim yap
-        const grade = student.grade ? String(student.grade).trim() : 'Belirsiz';
+        // GRADE normalize: sayısal kısmı al (örnek: "12" veya "12." veya "12. Sınıf" -> "12")
+        let grade = student.grade || 'Belirsiz';
+        const gradeMatch = grade.match(/(\d+)/);
+        if (gradeMatch) {
+          grade = gradeMatch[1]; // sadece rakamları al
+        }
+
         if (!stats[grade]) {
           stats[grade] = { total: 0, newCount: 0 };
         }
         stats[grade].total += 1;
 
-        // "YK" veya "YENİ KAYIT" kontrolü (büyük/küçük harf duyarsız)
-        const classText = (student.class || '').toUpperCase().trim();
-        if (classText.includes('YK') || classText.includes('YENİ KAYIT')) {
+        // "Yeni Kayıt" kontrolü (class içinde "YK" veya "YENİ KAYIT" geçiyorsa)
+        const classText = student.class || '';
+        if (classText.toUpperCase().includes('YK') || classText.toUpperCase().includes('YENİ KAYIT')) {
           stats[grade].newCount += 1;
         }
       });
@@ -62,13 +66,14 @@ const Students = () => {
     }
   };
 
-  // Öğrencileri getir (sayfalama ile)
+  // 📋 Öğrencileri getir (sayfalama ile)
   const fetchStudents = async (page = 1) => {
     setLoading(true);
     try {
       const { count, error: countError } = await supabase
         .from('students')
         .select('*', { count: 'exact', head: true });
+
       if (countError) throw countError;
       setTotalCount(count || 0);
 
@@ -140,6 +145,7 @@ const Students = () => {
     fetchStats();
   }, [currentPage]);
 
+  // ➕ Yeni öğrenci ekle
   const handleAddStudent = async (e) => {
     e.preventDefault();
     if (!newStudent.firstName || !newStudent.lastName || !newStudent.grade) {
@@ -217,6 +223,7 @@ const Students = () => {
     }
   };
 
+  // 🗑️ Tekil sil
   const handleDelete = async (id) => {
     if (!window.confirm('Bu öğrenciyi silmek istediğinize emin misiniz?')) return;
     try {
@@ -233,12 +240,14 @@ const Students = () => {
     }
   };
 
+  // 🗑️ Toplu sil (güvenli versiyon)
   const handleBulkDelete = async () => {
     if (selectedIds.length === 0) {
       alert('Lütfen silmek için en az bir öğrenci seçin.');
       return;
     }
     if (!window.confirm(`${selectedIds.length} öğrenciyi silmek istediğinize emin misiniz?`)) return;
+
     try {
       const validIds = selectedIds.filter(id => id && typeof id === 'string');
       if (validIds.length === 0) {
@@ -249,8 +258,10 @@ const Students = () => {
       const deletePromises = validIds.map(id =>
         supabase.from('students').delete().eq('id', id)
       );
+
       const results = await Promise.all(deletePromises);
       const errors = results.filter(result => result.error);
+
       if (errors.length > 0) {
         console.error('Toplu silme hataları:', errors);
         alert(`${errors.length} öğrenci silinirken hata oluştu. Detaylar konsolda.`);
@@ -267,6 +278,7 @@ const Students = () => {
     }
   };
 
+  // 🔄 Seçim işlemleri
   const toggleSelect = (id) => {
     setSelectedIds((prev) =>
       prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
@@ -282,6 +294,7 @@ const Students = () => {
   };
 
   const totalPages = Math.ceil(totalCount / pageSize);
+
   const goToPage = (page) => {
     if (page < 1 || page > totalPages) return;
     setCurrentPage(page);
@@ -373,6 +386,7 @@ const Students = () => {
         </div>
       </div>
 
+      {/* Yeni Öğrenci Formu */}
       {showForm && (
         <form
           onSubmit={handleAddStudent}
@@ -419,6 +433,7 @@ const Students = () => {
         </form>
       )}
 
+      {/* Öğrenci Listesi Tablosu */}
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', background: 'white', borderRadius: '8px', overflow: 'hidden', boxShadow: '0 0 10px rgba(0,0,0,0.05)' }}>
           <thead style={{ background: '#f1f1f1' }}>
@@ -470,6 +485,7 @@ const Students = () => {
         </table>
       </div>
 
+      {/* Sayfalama */}
       {totalPages > 1 && (
         <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem', marginTop: '1rem' }}>
           <button
