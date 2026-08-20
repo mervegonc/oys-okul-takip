@@ -25,21 +25,40 @@ const Students = () => {
     englishLevel: 'Core',
   });
 
-  // Öğrencileri getir (TC ve telefonları çöz - admin kontrolü true)
   const fetchStudents = async () => {
     try {
       const { data, error } = await supabase
         .from('students')
         .select('*')
-        .order('lastName', { ascending: true });
+        .order('last_name', { ascending: true });
       if (error) throw error;
 
-      const isAdmin = true; // İleride role göre ayarlanacak
+      const isAdmin = true;
       const processed = (data || []).map((raw) => {
-        let tcNo = raw.tcNo || '';
-        let phone = raw.phone || '';
-        let parentPhone = raw.parentPhone || '';
-        let parentPhone2 = raw.parentPhone2 || '';
+        // Supabase'den gelen snake_case alanları camelCase'e dönüştür
+        const student = {
+          id: raw.id,
+          firstName: raw.first_name || '',
+          lastName: raw.last_name || '',
+          grade: raw.grade || '',
+          class: raw.class || '',
+          studentNo: raw.student_no || '',
+          tcNo: raw.tc_no || '',
+          phone: raw.phone || '',
+          parentPhone: raw.parent_phone || '',
+          parentPhone2: raw.parent_phone2 || '',
+          field: raw.field || '',
+          secondLang: raw.second_lang || '',
+          gender: raw.gender || '',
+          englishLevel: raw.english_level || 'Core',
+          createdAt: raw.created_at,
+        };
+
+        // Şifreli alanları çöz
+        let tcNo = student.tcNo || '';
+        let phone = student.phone || '';
+        let parentPhone = student.parentPhone || '';
+        let parentPhone2 = student.parentPhone2 || '';
 
         if (isAdmin) {
           try {
@@ -58,8 +77,7 @@ const Students = () => {
         }
 
         return {
-          id: raw.id,
-          ...raw,
+          ...student,
           tcNo,
           phone,
           parentPhone,
@@ -79,7 +97,6 @@ const Students = () => {
     fetchStudents();
   }, []);
 
-  // Yeni öğrenci ekle (TC ve telefonları şifrele)
   const handleAddStudent = async (e) => {
     e.preventDefault();
     if (!newStudent.firstName || !newStudent.lastName || !newStudent.grade) {
@@ -88,12 +105,20 @@ const Students = () => {
     }
     try {
       const encryptedData = {
-        ...newStudent,
-        tcNo: encrypt(newStudent.tcNo),
+        first_name: newStudent.firstName,
+        last_name: newStudent.lastName,
+        grade: newStudent.grade,
+        class: newStudent.class,
+        student_no: newStudent.studentNo,
+        tc_no: encrypt(newStudent.tcNo),
         phone: encrypt(newStudent.phone),
-        parentPhone: encrypt(newStudent.parentPhone),
-        parentPhone2: encrypt(newStudent.parentPhone2),
-        createdAt: new Date().toISOString(),
+        parent_phone: encrypt(newStudent.parentPhone),
+        parent_phone2: encrypt(newStudent.parentPhone2),
+        field: newStudent.field,
+        second_lang: newStudent.secondLang,
+        gender: newStudent.gender,
+        english_level: newStudent.englishLevel,
+        created_at: new Date().toISOString(),
       };
 
       const { data, error } = await supabase
@@ -103,16 +128,25 @@ const Students = () => {
 
       if (error) throw error;
 
-      // Listeye eklerken şifresiz halini göster (çünkü admin)
+      // Listeye eklerken şifresiz halini göster
       const newRecord = data[0];
       setStudents([
         ...students,
         {
-          ...newRecord,
+          id: newRecord.id,
+          firstName: newStudent.firstName,
+          lastName: newStudent.lastName,
+          grade: newStudent.grade,
+          class: newStudent.class,
+          studentNo: newStudent.studentNo,
           tcNo: newStudent.tcNo,
           phone: newStudent.phone,
           parentPhone: newStudent.parentPhone,
           parentPhone2: newStudent.parentPhone2,
+          field: newStudent.field,
+          secondLang: newStudent.secondLang,
+          gender: newStudent.gender,
+          englishLevel: newStudent.englishLevel,
         },
       ]);
 
@@ -138,7 +172,6 @@ const Students = () => {
     }
   };
 
-  // Tekil sil
   const handleDelete = async (id) => {
     if (!window.confirm('Bu öğrenciyi silmek istediğinize emin misiniz?')) return;
     try {
@@ -153,7 +186,6 @@ const Students = () => {
     }
   };
 
-  // Toplu sil
   const handleBulkDelete = async () => {
     if (selectedIds.length === 0) {
       alert('Lütfen silmek için en az bir öğrenci seçin.');
@@ -175,14 +207,12 @@ const Students = () => {
     }
   };
 
-  // Seçim toggle
   const toggleSelect = (id) => {
     setSelectedIds((prev) =>
       prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
     );
   };
 
-  // Tümünü seç / seçimi kaldır
   const toggleSelectAll = () => {
     if (selectedIds.length === students.length) {
       setSelectedIds([]);
@@ -197,7 +227,6 @@ const Students = () => {
     <div style={{ padding: '1rem', maxWidth: '1200px', margin: '0 auto' }}>
       <h2>👨‍🎓 Öğrenci Yönetimi</h2>
 
-      {/* Excel Yükleme Bileşeni */}
       <ExcelUpload onUploadComplete={fetchStudents} />
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
@@ -238,7 +267,6 @@ const Students = () => {
         )}
       </div>
 
-      {/* Yeni Öğrenci Formu */}
       {showForm && (
         <form
           onSubmit={handleAddStudent}
@@ -285,7 +313,6 @@ const Students = () => {
         </form>
       )}
 
-      {/* Öğrenci Listesi */}
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', background: 'white', borderRadius: '8px', overflow: 'hidden', boxShadow: '0 0 10px rgba(0,0,0,0.05)' }}>
           <thead style={{ background: '#f1f1f1' }}>

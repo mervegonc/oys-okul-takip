@@ -12,16 +12,27 @@ const DisciplineTracking = () => {
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // Tüm öğrencileri Supabase'den getir
   useEffect(() => {
     const fetchStudents = async () => {
       try {
         const { data, error } = await supabase
           .from('students')
-          .select('*');
+          .select('*')
+          .order('last_name', { ascending: true });
         if (error) throw error;
-        setStudents(data || []);
-        setFilteredStudents(data || []);
+
+        // snake_case'den camelCase'e dönüştür
+        const formatted = (data || []).map((raw) => ({
+          id: raw.id,
+          firstName: raw.first_name || '',
+          lastName: raw.last_name || '',
+          grade: raw.grade || '',
+          class: raw.class || '',
+          studentNo: raw.student_no || '',
+          tcNo: raw.tc_no || '',
+        }));
+        setStudents(formatted);
+        setFilteredStudents(formatted);
       } catch (error) {
         console.error('Öğrenciler alınamadı:', error);
       }
@@ -29,7 +40,6 @@ const DisciplineTracking = () => {
     fetchStudents();
   }, []);
 
-  // Arama filtresi (aynı)
   useEffect(() => {
     if (searchTerm.trim() === '') {
       setFilteredStudents(students);
@@ -59,7 +69,6 @@ const DisciplineTracking = () => {
     setSelectedTypes({ late: false, dress: false });
   };
 
-  // Kaydet (Supabase insert)
   const handleSave = async () => {
     if (!selectedStudent) {
       setMessage('Lütfen bir öğrenci seçin.');
@@ -80,14 +89,14 @@ const DisciplineTracking = () => {
       const { error } = await supabase
         .from('discipline')
         .insert({
-          studentId: selectedStudent.id,
-          studentName: `${selectedStudent.firstName} ${selectedStudent.lastName}`,
+          student_id: selectedStudent.id,
+          student_name: `${selectedStudent.firstName} ${selectedStudent.lastName}`,
           class: selectedStudent.class,
           grade: selectedStudent.grade,
           type: type,
           note: note || '',
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
         });
 
       if (error) throw error;
@@ -109,7 +118,6 @@ const DisciplineTracking = () => {
         <FaClock /> Geç Kalma / Kıyafet Kaydı
       </h2>
 
-      {/* Arama Kutusu */}
       <div style={{ position: 'relative', marginBottom: '1rem' }}>
         <input
           type="text"
@@ -127,7 +135,6 @@ const DisciplineTracking = () => {
         <FaSearch style={{ position: 'absolute', right: '1rem', top: '50%', transform: 'translateY(-50%)', color: '#aaa' }} />
       </div>
 
-      {/* Öğrenci Listesi (arama sonuçları) */}
       {searchTerm && filteredStudents.length > 0 && !selectedStudent && (
         <div style={{ maxHeight: '300px', overflowY: 'auto', border: '1px solid #ddd', borderRadius: '8px', marginBottom: '1rem' }}>
           {filteredStudents.map((student) => (
@@ -154,7 +161,6 @@ const DisciplineTracking = () => {
         </div>
       )}
 
-      {/* Seçili Öğrenci Paneli */}
       {selectedStudent && (
         <div style={{
           padding: '1.5rem',
