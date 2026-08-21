@@ -23,7 +23,6 @@ const DisciplineReports = () => {
   const fetchRecords = async () => {
     setLoading(true);
     try {
-      // Tarih aralığını hesapla
       let start = null, end = null;
       const now = new Date();
       switch (dateRange) {
@@ -49,6 +48,11 @@ const DisciplineReports = () => {
           end = endOfDay(now);
       }
 
+      console.log('📊 fetchRecords çağrıldı');
+      console.log('📊 dateRange:', dateRange);
+      console.log('📊 start:', start?.toISOString(), 'end:', end?.toISOString());
+      console.log('📊 selectedGrade:', selectedGrade, 'selectedClass:', selectedClass);
+
       const { data, error } = await supabase.rpc('get_discipline_reports', {
         p_start_date: start ? start.toISOString() : null,
         p_end_date: end ? end.toISOString() : null,
@@ -57,6 +61,8 @@ const DisciplineReports = () => {
       });
 
       if (error) throw error;
+
+      console.log('📊 RPC sonucu gelen kayıt sayısı:', data?.length);
 
       const formattedData = (data || []).map(item => ({
         ...item,
@@ -86,7 +92,7 @@ const DisciplineReports = () => {
   const grades = ['all', ...new Set(records.map(r => r.grade).filter(Boolean))];
   const classes = ['all', ...new Set(records.map(r => r.class).filter(Boolean))];
 
-  // İstatistikler
+  // İstatistikler (records üzerinden hesaplanıyor)
   const totalLate = records.filter(r => r.type === 'late' || r.type === 'both').length;
   const totalDress = records.filter(r => r.type === 'dress' || r.type === 'both').length;
   const totalBoth = records.filter(r => r.type === 'both').length;
@@ -223,7 +229,7 @@ const DisciplineReports = () => {
     <div style={{ padding: '1rem', maxWidth: '1400px', margin: '0 auto' }}>
       <h2>Geç Kalma / Kıyafet Raporları</h2>
 
-      {/* Filtreler */}
+      {/* Filtreler - aynı */}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.5rem', padding: '1rem', background: '#f8f9fa', borderRadius: '12px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <FaCalendarAlt />
@@ -292,17 +298,12 @@ const DisciplineReports = () => {
       <div style={{ marginBottom: '2rem' }}>
         <h4>Sınıf Düzeyine Göre</h4>
         <table style={{ width: '100%', borderCollapse: 'collapse', background: 'white', borderRadius: '8px', overflow: 'hidden', boxShadow: '0 0 10px rgba(0,0,0,0.05)' }}>
-          <thead style={{ background: '#f1f1f1' }}><tr><th>Sınıf</th><th>Geç Kalan</th><th>Kıyafet İhlali</th><th>Toplam</th></tr></thead>
+          <thead><tr><th>Sınıf</th><th>Geç Kalan</th><th>Kıyafet İhlali</th><th>Toplam</th></tr></thead>
           <tbody>
             {gradeStats.map(stat => (
-              <tr key={stat.grade} style={{ borderBottom: '1px solid #eee' }}>
-                <td>{stat.grade}. Sınıf</td>
-                <td>{stat.late}</td>
-                <td>{stat.dress}</td>
-                <td>{stat.total}</td>
-              </tr>
+              <tr key={stat.grade}><td>{stat.grade}. Sınıf</td><td>{stat.late}</td><td>{stat.dress}</td><td>{stat.total}</td></tr>
             ))}
-            {gradeStats.length === 0 && <tr><td colSpan="4" style={{ textAlign: 'center' }}>Veri yok</td></tr>}
+            {gradeStats.length === 0 && <tr><td colSpan="4">Veri yok</td></tr>}
           </tbody>
         </table>
       </div>
@@ -311,17 +312,12 @@ const DisciplineReports = () => {
       <div style={{ marginBottom: '2rem' }}>
         <h4>Şubeye Göre</h4>
         <table style={{ width: '100%', borderCollapse: 'collapse', background: 'white', borderRadius: '8px', overflow: 'hidden', boxShadow: '0 0 10px rgba(0,0,0,0.05)' }}>
-          <thead style={{ background: '#f1f1f1' }}><tr><th>Şube</th><th>Geç Kalan</th><th>Kıyafet İhlali</th><th>Toplam</th></tr></thead>
+          <thead><tr><th>Şube</th><th>Geç Kalan</th><th>Kıyafet İhlali</th><th>Toplam</th></tr></thead>
           <tbody>
             {classStats.map(stat => (
-              <tr key={stat.class} style={{ borderBottom: '1px solid #eee' }}>
-                <td>{stat.class}</td>
-                <td>{stat.late}</td>
-                <td>{stat.dress}</td>
-                <td>{stat.total}</td>
-              </tr>
+              <tr key={stat.class}><td>{stat.class}</td><td>{stat.late}</td><td>{stat.dress}</td><td>{stat.total}</td></tr>
             ))}
-            {classStats.length === 0 && <tr><td colSpan="4" style={{ textAlign: 'center' }}>Veri yok</td></tr>}
+            {classStats.length === 0 && <tr><td colSpan="4">Veri yok</td></tr>}
           </tbody>
         </table>
       </div>
@@ -336,21 +332,13 @@ const DisciplineReports = () => {
         <div style={{ background: 'white', padding: '1rem', borderRadius: '12px', boxShadow: '0 0 10px rgba(0,0,0,0.05)' }}>
           <h4>En Çok Geç Kalanlar</h4>
           {lateLeaderList.length > 0 ? (
-            <ol style={{ paddingLeft: '1.2rem' }}>
-              {lateLeaderList.map((item, idx) => (
-                <li key={idx}><strong>{item.name}</strong> ({item.class}) - {item.count} kez</li>
-              ))}
-            </ol>
+            <ol>{lateLeaderList.map((item, idx) => <li key={idx}><strong>{item.name}</strong> ({item.class}) - {item.count} kez</li>)}</ol>
           ) : <p>Veri yok</p>}
         </div>
         <div style={{ background: 'white', padding: '1rem', borderRadius: '12px', boxShadow: '0 0 10px rgba(0,0,0,0.05)' }}>
           <h4>En Çok Kıyafet İhlali Yapanlar</h4>
           {dressLeaderList.length > 0 ? (
-            <ol style={{ paddingLeft: '1.2rem' }}>
-              {dressLeaderList.map((item, idx) => (
-                <li key={idx}><strong>{item.name}</strong> ({item.class}) - {item.count} kez</li>
-              ))}
-            </ol>
+            <ol>{dressLeaderList.map((item, idx) => <li key={idx}><strong>{item.name}</strong> ({item.class}) - {item.count} kez</li>)}</ol>
           ) : <p>Veri yok</p>}
         </div>
       </div>
@@ -359,14 +347,12 @@ const DisciplineReports = () => {
       <div style={{ marginTop: '2rem', background: 'white', borderRadius: '12px', padding: '1rem', boxShadow: '0 0 10px rgba(0,0,0,0.05)' }}>
         <h4>Tüm Kayıtlar</h4>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead style={{ background: '#f1f1f1' }}>
-            <tr>
-              <th>Öğrenci</th><th>Sınıf</th><th>Tür</th><th>Not</th><th>Tarih</th><th>Saat</th><th>İşlem</th>
-            </tr>
+          <thead>
+            <tr><th>Öğrenci</th><th>Sınıf</th><th>Tür</th><th>Not</th><th>Tarih</th><th>Saat</th><th>İşlem</th></tr>
           </thead>
           <tbody>
             {records.map(record => (
-              <tr key={record.id} style={{ borderBottom: '1px solid #eee' }}>
+              <tr key={record.id}>
                 <td>{record.studentName}</td>
                 <td>{record.grade}-{record.class}</td>
                 <td>
@@ -392,19 +378,19 @@ const DisciplineReports = () => {
                 <td>
                   {editingId === record.id ? (
                     <>
-                      <button onClick={() => handleUpdate(record.id)} style={{ background: '#28a745', color: 'white', border: 'none', borderRadius: '4px', padding: '0.2rem 0.5rem', marginRight: '0.3rem' }}>Kaydet</button>
-                      <button onClick={() => setEditingId(null)} style={{ background: '#6c757d', color: 'white', border: 'none', borderRadius: '4px', padding: '0.2rem 0.5rem' }}>İptal</button>
+                      <button onClick={() => handleUpdate(record.id)}>Kaydet</button>
+                      <button onClick={() => setEditingId(null)}>İptal</button>
                     </>
                   ) : (
                     <>
-                      <button onClick={() => handleEdit(record)} style={{ background: 'transparent', border: 'none', color: '#ffc107', cursor: 'pointer', marginRight: '0.5rem' }}><FaEdit /></button>
-                      <button onClick={() => handleDelete(record.id)} style={{ background: 'transparent', border: 'none', color: '#dc3545', cursor: 'pointer' }}><FaTrash /></button>
+                      <button onClick={() => handleEdit(record)}><FaEdit /></button>
+                      <button onClick={() => handleDelete(record.id)}><FaTrash /></button>
                     </>
                   )}
                 </td>
               </tr>
             ))}
-            {records.length === 0 && <tr><td colSpan="7" style={{ textAlign: 'center', padding: '1rem' }}>Kayıt yok</td></tr>}
+            {records.length === 0 && <tr><td colSpan="7">Kayıt yok</td></tr>}
           </tbody>
         </table>
       </div>
