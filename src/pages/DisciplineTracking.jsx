@@ -11,13 +11,45 @@ const DisciplineTracking = () => {
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [searching, setSearching] = useState(false);
+  const [totalStudentCount, setTotalStudentCount] = useState(0);
 
-  // 🔍 Server-side arama fonksiyonu (Debounce mantığı ile veritabanından direkt sorgular)
+  // 1. Veritabanındaki TOPLAM öğrenci sayısını ilk açılışta çek ve konsola yaz
+  useEffect(() => {
+    const fetchTotalCount = async () => {
+      try {
+        const { count, error } = await supabase
+          .from('students')
+          .select('*', { count: 'exact', head: true });
+
+        if (error) throw error;
+
+        setTotalStudentCount(count || 0);
+        console.log(`📊 [VERİTABANI DURUMU] Toplam ${count || 0} öğrenci kayıtlı.`);
+      } catch (err) {
+        console.error('Toplam öğrenci sayısı alınamadı:', err);
+      }
+    };
+
+    fetchTotalCount();
+  }, []);
+
+  // 2. Türkçe Büyük/Küçük Harf Dönüştürücü Yardımcı Fonksiyon
+  const normalizeText = (text) => {
+    return text
+      .replace(/i/g, 'İ')
+      .replace(/ı/g, 'I')
+      .replace(/ş/g, 'Ş')
+      .replace(/ğ/g, 'Ğ')
+      .replace(/ü/g, 'Ü')
+      .replace(/ö/g, 'Ö')
+      .replace(/ç/g, 'Ç');
+  };
+
+  // 3. Server-side Türkçe Harf Uyumlu Arama
   useEffect(() => {
     const searchStudents = async () => {
       const term = searchTerm.trim();
       
-      // En az 2 karakter girilince arama yap
       if (term.length < 2) {
         setSearchResults([]);
         return;
@@ -25,16 +57,25 @@ const DisciplineTracking = () => {
 
       setSearching(true);
       try {
-        // SQL level'da 'or' ve 'ilike' (büyük/küçük harf duyarsız) arama
-        const { data, error } = await supabase
+        // Hem kullanıcının yazdığı hali hem de Türkçe BÜYÜK harfe çevrilmiş hali ile arama yapıyoruz
+        const termOriginal = term;
+        const termUpper = normalizeText(term.toUpperCase());
+        const termLower = term.toLowerCase();
+
+        // OR filtresi: Küçük/Büyük ve Türkçe karakter ihtimallerinin hepsini kapsar
+        const searchQuery = `first_name.ilike.%${termOriginal}%,first_name.ilike.%${termUpper}%,first_name.ilike.%${termLower}%,last_name.ilike.%${termOriginal}%,last_name.ilike.%${termUpper}%,last_name.ilike.%${termLower}%,student_no.ilike.%${termOriginal}%,tc_no.ilike.%${termOriginal}%`;
+
+        const { data, error, count } = await supabase
           .from('students')
-          .select('*')
-          .or(`first_name.ilike.%${term}%,last_name.ilike.%${term}%,student_no.ilike.%${term}%,tc_no.ilike.%${term}%`)
-          .limit(50); // Arama sonucu için ilk 50 öğrenci yeterlidir
+          .select('*', { count: 'exact' })
+          .or(searchQuery)
+          .limit(100);
 
         if (error) throw error;
 
-        console.log(`🔍 [Arama Yapıldı] '${term}' için ${data?.length || 0} öğrenci bulundu.`);
+        console.log(`🔍 [ARAMA BİLGİSİ] Toplam ${totalStudentCount} öğrenci arasından '${term}' arandı.`);
+        console.log(`✅ [SONUÇ] Bulunan öğrenci sayısı: ${data?.length || 0}`);
+
         setSearchResults(data || []);
       } catch (error) {
         console.error('Öğrenci arama hatası:', error);
@@ -43,13 +84,12 @@ const DisciplineTracking = () => {
       }
     };
 
-    // Kullanıcı yazmayı bitirdikten 300ms sonra veritabanına istek at
     const delayDebounceFn = setTimeout(() => {
       searchStudents();
     }, 300);
 
     return () => clearTimeout(delayDebounceFn);
-  }, [searchTerm]);
+  }, [searchTerm, totalStudentCount]);
 
   const handleSelectStudent = (student) => {
     setSelectedStudent(student);
@@ -113,7 +153,7 @@ const DisciplineTracking = () => {
         <FaClock /> Geç Kalma / Kıyafet Kaydı
       </h2>
 
-      <div style={{ position: 'relative', marginBottom: '1rem' }}>
+      <div style={{ position: 'relative', marginBottom: '0.5rem' }}>
         <input
           type="text"
           placeholder="Aramak için öğrenci adı, soyadı veya okul no yazın..."
@@ -132,6 +172,11 @@ const DisciplineTracking = () => {
         ) : (
           <FaSearch style={{ position: 'absolute', right: '1rem', top: '50%', transform: 'translateY(-50%)', color: '#aaa' }} />
         )}
+      </div>
+
+      {/* Ekrandan da kaç öğrenci arasından arandığını takip edebileceğin bilgi etiketi */}
+      <div style={{ fontSize: '0.85rem', color: '#666', marginBottom: '1rem', textAlign: 'right' }}>
+        Sistemdeki Toplam Öğrenci: <strong>{totalStudentCount}</strong>
       </div>
 
       {searchTerm.trim().length >= 2 && searchResults.length === 0 && !searching && !selectedStudent && (
