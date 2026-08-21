@@ -1,13 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabase';
-import { FaPlus, FaTrash, FaUserPlus, FaSave } from 'react-icons/fa';
+import { FaPlus, FaTrash } from 'react-icons/fa';
 
 const ConflictGroups = () => {
   const [groups, setGroups] = useState([]);
   const [students, setStudents] = useState([]);
   const [selectedExam, setSelectedExam] = useState('');
   const [exams, setExams] = useState([]);
-  const [loading, setLoading] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
 
   // Tüm sınavları getir
@@ -36,7 +35,7 @@ const ConflictGroups = () => {
     const fetchStudents = async () => {
       const exam = exams.find(e => e.id === selectedExam);
       if (!exam) return;
-      const gradeLevels = exam.grade_levels || [];
+      const gradeLevels = exam.grade_levels || exam.gradeLevels || [];
       if (gradeLevels.length === 0) return;
       try {
         const { data, error } = await supabase
@@ -53,26 +52,28 @@ const ConflictGroups = () => {
   }, [selectedExam, exams]);
 
   // Mevcut çakışma gruplarını getir
-  useEffect(() => {
+  const fetchGroups = async () => {
     if (!selectedExam) {
       setGroups([]);
       return;
     }
-    const fetchGroups = async () => {
-      try {
-        const { data, error } = await supabase
-          .from('conflict_groups')
-          .select('*')
-          .eq('exam_id', selectedExam);
-        if (error) throw error;
-        setGroups(data || []);
-      } catch (error) {
-        console.error('Gruplar alınamadı:', error);
-      }
-    };
+    try {
+      const { data, error } = await supabase
+        .from('conflict_groups')
+        .select('*')
+        .eq('exam_id', selectedExam);
+      if (error) throw error;
+      setGroups(data || []);
+    } catch (error) {
+      console.error('Gruplar alınamadı:', error);
+    }
+  };
+
+  useEffect(() => {
     fetchGroups();
   }, [selectedExam]);
 
+  // Yeni Grup Ekle
   const handleAddGroup = async () => {
     if (!newGroupName.trim()) {
       alert('Grup adı girin.');
@@ -83,25 +84,29 @@ const ConflictGroups = () => {
       return;
     }
     try {
-      const { data, error } = await supabase
+      // 🛠️ created_at ISO string'e dönüştürüldü, insert payload sadeleştirildi
+      const { error } = await supabase
         .from('conflict_groups')
-        .insert({
-          name: newGroupName.trim(),
-          exam_id: selectedExam,
-          student_ids: [],
-          created_at: new Date(),
-        })
-        .select()
-        .single();
+        .insert([
+          {
+            name: newGroupName.trim(),
+            exam_id: selectedExam,
+            student_ids: [],
+            created_at: new Date().toISOString(),
+          }
+        ]);
+
       if (error) throw error;
+
       setNewGroupName('');
-      setGroups([...groups, data]);
+      await fetchGroups(); // Listeyi güncel veritabanından yenile
     } catch (error) {
       console.error('Grup eklenirken hata:', error);
-      alert('Grup eklenirken hata oluştu.');
+      alert('Grup eklenirken hata oluştu: ' + (error.message || 'Bilinmeyen hata'));
     }
   };
 
+  // Grup Sil
   const handleDeleteGroup = async (groupId) => {
     if (!window.confirm('Bu grubu silmek istediğinize emin misiniz?')) return;
     try {
@@ -117,15 +122,17 @@ const ConflictGroups = () => {
     }
   };
 
+  // Gruba Öğrenci Ekle
   const handleAddStudentToGroup = async (groupId, studentId) => {
     const group = groups.find(g => g.id === groupId);
     if (!group) return;
-    if (group.student_ids.includes(studentId)) {
+    const currentStudentIds = group.student_ids || [];
+    if (currentStudentIds.includes(studentId)) {
       alert('Bu öğrenci zaten grupta.');
       return;
     }
     try {
-      const updatedStudentIds = [...group.student_ids, studentId];
+      const updatedStudentIds = [...currentStudentIds, studentId];
       const { error } = await supabase
         .from('conflict_groups')
         .update({ student_ids: updatedStudentIds })
@@ -140,10 +147,12 @@ const ConflictGroups = () => {
     }
   };
 
+  // Grup İçinden Öğrenci Çıkar
   const handleRemoveStudentFromGroup = async (groupId, studentId) => {
     const group = groups.find(g => g.id === groupId);
     if (!group) return;
-    const updatedStudentIds = group.student_ids.filter(id => id !== studentId);
+    const currentStudentIds = group.student_ids || [];
+    const updatedStudentIds = currentStudentIds.filter(id => String(id) !== String(studentId));
     try {
       const { error } = await supabase
         .from('conflict_groups')
@@ -169,7 +178,7 @@ const ConflictGroups = () => {
 
       {/* Sınav Seçimi */}
       <div style={{ marginBottom: '1rem' }}>
-        <label>Sınav Seçin</label>
+        <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '0.5rem' }}>Sınav Seçin</label>
         <select
           value={selectedExam}
           onChange={(e) => setSelectedExam(e.target.value)}
@@ -190,7 +199,7 @@ const ConflictGroups = () => {
           <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem' }}>
             <input
               type="text"
-              placeholder="Grup adı (örn: KOPYA-1)"
+              placeholder="Grup adı (örn: 12. Sınıf SBS kopya-1)"
               value={newGroupName}
               onChange={(e) => setNewGroupName(e.target.value)}
               style={{ flex: 1, padding: '0.5rem', border: '1px solid #ddd', borderRadius: '4px' }}
@@ -214,10 +223,11 @@ const ConflictGroups = () => {
           </div>
 
           {/* Grup Listesi */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px,1fr))', gap: '1rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1rem' }}>
             {groups.map((group) => {
-              const groupStudents = students.filter(s => group.student_ids?.includes(s.id));
-              const availableStudents = students.filter(s => !group.student_ids?.includes(s.id));
+              const currentIds = group.student_ids || [];
+              const groupStudents = students.filter(s => currentIds.map(String).includes(String(s.id)));
+              const availableStudents = students.filter(s => !currentIds.map(String).includes(String(s.id)));
 
               return (
                 <div
@@ -252,8 +262,8 @@ const ConflictGroups = () => {
                     ) : (
                       <ul style={{ paddingLeft: '1.2rem', margin: '0.3rem 0' }}>
                         {groupStudents.map(s => (
-                          <li key={s.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span>{s.first_name} {s.last_name} ({s.grade}-{s.class})</span>
+                          <li key={s.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '0.2rem 0' }}>
+                            <span>{s.first_name || s.firstName} {s.last_name || s.lastName} ({s.grade}-{s.class})</span>
                             <button
                               onClick={() => handleRemoveStudentFromGroup(group.id, s.id)}
                               style={{
@@ -272,9 +282,9 @@ const ConflictGroups = () => {
                     )}
                   </div>
 
-                  {/* Öğrenci Ekleme */}
+                  {/* Öğrenci Ekleme Select */}
                   {availableStudents.length > 0 && (
-                    <div style={{ display: 'flex', gap: '0.3rem' }}>
+                    <div style={{ display: 'flex', gap: '0.3rem', marginTop: '0.5rem' }}>
                       <select
                         onChange={(e) => {
                           if (e.target.value) {
@@ -287,7 +297,7 @@ const ConflictGroups = () => {
                         <option value="">Öğrenci ekle...</option>
                         {availableStudents.map(s => (
                           <option key={s.id} value={s.id}>
-                            {s.first_name} {s.last_name} ({s.grade}-{s.class})
+                            {s.first_name || s.firstName} {s.last_name || s.lastName} ({s.grade}-{s.class})
                           </option>
                         ))}
                       </select>
