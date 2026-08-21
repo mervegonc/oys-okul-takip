@@ -63,10 +63,14 @@ const Rooms = () => {
       return;
     }
 
-    const data = {
-      ...formData,
+    // 🛠️ Supabase sütun adlarına uygun snake_case haritalama
+    const payload = {
+      name: formData.name,
       capacity: Number(formData.capacity),
-      extraSeatsAdded: Number(formData.extraSeatsAdded || 0),
+      floor: formData.floor || '',
+      class: formData.class || '',
+      has_extra_seats: formData.hasExtraSeats,
+      extra_seats_added: Number(formData.extraSeatsAdded || 0),
     };
 
     try {
@@ -74,17 +78,17 @@ const Rooms = () => {
         // Güncelleme
         const { error } = await supabase
           .from('rooms')
-          .update(data)
+          .update(payload)
           .eq('id', editingId);
         if (error) throw error;
         alert('Salon güncellendi.');
       } else {
-        // Ekleme
+        // Ekleme (createdAt yerine created_at gönderiliyor)
         const { error } = await supabase
           .from('rooms')
           .insert({
-            ...data,
-            createdAt: new Date().toISOString(),
+            ...payload,
+            created_at: new Date().toISOString(),
           });
         if (error) throw error;
         alert('Salon eklendi.');
@@ -117,8 +121,8 @@ const Rooms = () => {
       capacity: room.capacity || '',
       floor: room.floor || '',
       class: room.class || '',
-      hasExtraSeats: room.hasExtraSeats || false,
-      extraSeatsAdded: room.extraSeatsAdded || 0,
+      hasExtraSeats: room.has_extra_seats ?? room.hasExtraSeats ?? false,
+      extraSeatsAdded: room.extra_seats_added ?? room.extraSeatsAdded ?? 0,
     });
     setEditingId(room.id);
     setShowForm(true);
@@ -285,41 +289,45 @@ const Rooms = () => {
           </tr>
         </thead>
         <tbody>
-          {rooms.map((room, index) => (
-            <tr key={room.id} style={{ borderBottom: '1px solid #eee' }}>
-              <td style={{ padding: '0.5rem', textAlign: 'center' }}>{index + 1}</td>
-              <td style={{ padding: '0.5rem' }}>{room.name}</td>
-              <td style={{ padding: '0.5rem' }}>{room.class || '-'}</td>
-              <td style={{ padding: '0.5rem' }}>{room.capacity}</td>
-              <td style={{ padding: '0.5rem' }}>{room.floor || '-'}</td>
-              <td style={{ padding: '0.5rem' }}>{room.hasExtraSeats ? `${room.extraSeatsAdded || 0} adet` : 'Yok'}</td>
-              <td style={{ padding: '0.5rem' }}>
-                <button
-                  onClick={() => handleEdit(room)}
-                  style={{
-                    background: 'transparent',
-                    border: 'none',
-                    color: '#ffc107',
-                    cursor: 'pointer',
-                    marginRight: '0.5rem',
-                  }}
-                >
-                  <FaEdit />
-                </button>
-                <button
-                  onClick={() => handleDelete(room.id)}
-                  style={{
-                    background: 'transparent',
-                    border: 'none',
-                    color: '#dc3545',
-                    cursor: 'pointer',
-                  }}
-                >
-                  <FaTrash />
-                </button>
-              </td>
-            </tr>
-          ))}
+          {rooms.map((room, index) => {
+            const hasExtra = room.has_extra_seats ?? room.hasExtraSeats;
+            const extraCount = room.extra_seats_added ?? room.extraSeatsAdded;
+            return (
+              <tr key={room.id} style={{ borderBottom: '1px solid #eee' }}>
+                <td style={{ padding: '0.5rem', textAlign: 'center' }}>{index + 1}</td>
+                <td style={{ padding: '0.5rem' }}>{room.name}</td>
+                <td style={{ padding: '0.5rem' }}>{room.class || '-'}</td>
+                <td style={{ padding: '0.5rem' }}>{room.capacity}</td>
+                <td style={{ padding: '0.5rem' }}>{room.floor || '-'}</td>
+                <td style={{ padding: '0.5rem' }}>{hasExtra ? `${extraCount || 0} adet` : 'Yok'}</td>
+                <td style={{ padding: '0.5rem' }}>
+                  <button
+                    onClick={() => handleEdit(room)}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      color: '#ffc107',
+                      cursor: 'pointer',
+                      marginRight: '0.5rem',
+                    }}
+                  >
+                    <FaEdit />
+                  </button>
+                  <button
+                    onClick={() => handleDelete(room.id)}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      color: '#dc3545',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <FaTrash />
+                  </button>
+                </td>
+              </tr>
+            );
+          })}
           {rooms.length === 0 && (
             <tr>
               <td colSpan="7" style={{ textAlign: 'center', padding: '1rem' }}>
