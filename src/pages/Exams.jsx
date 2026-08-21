@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabase';
-import { FaPlus, FaTrash, FaEdit, FaEye } from 'react-icons/fa';
+import { FaPlus, FaTrash } from 'react-icons/fa';
 
 const Exams = () => {
   const [exams, setExams] = useState([]);
@@ -32,7 +32,7 @@ const Exams = () => {
       const { data, error } = await supabase
         .from('exams')
         .select('*')
-        .order('createdAt', { ascending: false });
+        .order('created_at', { ascending: false }); // 🛠️ createdAt -> created_at yapıldı
       if (error) throw error;
       setExams(data || []);
     } catch (error) {
@@ -65,6 +65,7 @@ const Exams = () => {
       return;
     }
     try {
+      // 🛠️ Tüm key'ler Supabase sütun isimlerine uygun snake_case yapıldı
       const { error } = await supabase
         .from('exams')
         .insert({
@@ -72,13 +73,14 @@ const Exams = () => {
           date: formData.date,
           type: formData.type,
           level: formData.level,
-          gradeLevels: formData.gradeLevels,
-          isMixed: formData.isMixed,
-          sessionCount: formData.sessionCount,
-          customHeader: formData.customHeader || '',
-          customFooter: formData.customFooter || '',
-          createdAt: new Date().toISOString(),
+          grade_levels: formData.gradeLevels,
+          is_mixed: formData.isMixed,
+          session_count: parseInt(formData.sessionCount),
+          custom_header: formData.customHeader || '',
+          custom_footer: formData.customFooter || '',
+          created_at: new Date().toISOString(),
         });
+
       if (error) throw error;
 
       setShowForm(false);
@@ -269,9 +271,9 @@ const Exams = () => {
               <td>{exam.date}</td>
               <td>{exam.type}</td>
               <td>{exam.level === 'high' ? 'Lise' : 'Ortaokul'}</td>
-              <td>{exam.gradeLevels?.join(', ') || '-'}</td>
-              <td>{exam.isMixed ? 'Evet' : 'Hayır'}</td>
-              <td>{exam.sessionCount}</td>
+              <td>{(exam.grade_levels || exam.gradeLevels)?.join(', ') || '-'}</td>
+              <td>{(exam.is_mixed ?? exam.isMixed) ? 'Evet' : 'Hayır'}</td>
+              <td>{exam.session_count || exam.sessionCount}</td>
               <td>
                 <button onClick={() => handleDelete(exam.id)} style={{ background: 'transparent', border: 'none', color: '#dc3545', cursor: 'pointer' }}>
                   <FaTrash />
@@ -285,5 +287,5 @@ const Exams = () => {
     </div>
   );
 };
-
+/* */
 export default Exams;
