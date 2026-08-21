@@ -21,6 +21,7 @@ const DisciplineReports = () => {
   const [editType, setEditType] = useState('');
 
   // 1. Veri Çekme useEffect'i (Filtre parametrelerini bağımlılık dizisine ekledik)
+
 useEffect(() => {
   const fetchRecords = async () => {
     setLoading(true);
@@ -43,6 +44,13 @@ useEffect(() => {
         end = endDate ? endOfDay(new Date(endDate)).toISOString() : null;
       }
 
+      console.log('🔍 [ARAMA BAŞLADI] Parametreler:', {
+        p_start_date: start,
+        p_end_date: end,
+        p_grade: selectedGrade,
+        p_class: selectedClass
+      });
+
       const { data, error } = await supabase.rpc('get_discipline_reports', {
         p_start_date: start,
         p_end_date: end,
@@ -52,7 +60,15 @@ useEffect(() => {
 
       if (error) throw error;
 
-      console.log(`[RPC Başarılı] Toplam ${data?.length || 0} kayıt çekildi.`);
+      // KONSOL KONTROLÜ
+      console.log(`✅ [ARAMA TAMAMLANDI] Toplam Gelen Satır: ${data?.length || 0}`);
+      
+      const gradeCounts = (data || []).reduce((acc, curr) => {
+        acc[curr.grade] = (acc[curr.grade] || 0) + 1;
+        return acc;
+      }, {});
+      
+      console.log('📊 Sınıf Düzeylerine Göre Dağılım:', gradeCounts);
 
       const formattedData = (data || []).map(item => ({
         ...item,
@@ -64,15 +80,14 @@ useEffect(() => {
       setRecords(formattedData);
       setFilteredRecords(formattedData);
     } catch (error) {
-      console.error('Kayıtlar alınamadı:', error);
+      console.error('❌ Kayıtlar alınamadı:', error);
     } finally {
       setLoading(false);
     }
   };
 
   fetchRecords();
-}, [dateRange, startDate, endDate, selectedGrade, selectedClass]); // Bağımlılıklar eklendi
-
+}, [dateRange, startDate, endDate, selectedGrade, selectedClass]);
 
   // Filtreleme (client-side)
   useEffect(() => {
