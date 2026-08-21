@@ -46,50 +46,75 @@ const DisciplineTracking = () => {
   };
 
   // 3. Server-side Türkçe Harf Uyumlu Arama
-  useEffect(() => {
-    const searchStudents = async () => {
-      const term = searchTerm.trim();
+ // 🔍 Server-side Türkçe Harf / Aksan Duyarsız Arama
+useEffect(() => {
+  const searchStudents = async () => {
+    const term = searchTerm.trim();
+    
+    if (term.length < 2) {
+      setSearchResults([]);
+      return;
+    }
+
+    setSearching(true);
+    try {
+      // Türkçe karakter dönüşümleri
+      const termOriginal = term;
       
-      if (term.length < 2) {
-        setSearchResults([]);
-        return;
-      }
+      // 1. Türkçe kurallarına göre BÜYÜK harfe çevir (i -> İ, ı -> I)
+      const termUpperTr = term.toLocaleUpperCase('tr-TR'); 
+      
+      // 2. Türkçe kurallarına göre KÜÇÜK harfe çevir (İ -> i, I -> ı)
+      const termLowerTr = term.toLocaleLowerCase('tr-TR');
 
-      setSearching(true);
-      try {
-        // Hem kullanıcının yazdığı hali hem de Türkçe BÜYÜK harfe çevrilmiş hali ile arama yapıyoruz
-        const termOriginal = term;
-        const termUpper = normalizeText(term.toUpperCase());
-        const termLower = term.toLowerCase();
+      // 3. i / ı harf değişimi varyasyonları (PostgreSQL colation esnekliği için)
+      const termAlt = termOriginal
+        .replace(/i/g, 'İ')
+        .replace(/ı/g, 'I')
+        .replace(/I/g, 'ı')
+        .replace(/İ/g, 'i');
 
-        // OR filtresi: Küçük/Büyük ve Türkçe karakter ihtimallerinin hepsini kapsar
-        const searchQuery = `first_name.ilike.%${termOriginal}%,first_name.ilike.%${termUpper}%,first_name.ilike.%${termLower}%,last_name.ilike.%${termOriginal}%,last_name.ilike.%${termUpper}%,last_name.ilike.%${termLower}%,student_no.ilike.%${termOriginal}%,tc_no.ilike.%${termOriginal}%`;
+      // OR Sorgusu: Tüm Türkçe büyük/küçük/alt harf kombinasyonlarını kapsar
+      const searchQuery = [
+        `first_name.ilike.%${termOriginal}%`,
+        `first_name.ilike.%${termUpperTr}%`,
+        `first_name.ilike.%${termLowerTr}%`,
+        `first_name.ilike.%${termAlt}%`,
+        `last_name.ilike.%${termOriginal}%`,
+        `last_name.ilike.%${termUpperTr}%`,
+        `last_name.ilike.%${termLowerTr}%`,
+        `last_name.ilike.%${termAlt}%`,
+        `student_no.ilike.%${termOriginal}%`,
+        `tc_no.ilike.%${termOriginal}%`
+      ].join(',');
 
-        const { data, error, count } = await supabase
-          .from('students')
-          .select('*', { count: 'exact' })
-          .or(searchQuery)
-          .limit(100);
+      const { data, error } = await supabase
+        .from('students')
+        .select('*')
+        .or(searchQuery)
+        .limit(100);
 
-        if (error) throw error;
+      if (error) throw error;
 
-        console.log(`🔍 [ARAMA BİLGİSİ] Toplam ${totalStudentCount} öğrenci arasından '${term}' arandı.`);
-        console.log(`✅ [SONUÇ] Bulunan öğrenci sayısı: ${data?.length || 0}`);
+      console.log(`🔍 [ARAMA yapıldı] Toplam ${totalStudentCount} öğrenci arasından '${termOriginal}' arandı.`);
+      console.log(`✅ [SONUÇ] Bulunan öğrenci sayısı: ${data?.length || 0}`);
 
-        setSearchResults(data || []);
-      } catch (error) {
-        console.error('Öğrenci arama hatası:', error);
-      } finally {
-        setSearching(false);
-      }
-    };
+      setSearchResults(data || []);
+    } catch (error) {
+      console.error('Öğrenci arama hatası:', error);
+    } finally {
+      setSearching(false);
+    }
+  };
 
-    const delayDebounceFn = setTimeout(() => {
-      searchStudents();
-    }, 300);
+  const delayDebounceFn = setTimeout(() => {
+    searchStudents();
+  }, 300);
 
-    return () => clearTimeout(delayDebounceFn);
-  }, [searchTerm, totalStudentCount]);
+  return () => clearTimeout(delayDebounceFn);
+}, [searchTerm, totalStudentCount]);
+
+
 
   const handleSelectStudent = (student) => {
     setSelectedStudent(student);
