@@ -287,5 +287,5 @@ const Exams = () => {
     </div>
   );
 };
-/* */
+/* sss*/
 export default Exams;
