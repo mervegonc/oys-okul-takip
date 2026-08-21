@@ -17,10 +17,11 @@ const SeatingDistribution = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
+        // 🛠️ createdAt yerine created_at düzeltildi
         const { data: examData, error: examError } = await supabase
           .from('exams')
           .select('*')
-          .order('createdAt', { ascending: false });
+          .order('created_at', { ascending: false });
         if (examError) throw examError;
         setExams(examData || []);
 
@@ -48,12 +49,16 @@ const SeatingDistribution = () => {
     const fetchStudentsForExam = async () => {
       const exam = exams.find(e => e.id === selectedExam);
       if (!exam) return;
-      const gradeLevels = exam.gradeLevels || [];
+
+      // 🛠️ grade_levels or gradeLevels kontrolü
+      const gradeLevels = exam.grade_levels || exam.gradeLevels || [];
       if (gradeLevels.length === 0) {
         setStudents([]);
         setAllClasses([]);
+        setMessage('Seçili sınav için sınıf seviyesi tanımlanmamış.');
         return;
       }
+
       try {
         const { data, error } = await supabase
           .from('students')
@@ -65,7 +70,11 @@ const SeatingDistribution = () => {
 
         // Benzersiz şubeleri çıkar (grade + class)
         const classSet = new Set();
-        (data || []).forEach(s => classSet.add(`${s.grade}-${s.class}`));
+        (data || []).forEach(s => {
+          if (s.grade && s.class) {
+            classSet.add(`${s.grade}-${s.class}`);
+          }
+        });
         const sortedClasses = Array.from(classSet).sort();
         setAllClasses(sortedClasses);
 
@@ -157,7 +166,9 @@ const SeatingDistribution = () => {
       const { data: conflictGroups, error: conflictError } = await supabase
         .from('conflict_groups')
         .select('*');
-      if (conflictError) throw conflictError;
+      if (conflictError && conflictError.code !== 'PGRST116') {
+        console.warn('Çakışma grupları okunamadı:', conflictError);
+      }
 
       // Öğrencileri şubelerine göre grupla
       const studentMap = {};
@@ -172,7 +183,7 @@ const SeatingDistribution = () => {
       const roomData = rooms.filter(r => allRoomIds.includes(r.id));
       const roomUsage = roomData.map(room => ({
         roomId: room.id,
-        capacity: room.capacity + (room.extraSeatsAdded || 0),
+        capacity: Number(room.capacity || 0) + Number(room.extra_seats_added || room.extraSeatsAdded || 0),
         students: [],
       }));
 
@@ -208,7 +219,7 @@ const SeatingDistribution = () => {
             }
           }
           if (!placed) {
-            throw new Error(`"${group.name}" için yeterli kapasite yok.`);
+            throw new Error(`"${group.name}" için yeterli salon kapasitesi yok.`);
           }
         }
       }
@@ -216,7 +227,7 @@ const SeatingDistribution = () => {
       // 2. ÇAKIŞMA DÜZELTMESİ
       if (conflictGroups && conflictGroups.length > 0) {
         for (const conflictGroup of conflictGroups) {
-          const conflictStudentIds = conflictGroup.studentIds || [];
+          const conflictStudentIds = conflictGroup.student_ids || conflictGroup.studentIds || [];
           if (conflictStudentIds.length < 2) continue;
 
           const conflictAssignments = [];
@@ -260,22 +271,22 @@ const SeatingDistribution = () => {
       roomUsage.forEach(ra => {
         ra.students.forEach((student, idx) => {
           assignments.push({
-            studentId: student.id,
-            roomId: ra.roomId,
-            seatNumber: idx + 1,
-            studentName: `${student.firstName} ${student.lastName}`,
+            student_id: student.id,
+            room_id: ra.roomId,
+            seat_number: idx + 1,
+            student_name: `${student.first_name || student.firstName || ''} ${student.last_name || student.lastName || ''}`.trim(),
             class: student.class,
             grade: student.grade,
           });
         });
       });
 
-      // Supabase'e kaydet
+      // Supabase'e kaydet (snake_case haritalama)
       const { error: insertError } = await supabase
         .from('seating_plans')
         .insert({
-          examId: selectedExam,
-          createdAt: new Date().toISOString(),
+          exam_id: selectedExam,
+          created_at: new Date().toISOString(),
           assignments: assignments,
         });
       if (insertError) throw insertError;
@@ -296,18 +307,21 @@ const SeatingDistribution = () => {
 
       {/* Sınav Seçimi */}
       <div style={{ marginBottom: '1.5rem' }}>
-        <label>Sınav Seçin</label>
+        <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '0.5rem' }}>Sınav Seçin</label>
         <select
           value={selectedExam}
           onChange={(e) => setSelectedExam(e.target.value)}
           style={{ width: '100%', padding: '0.5rem', border: '1px solid #ddd', borderRadius: '4px' }}
         >
           <option value="">-- Sınav Seçin --</option>
-          {exams.map(exam => (
-            <option key={exam.id} value={exam.id}>
-              {exam.title} ({exam.date}) - {exam.gradeLevels?.join(', ')}. Sınıflar
-            </option>
-          ))}
+          {exams.map(exam => {
+            const grades = exam.grade_levels || exam.gradeLevels || [];
+            return (
+              <option key={exam.id} value={exam.id}>
+                {exam.title} ({exam.date}) - {grades.join(', ')}. Sınıflar
+              </option>
+            );
+          })}
         </select>
       </div>
 
@@ -330,12 +344,15 @@ const SeatingDistribution = () => {
         <div style={{ marginBottom: '1.5rem', padding: '1rem', background: '#f8f9fa', borderRadius: '8px' }}>
           <h4>Mevcut Salonlar</h4>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-            {rooms.map(room => (
-              <span key={room.id} style={{ padding: '0.3rem 0.8rem', background: '#e9ecef', borderRadius: '4px', fontSize: '0.9rem' }}>
-                {room.name} ({room.capacity + (room.extraSeatsAdded || 0)})
-                {room.class && ` - ${room.class}`}
-              </span>
-            ))}
+            {rooms.map(room => {
+              const totalCap = Number(room.capacity || 0) + Number(room.extra_seats_added || room.extraSeatsAdded || 0);
+              return (
+                <span key={room.id} style={{ padding: '0.3rem 0.8rem', background: '#e9ecef', borderRadius: '4px', fontSize: '0.9rem' }}>
+                  {room.name} ({totalCap})
+                  {room.class && ` - ${room.class}`}
+                </span>
+              );
+            })}
           </div>
         </div>
       )}
@@ -404,23 +421,26 @@ const SeatingDistribution = () => {
             <div>
               <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '0.3rem' }}>Salonlar:</label>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-                {rooms.map(room => (
-                  <button
-                    key={room.id}
-                    onClick={() => toggleRoomForGroup(group.id, room.id)}
-                    style={{
-                      padding: '0.3rem 0.8rem',
-                      background: group.roomIds.includes(room.id) ? '#007bff' : '#e9ecef',
-                      color: group.roomIds.includes(room.id) ? 'white' : '#333',
-                      border: '1px solid #ddd',
-                      borderRadius: '4px',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    {room.name} ({room.capacity + (room.extraSeatsAdded || 0)})
-                    {room.class && ` - ${room.class}`}
-                  </button>
-                ))}
+                {rooms.map(room => {
+                  const totalCap = Number(room.capacity || 0) + Number(room.extra_seats_added || room.extraSeatsAdded || 0);
+                  return (
+                    <button
+                      key={room.id}
+                      onClick={() => toggleRoomForGroup(group.id, room.id)}
+                      style={{
+                        padding: '0.3rem 0.8rem',
+                        background: group.roomIds.includes(room.id) ? '#007bff' : '#e9ecef',
+                        color: group.roomIds.includes(room.id) ? 'white' : '#333',
+                        border: '1px solid #ddd',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {room.name} ({totalCap})
+                      {room.class && ` - ${room.class}`}
+                    </button>
+                  );
+                })}
               </div>
               <div style={{ fontSize: '0.8rem', color: '#666', marginTop: '0.3rem' }}>
                 Seçili: {group.roomIds.length} salon
@@ -429,7 +449,7 @@ const SeatingDistribution = () => {
           </div>
         ))}
 
-        {groups.length === 0 && (
+        {groups.length === 0 && selectedExam && (
           <p style={{ textAlign: 'center', color: '#666' }}>
             Henüz grup oluşturulmamış. "Grup Ekle" butonuna tıklayarak başlayın.
           </p>
@@ -466,23 +486,23 @@ const SeatingDistribution = () => {
             <table style={{ width: '100%', borderCollapse: 'collapse', background: 'white', borderRadius: '8px', overflow: 'hidden', boxShadow: '0 0 10px rgba(0,0,0,0.05)' }}>
               <thead style={{ background: '#f1f1f1' }}>
                 <tr>
-                  <th>#</th>
-                  <th>Öğrenci</th>
-                  <th>Sınıf</th>
-                  <th>Salon</th>
-                  <th>Sıra No</th>
+                  <th style={{ padding: '0.5rem' }}>#</th>
+                  <th style={{ padding: '0.5rem' }}>Öğrenci</th>
+                  <th style={{ padding: '0.5rem' }}>Sınıf</th>
+                  <th style={{ padding: '0.5rem' }}>Salon</th>
+                  <th style={{ padding: '0.5rem' }}>Sıra No</th>
                 </tr>
               </thead>
               <tbody>
                 {distributions.map((item, index) => {
-                  const room = rooms.find(r => r.id === item.roomId);
+                  const room = rooms.find(r => r.id === item.room_id || r.id === item.roomId);
                   return (
                     <tr key={index} style={{ borderBottom: '1px solid #eee' }}>
                       <td style={{ padding: '0.5rem', textAlign: 'center' }}>{index + 1}</td>
-                      <td style={{ padding: '0.5rem' }}>{item.studentName}</td>
+                      <td style={{ padding: '0.5rem' }}>{item.student_name}</td>
                       <td style={{ padding: '0.5rem' }}>{item.grade}-{item.class}</td>
-                      <td style={{ padding: '0.5rem' }}>{room?.name || item.roomId}</td>
-                      <td style={{ padding: '0.5rem' }}>{item.seatNumber}</td>
+                      <td style={{ padding: '0.5rem' }}>{room?.name || item.room_id}</td>
+                      <td style={{ padding: '0.5rem' }}>{item.seat_number}</td>
                     </tr>
                   );
                 })}
