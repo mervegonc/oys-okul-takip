@@ -47,6 +47,7 @@ const DisciplineTracking = () => {
 
   // 3. Server-side Türkçe Harf Uyumlu Arama
  // 🔍 Server-side Türkçe Harf / Aksan Duyarsız Arama
+// 🔍 Server-Side Çoklu İsim ve Parçalı Kelime Arama
 useEffect(() => {
   const searchStudents = async () => {
     const term = searchTerm.trim();
@@ -58,45 +59,45 @@ useEffect(() => {
 
     setSearching(true);
     try {
-      // Türkçe karakter dönüşümleri
-      const termOriginal = term;
-      
-      // 1. Türkçe kurallarına göre BÜYÜK harfe çevir (i -> İ, ı -> I)
-      const termUpperTr = term.toLocaleUpperCase('tr-TR'); 
-      
-      // 2. Türkçe kurallarına göre KÜÇÜK harfe çevir (İ -> i, I -> ı)
-      const termLowerTr = term.toLocaleLowerCase('tr-TR');
+      // 1. Arama metnini boşluklara göre kelimelerine ayır
+      const words = term.split(/\s+/).filter(w => w.length > 0);
 
-      // 3. i / ı harf değişimi varyasyonları (PostgreSQL colation esnekliği için)
-      const termAlt = termOriginal
-        .replace(/i/g, 'İ')
-        .replace(/ı/g, 'I')
-        .replace(/I/g, 'ı')
-        .replace(/İ/g, 'i');
+      // 2. Her bir kelime için Türkçe büyük/küçük harf varyasyonları üret
+      let query = supabase.from('students').select('*');
 
-      // OR Sorgusu: Tüm Türkçe büyük/küçük/alt harf kombinasyonlarını kapsar
-      const searchQuery = [
-        `first_name.ilike.%${termOriginal}%`,
-        `first_name.ilike.%${termUpperTr}%`,
-        `first_name.ilike.%${termLowerTr}%`,
-        `first_name.ilike.%${termAlt}%`,
-        `last_name.ilike.%${termOriginal}%`,
-        `last_name.ilike.%${termUpperTr}%`,
-        `last_name.ilike.%${termLowerTr}%`,
-        `last_name.ilike.%${termAlt}%`,
-        `student_no.ilike.%${termOriginal}%`,
-        `tc_no.ilike.%${termOriginal}%`
-      ].join(',');
+      words.forEach((word) => {
+        const original = word;
+        const upperTr = word.toLocaleUpperCase('tr-TR');
+        const lowerTr = word.toLocaleLowerCase('tr-TR');
+        const alt = original
+          .replace(/i/g, 'İ')
+          .replace(/ı/g, 'I')
+          .replace(/I/g, 'ı')
+          .replace(/İ/g, 'i');
 
-      const { data, error } = await supabase
-        .from('students')
-        .select('*')
-        .or(searchQuery)
-        .limit(100);
+        // Her bir kelime; Adında, Soyadında veya Okul Nosunda var mı?
+        const wordSearchPattern = [
+          `first_name.ilike.%${original}%`,
+          `first_name.ilike.%${upperTr}%`,
+          `first_name.ilike.%${lowerTr}%`,
+          `first_name.ilike.%${alt}%`,
+          `last_name.ilike.%${original}%`,
+          `last_name.ilike.%${upperTr}%`,
+          `last_name.ilike.%${lowerTr}%`,
+          `last_name.ilike.%${alt}%`,
+          `student_no.ilike.%${original}%`,
+          `tc_no.ilike.%${original}%`
+        ].join(',');
+
+        // .or() zinciri ekleyerek tüm kelimelerin eşleşmesini sağlıyoruz (AND mantığı)
+        query = query.or(wordSearchPattern);
+      });
+
+      const { data, error } = await query.limit(100);
 
       if (error) throw error;
 
-      console.log(`🔍 [ARAMA yapıldı] Toplam ${totalStudentCount} öğrenci arasından '${termOriginal}' arandı.`);
+      console.log(`🔍 [ÇOKLU İSİM ARAMASI] '${term}' ifadesi ${words.length} kelimeye bölünerek arandı.`);
       console.log(`✅ [SONUÇ] Bulunan öğrenci sayısı: ${data?.length || 0}`);
 
       setSearchResults(data || []);
@@ -112,7 +113,8 @@ useEffect(() => {
   }, 300);
 
   return () => clearTimeout(delayDebounceFn);
-}, [searchTerm, totalStudentCount]);
+}, [searchTerm]);
+
 
 
 
