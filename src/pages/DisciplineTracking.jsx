@@ -1,53 +1,55 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabase';
-import { FaSearch, FaTimes, FaSave, FaUndo, FaClock } from 'react-icons/fa';
+import { FaSearch, FaTimes, FaSave, FaUndo, FaClock, FaSpinner } from 'react-icons/fa';
 
 const DisciplineTracking = () => {
-  const [students, setStudents] = useState([]);
-  const [filteredStudents, setFilteredStudents] = useState([]);
+  const [searchResults, setSearchResults] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [note, setNote] = useState('');
   const [selectedTypes, setSelectedTypes] = useState({ late: false, dress: false });
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
+  const [searching, setSearching] = useState(false);
 
-  // 📌 Tüm öğrencileri çek (LIMIT 10000 ile)
-  const fetchStudents = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('students')
-        .select('*')
-        .limit(10000); // Tüm öğrenciler için yeterli
-
-      if (error) throw error;
-      setStudents(data || []);
-      setFilteredStudents(data || []);
-    } catch (error) {
-      console.error('Öğrenciler alınamadı:', error);
-    }
-  };
-
+  // 🔍 Server-side arama fonksiyonu (Debounce mantığı ile veritabanından direkt sorgular)
   useEffect(() => {
-    fetchStudents();
-  }, []);
+    const searchStudents = async () => {
+      const term = searchTerm.trim();
+      
+      // En az 2 karakter girilince arama yap
+      if (term.length < 2) {
+        setSearchResults([]);
+        return;
+      }
 
-  // 🔍 Arama filtresi (client-side)
-  useEffect(() => {
-    if (searchTerm.trim() === '') {
-      setFilteredStudents(students);
-    } else {
-      const term = searchTerm.toLowerCase();
-      const filtered = students.filter(
-        (s) =>
-          s.first_name?.toLowerCase().includes(term) ||
-          s.last_name?.toLowerCase().includes(term) ||
-          s.student_no?.includes(term) ||
-          s.tc_no?.includes(term)
-      );
-      setFilteredStudents(filtered);
-    }
-  }, [searchTerm, students]);
+      setSearching(true);
+      try {
+        // SQL level'da 'or' ve 'ilike' (büyük/küçük harf duyarsız) arama
+        const { data, error } = await supabase
+          .from('students')
+          .select('*')
+          .or(`first_name.ilike.%${term}%,last_name.ilike.%${term}%,student_no.ilike.%${term}%,tc_no.ilike.%${term}%`)
+          .limit(50); // Arama sonucu için ilk 50 öğrenci yeterlidir
+
+        if (error) throw error;
+
+        console.log(`🔍 [Arama Yapıldı] '${term}' için ${data?.length || 0} öğrenci bulundu.`);
+        setSearchResults(data || []);
+      } catch (error) {
+        console.error('Öğrenci arama hatası:', error);
+      } finally {
+        setSearching(false);
+      }
+    };
+
+    // Kullanıcı yazmayı bitirdikten 300ms sonra veritabanına istek at
+    const delayDebounceFn = setTimeout(() => {
+      searchStudents();
+    }, 300);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [searchTerm]);
 
   const handleSelectStudent = (student) => {
     setSelectedStudent(student);
@@ -114,7 +116,7 @@ const DisciplineTracking = () => {
       <div style={{ position: 'relative', marginBottom: '1rem' }}>
         <input
           type="text"
-          placeholder="Öğrenci ad, soyad veya numarası..."
+          placeholder="Aramak için öğrenci adı, soyadı veya okul no yazın..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           style={{
@@ -125,12 +127,20 @@ const DisciplineTracking = () => {
             fontSize: '1rem',
           }}
         />
-        <FaSearch style={{ position: 'absolute', right: '1rem', top: '50%', transform: 'translateY(-50%)', color: '#aaa' }} />
+        {searching ? (
+          <FaSpinner style={{ position: 'absolute', right: '1rem', top: '50%', transform: 'translateY(-50%)', color: '#007bff', animation: 'spin 1s linear infinite' }} />
+        ) : (
+          <FaSearch style={{ position: 'absolute', right: '1rem', top: '50%', transform: 'translateY(-50%)', color: '#aaa' }} />
+        )}
       </div>
 
-      {searchTerm && filteredStudents.length > 0 && !selectedStudent && (
+      {searchTerm.trim().length >= 2 && searchResults.length === 0 && !searching && !selectedStudent && (
+        <p style={{ color: '#888', fontStyle: 'italic' }}>Öğrenci bulunamadı.</p>
+      )}
+
+      {searchResults.length > 0 && !selectedStudent && (
         <div style={{ maxHeight: '300px', overflowY: 'auto', border: '1px solid #ddd', borderRadius: '8px', marginBottom: '1rem' }}>
-          {filteredStudents.map((student) => (
+          {searchResults.map((student) => (
             <div
               key={student.id}
               onClick={() => handleSelectStudent(student)}
