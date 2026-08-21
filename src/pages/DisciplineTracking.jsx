@@ -12,15 +12,19 @@ const DisciplineTracking = () => {
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
 
+  // Tüm öğrencileri Supabase'den getir (limit 10000 ile)
   useEffect(() => {
     const fetchStudents = async () => {
       try {
         const { data, error } = await supabase
           .from('students')
-          .select('*');
+          .select('*')
+          .limit(10000); // TÜM ÖĞRENCİLERİ GETİR
+
         if (error) throw error;
         setStudents(data || []);
         setFilteredStudents(data || []);
+        console.log('📊 Toplam öğrenci sayısı:', data?.length);
       } catch (error) {
         console.error('Öğrenciler alınamadı:', error);
       }
@@ -28,6 +32,7 @@ const DisciplineTracking = () => {
     fetchStudents();
   }, []);
 
+  // Arama filtresi
   useEffect(() => {
     if (searchTerm.trim() === '') {
       setFilteredStudents(students);
@@ -57,6 +62,7 @@ const DisciplineTracking = () => {
     setSelectedTypes({ late: false, dress: false });
   };
 
+  // Kaydet
   const handleSave = async () => {
     if (!selectedStudent) {
       setMessage('Lütfen bir öğrenci seçin.');
