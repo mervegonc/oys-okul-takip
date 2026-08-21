@@ -16,15 +16,17 @@ const DisciplineTracking = () => {
   useEffect(() => {
     const fetchStudents = async () => {
       try {
+        // TÜM ÖĞRENCİLERİ ÇEK (limit 10000)
         const { data, error } = await supabase
           .from('students')
           .select('*')
-          .limit(10000); // TÜM ÖĞRENCİLERİ GETİR
+          .limit(10000); // <-- BURASI ÖNEMLİ
 
         if (error) throw error;
+        
+        console.log('📚 Toplam öğrenci sayısı:', data?.length);
         setStudents(data || []);
         setFilteredStudents(data || []);
-        console.log('📊 Toplam öğrenci sayısı:', data?.length);
       } catch (error) {
         console.error('Öğrenciler alınamadı:', error);
       }
@@ -62,7 +64,7 @@ const DisciplineTracking = () => {
     setSelectedTypes({ late: false, dress: false });
   };
 
-  // Kaydet
+  // Kaydet (Supabase insert)
   const handleSave = async () => {
     if (!selectedStudent) {
       setMessage('Lütfen bir öğrenci seçin.');
@@ -112,6 +114,7 @@ const DisciplineTracking = () => {
         <FaClock /> Geç Kalma / Kıyafet Kaydı
       </h2>
 
+      {/* Arama Kutusu */}
       <div style={{ position: 'relative', marginBottom: '1rem' }}>
         <input
           type="text"
@@ -129,6 +132,7 @@ const DisciplineTracking = () => {
         <FaSearch style={{ position: 'absolute', right: '1rem', top: '50%', transform: 'translateY(-50%)', color: '#aaa' }} />
       </div>
 
+      {/* Öğrenci Listesi (arama sonuçları) */}
       {searchTerm && filteredStudents.length > 0 && !selectedStudent && (
         <div style={{ maxHeight: '300px', overflowY: 'auto', border: '1px solid #ddd', borderRadius: '8px', marginBottom: '1rem' }}>
           {filteredStudents.map((student) => (
@@ -155,6 +159,7 @@ const DisciplineTracking = () => {
         </div>
       )}
 
+      {/* Seçili Öğrenci Paneli */}
       {selectedStudent && (
         <div style={{
           padding: '1.5rem',
