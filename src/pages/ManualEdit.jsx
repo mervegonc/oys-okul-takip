@@ -46,11 +46,11 @@ const ManualEdit = () => {
     const fetchSeatingPlan = async () => {
       setLoading(true);
       try {
-        // Hem exam_id hem de examId alanlarına göre esnek sorgulama
+        // 🛠️ Hata veren examId kalıbı kaldırıldı, doğrudan exam_id kullanılıyor
         const { data, error } = await supabase
           .from('seating_plans')
           .select('*')
-          .or(`exam_id.eq.${selectedExam},examId.eq.${selectedExam}`)
+          .eq('exam_id', selectedExam)
           .order('created_at', { ascending: false })
           .limit(1);
 
