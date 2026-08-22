@@ -44,18 +44,17 @@ const AttendanceModule = () => {
 
       if (planErr) console.error('Seating plans çekilemedi:', planErr);
 
-      const { data: attData, error: attErr } = await supabase
-        .from('attendance')
-        .select('*');
-
-      if (attErr) console.error('Attendance çekilemedi:', attErr);
+      // Attendance tablosu çekilemezse uygulamanın çökmemesi için try-catch
+      let attData = [];
+      try {
+        const { data, error: attErr } = await supabase.from('attendance').select('*');
+        if (!attErr && data) attData = data;
+      } catch (err) {
+        console.warn('Attendance tablosu henüz mevcut değil veya erişilemiyor.');
+      }
 
       const formattedExams = examData.map(exam => {
-        // exam_id veya examId alanlarını hem String hem Number tipinde kontrol ediyoruz
-        const plan = (plans || []).find(p => {
-          const planExamId = p.exam_id !== undefined ? p.exam_id : p.examId;
-          return String(planExamId) === String(exam.id);
-        });
+        const plan = (plans || []).find(p => String(p.exam_id) === String(exam.id));
 
         let assignments = [];
         if (plan?.assignments) {
@@ -90,16 +89,17 @@ const AttendanceModule = () => {
     setSelectedExam(exam);
     setLoading(true);
     try {
+      // Sadece var olan exam_id sütunu üzerinden sorgu yapıyoruz
       const { data: planData, error: planErr } = await supabase
         .from('seating_plans')
         .select('*')
-        .or(`exam_id.eq.${exam.id},examId.eq.${exam.id}`)
+        .eq('exam_id', exam.id)
         .order('created_at', { ascending: false })
         .limit(1);
       
       if (planErr) throw planErr;
 
-      const plan = planData[0];
+      const plan = planData ? planData[0] : null;
       
       if (plan && typeof plan.assignments === 'string') {
         plan.assignments = JSON.parse(plan.assignments);
@@ -107,10 +107,15 @@ const AttendanceModule = () => {
 
       setSeatingPlan(plan);
 
-      const { data: attData, error: attErr } = await supabase
-        .from('attendance')
-        .eq('exam_id', exam.id);
-      if (attErr) throw attErr;
+      let attData = [];
+      try {
+        const { data, error: attErr } = await supabase
+          .from('attendance')
+          .eq('exam_id', exam.id);
+        if (!attErr && data) attData = data;
+      } catch (err) {
+        console.warn('Attendance verisi okunamadı.');
+      }
 
       const statusMap = {};
       const reasonMap = {};
