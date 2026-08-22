@@ -25,7 +25,6 @@ const AttendanceModule = () => {
   const fetchExamsWithStats = async () => {
     setLoading(true);
     try {
-      // 1. Doğrudan tüm sınavları çekiyoruz
       const { data: examData, error: examErr } = await supabase
         .from('exams')
         .select('*')
@@ -39,23 +38,19 @@ const AttendanceModule = () => {
         return;
       }
 
-      // 2. Tüm oturma planlarını çekiyoruz
       const { data: plans, error: planErr } = await supabase
         .from('seating_plans')
-        .select('exam_id, assignments');
+        .select('exam_id, assignments, rooms');
 
       if (planErr) console.error('Seating plans çekilemedi:', planErr);
 
-      // 3. Yoklama verilerini çekiyoruz
       const { data: attData, error: attErr } = await supabase
         .from('attendance')
         .select('*');
 
       if (attErr) console.error('Attendance çekilemedi:', attErr);
 
-      // 4. Sınavları oturma planı ve yoklama verileriyle eşleştiriyoruz
       const formattedExams = examData.map(exam => {
-        // ID karşılaştırmasında tip uyuşmazlığını önlemek için String'e çeviriyoruz
         const plan = (plans || []).find(p => String(p.exam_id) === String(exam.id));
         const assignments = plan?.assignments || [];
         const totalStudents = assignments.length;
@@ -164,6 +159,25 @@ const AttendanceModule = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const getRoomName = (item) => {
+    if (item.roomName) return item.roomName;
+    if (item.room_name) return item.room_name;
+    if (item.salon) return item.salon;
+    if (item.salonAdi) return item.salonAdi;
+
+    if (seatingPlan?.rooms && Array.isArray(seatingPlan.rooms)) {
+      const targetRoomId = item.roomId || item.room_id || item.salon_id;
+      const foundRoom = seatingPlan.rooms.find(r => 
+        String(r.id) === String(targetRoomId) || String(r.roomId) === String(targetRoomId)
+      );
+      if (foundRoom) {
+        return foundRoom.name || foundRoom.roomName || foundRoom.salonAdi || `Salon ${foundRoom.id}`;
+      }
+    }
+
+    return item.roomId || item.room_id || '-';
   };
 
   const assignments = seatingPlan?.assignments || [];
@@ -335,15 +349,16 @@ const AttendanceModule = () => {
               <tbody>
                 {assignments.map((item, idx) => {
                   const stId = item.studentId || item.student_id;
-                  const stName = item.studentName || item.student_name || `${item.first_name || ''} ${item.last_name || ''}`;
+                  const stName = item.studentName || item.student_name || `${item.first_name || ''} ${item.last_name || ''}`.trim() || item.name;
                   const currentStatus = attendanceRecords[stId] || 'katildi';
+                  const roomName = getRoomName(item);
 
                   return (
                     <tr key={stId || idx} style={{ borderBottom: '1px solid #eee', textAlign: 'center' }}>
-                      <td style={{ padding: '0.6rem', fontWeight: 'bold' }}>{item.seatNumber || item.seat_number}</td>
-                      <td style={{ padding: '0.6rem' }}>{item.roomName || item.room_name || item.roomId}</td>
+                      <td style={{ padding: '0.6rem', fontWeight: 'bold' }}>{item.seatNumber || item.seat_number || item.siraNo || (idx + 1)}</td>
+                      <td style={{ padding: '0.6rem' }}>{roomName}</td>
                       <td style={{ padding: '0.6rem', textAlign: 'left', fontWeight: '500' }}>{stName}</td>
-                      <td style={{ padding: '0.6rem' }}>{item.grade}-{item.class || item.className}</td>
+                      <td style={{ padding: '0.6rem' }}>{item.grade || ''}-{item.class || item.className || ''}</td>
                       <td style={{ padding: '0.6rem' }}>
                         <div style={{ display: 'flex', gap: '0.3rem', justifyContent: 'center' }}>
                           {STATUS_OPTIONS.map(opt => (
@@ -392,15 +407,16 @@ const AttendanceModule = () => {
                   <tbody>
                     {absentStudents.map((item, idx) => {
                       const stId = item.studentId || item.student_id;
-                      const stName = item.studentName || item.student_name || `${item.first_name || ''} ${item.last_name || ''}`;
+                      const stName = item.studentName || item.student_name || `${item.first_name || ''} ${item.last_name || ''}`.trim() || item.name;
+                      const roomName = getRoomName(item);
 
                       return (
                         <tr key={stId || idx} style={{ borderBottom: '1px solid #eee' }}>
                           <td style={{ padding: '0.6rem', textAlign: 'center' }}>
-                            {item.roomName || item.room_name} / Sıra: {item.seatNumber || item.seat_number}
+                            {roomName} / Sıra: {item.seatNumber || item.seat_number || (idx + 1)}
                           </td>
                           <td style={{ padding: '0.6rem', fontWeight: '500' }}>{stName}</td>
-                          <td style={{ padding: '0.6rem', textAlign: 'center' }}>{item.grade}-{item.class || item.className}</td>
+                          <td style={{ padding: '0.6rem', textAlign: 'center' }}>{item.grade || ''}-{item.class || item.className || ''}</td>
                           <td style={{ padding: '0.6rem' }}>
                             <input
                               type="text"
