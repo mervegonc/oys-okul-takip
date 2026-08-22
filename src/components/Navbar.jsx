@@ -20,8 +20,8 @@ const Navbar = ({ userEmail }) => {
     { path: '/seating', label: 'Karma Dağıtım', icon: <FaChair />, module: 'seating' },
     { path: '/conflict-groups', label: 'Çakışma Listesi', icon: <FaBan />, module: 'seating' },
     { path: '/manual-edit', label: 'Manuel Düzenle', icon: <FaEdit />, module: 'seating' },
-    { path: '/attendance-lists', label: 'Yoklama Listesi', icon: <FaClipboardCheck />, module: 'exam' },
-    { path: '/attendance-lists', label: 'Yoklama Listesi', icon: <FaClipboardCheck />, module: 'exam-list' },
+    { path: '/attendance-module', label: 'Sınav Yoklama', icon: <FaClipboardCheck />, module: 'exam' },
+    { path: '/attendance-lists', label: 'Yoklama Listesi', icon: <FaClipboardCheck />, module: 'exam' }, // module: 'exam' yapıldı
     { path: '/calendar', label: 'Takvim', icon: <FaCalendarAlt />, module: 'calendar' },
     { path: '/candidates', label: 'Adaylar', icon: <FaUserPlus />, module: 'candidates' },
     { path: '/yds', label: 'YDS', icon: <FaLanguage />, module: 'exam' },
