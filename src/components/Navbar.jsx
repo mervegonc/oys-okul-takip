@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { 
   FaUsers, FaClock, FaChartBar, FaCalendarAlt, 
   FaUserPlus, FaBook, FaLanguage, FaBuilding, 
-  FaChair, FaBan, FaEdit 
+  FaChair, FaBan, FaEdit, FaClipboardCheck 
 } from 'react-icons/fa';
 import { supabase } from '../supabase';
 import { hasPermission } from '../utils/permissions';
@@ -20,6 +20,7 @@ const Navbar = ({ userEmail }) => {
     { path: '/seating', label: 'Karma Dağıtım', icon: <FaChair />, module: 'seating' },
     { path: '/conflict-groups', label: 'Çakışma Listesi', icon: <FaBan />, module: 'seating' },
     { path: '/manual-edit', label: 'Manuel Düzenle', icon: <FaEdit />, module: 'seating' },
+    { path: '/exam-attendance', label: 'Sınav Yoklama', icon: <FaClipboardCheck />, module: 'exam' },
     { path: '/calendar', label: 'Takvim', icon: <FaCalendarAlt />, module: 'calendar' },
     { path: '/candidates', label: 'Adaylar', icon: <FaUserPlus />, module: 'candidates' },
     { path: '/yds', label: 'YDS', icon: <FaLanguage />, module: 'exam' },
@@ -36,7 +37,7 @@ const Navbar = ({ userEmail }) => {
   return (
     <nav style={{
       display: 'flex',
-      justifyContent: 'space-between',
+      justify: 'space-between',
       alignItems: 'center',
       padding: '0.5rem 2rem',
       background: '#ffffff',

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { supabase } from './supabase'; // <-- Firebase importları kaldırıldı
+import { supabase } from './supabase';
 import Login from './components/Login';
 import Navbar from './components/Navbar';
 import Students from './pages/Students';
@@ -12,13 +12,13 @@ import Rooms from './pages/Rooms';
 import SeatingDistribution from './pages/SeatingDistribution';
 import ConflictGroups from './pages/ConflictGroups';
 import ManualEdit from './pages/ManualEdit';
+import ExamAttendance from './pages/ExamAttendance';
 
 function App() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // 1. Oturum değişikliklerini dinle
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
         setUser(session?.user ?? null);
@@ -26,7 +26,6 @@ function App() {
       }
     );
 
-    // 2. Sayfa yenilendiğinde mevcut oturumu al
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
       setLoading(false);
@@ -73,6 +72,9 @@ function App() {
                   } />
                   <Route path="/manual-edit" element={
                     hasPermission(userEmail, 'seating') ? <ManualEdit /> : <Navigate to="/" />
+                  } />
+                  <Route path="/exam-attendance" element={
+                    hasPermission(userEmail, 'exam') ? <ExamAttendance /> : <Navigate to="/" />
                   } />
                   <Route path="/" element={<Navigate to="/students" />} />
                 </Routes>
