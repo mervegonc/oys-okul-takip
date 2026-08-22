@@ -13,6 +13,7 @@ import SeatingDistribution from './pages/SeatingDistribution';
 import ConflictGroups from './pages/ConflictGroups';
 import ManualEdit from './pages/ManualEdit';
 import AttendanceModule from './pages/AttendanceModule';
+import ExamAttendanceLists from './pages/ExamAttendanceLists';
 
 function App() {
   const [user, setUser] = useState(null);
@@ -75,6 +76,9 @@ function App() {
                   } />
                   <Route path="/attendance-module" element={
                     hasPermission(userEmail, 'exam') ? <AttendanceModule /> : <Navigate to="/" />
+                  } />
+                   <Route path="/attendance-lists" element={
+                    hasPermission(userEmail, 'exam') ? <ExamAttendanceLists /> : <Navigate to="/" />
                   } />
                   <Route path="/" element={<Navigate to="/students" />} />
                 </Routes>
