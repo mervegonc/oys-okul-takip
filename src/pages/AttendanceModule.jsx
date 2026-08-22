@@ -12,6 +12,7 @@ const AttendanceModule = () => {
   const [exams, setExams] = useState([]);
   const [selectedExam, setSelectedExam] = useState(null);
   const [seatingPlan, setSeatingPlan] = useState(null);
+  const [rooms, setRooms] = useState([]);
   const [attendanceRecords, setAttendanceRecords] = useState({});
   const [reasons, setReasons] = useState({});
   const [activeTab, setActiveTab] = useState('all');
@@ -20,7 +21,19 @@ const AttendanceModule = () => {
 
   useEffect(() => {
     fetchExamsWithStats();
+    fetchRooms();
   }, []);
+
+  const fetchRooms = async () => {
+    try {
+      const { data, error } = await supabase.from('rooms').select('*');
+      if (!error && data) {
+        setRooms(data);
+      }
+    } catch (err) {
+      console.warn('Rooms tablosu okunamadı:', err);
+    }
+  };
 
   const fetchExamsWithStats = async () => {
     setLoading(true);
@@ -44,13 +57,12 @@ const AttendanceModule = () => {
 
       if (planErr) console.error('Seating plans çekilemedi:', planErr);
 
-      // Attendance tablosu çekilemezse uygulamanın çökmemesi için try-catch
       let attData = [];
       try {
         const { data, error: attErr } = await supabase.from('attendance').select('*');
         if (!attErr && data) attData = data;
       } catch (err) {
-        console.warn('Attendance tablosu henüz mevcut değil veya erişilemiyor.');
+        console.warn('Attendance tablosu henüz mevcut değil.');
       }
 
       const formattedExams = examData.map(exam => {
@@ -89,7 +101,6 @@ const AttendanceModule = () => {
     setSelectedExam(exam);
     setLoading(true);
     try {
-      // Sadece var olan exam_id sütunu üzerinden sorgu yapıyoruz
       const { data: planData, error: planErr } = await supabase
         .from('seating_plans')
         .select('*')
@@ -183,22 +194,32 @@ const AttendanceModule = () => {
   };
 
   const getRoomName = (item) => {
-    if (item.roomName) return item.roomName;
-    if (item.room_name) return item.room_name;
-    if (item.salon) return item.salon;
-    if (item.salonAdi) return item.salonAdi;
+    // 1. Direkt string olarak metinsel salon adı kaydedilmişse
+    if (item.roomName && isNaN(item.roomName) && item.roomName.length < 20) return item.roomName;
+    if (item.room_name && isNaN(item.room_name) && item.room_name.length < 20) return item.room_name;
+    if (item.salon && isNaN(item.salon) && item.salon.length < 20) return item.salon;
 
+    const targetRoomId = item.roomId || item.room_id || item.salon_id || item.roomName || item.room_name || item.salon;
+
+    // 2. Seating plan içindeki rooms array'inde ara
     if (seatingPlan?.rooms && Array.isArray(seatingPlan.rooms)) {
-      const targetRoomId = item.roomId || item.room_id || item.salon_id;
-      const foundRoom = seatingPlan.rooms.find(r => 
+      const foundInPlan = seatingPlan.rooms.find(r => 
         String(r.id) === String(targetRoomId) || String(r.roomId) === String(targetRoomId)
       );
-      if (foundRoom) {
-        return foundRoom.name || foundRoom.roomName || foundRoom.salonAdi || `Salon ${foundRoom.id}`;
+      if (foundInPlan) {
+        return foundInPlan.name || foundInPlan.roomName || foundInPlan.salonAdi || `Salon ${foundInPlan.id}`;
       }
     }
 
-    return item.roomId || item.room_id || '-';
+    // 3. Supabase'den çekilen global rooms tablosunda id eşleştirmesi yap
+    if (rooms && rooms.length > 0) {
+      const foundInDb = rooms.find(r => String(r.id) === String(targetRoomId));
+      if (foundInDb) {
+        return foundInDb.name || foundInDb.room_name || foundInDb.salon_adi || `Salon ${foundInDb.id}`;
+      }
+    }
+
+    return targetRoomId || '-';
   };
 
   const assignments = seatingPlan?.assignments || [];
