@@ -40,7 +40,7 @@ const AttendanceModule = () => {
 
       const { data: plans, error: planErr } = await supabase
         .from('seating_plans')
-        .select('exam_id, assignments, rooms');
+        .select('*');
 
       if (planErr) console.error('Seating plans çekilemedi:', planErr);
 
@@ -51,10 +51,20 @@ const AttendanceModule = () => {
       if (attErr) console.error('Attendance çekilemedi:', attErr);
 
       const formattedExams = examData.map(exam => {
-        const plan = (plans || []).find(p => String(p.exam_id) === String(exam.id));
-        const assignments = plan?.assignments || [];
-        const totalStudents = assignments.length;
+        // exam_id veya examId alanlarını hem String hem Number tipinde kontrol ediyoruz
+        const plan = (plans || []).find(p => {
+          const planExamId = p.exam_id !== undefined ? p.exam_id : p.examId;
+          return String(planExamId) === String(exam.id);
+        });
 
+        let assignments = [];
+        if (plan?.assignments) {
+          assignments = typeof plan.assignments === 'string' 
+            ? JSON.parse(plan.assignments) 
+            : plan.assignments;
+        }
+
+        const totalStudents = assignments.length;
         const examAtt = (attData || []).filter(a => String(a.exam_id) === String(exam.id));
         const absentCount = examAtt.filter(a => a.status === 'katilmadi').length;
         const attendedCount = totalStudents > 0 ? (totalStudents - absentCount) : 0;
@@ -64,7 +74,7 @@ const AttendanceModule = () => {
           totalStudents,
           attendedCount,
           absentCount,
-          hasPlan: assignments.length > 0
+          hasPlan: totalStudents > 0
         };
       });
 
@@ -83,12 +93,18 @@ const AttendanceModule = () => {
       const { data: planData, error: planErr } = await supabase
         .from('seating_plans')
         .select('*')
-        .eq('exam_id', exam.id)
+        .or(`exam_id.eq.${exam.id},examId.eq.${exam.id}`)
         .order('created_at', { ascending: false })
         .limit(1);
+      
       if (planErr) throw planErr;
 
       const plan = planData[0];
+      
+      if (plan && typeof plan.assignments === 'string') {
+        plan.assignments = JSON.parse(plan.assignments);
+      }
+
       setSeatingPlan(plan);
 
       const { data: attData, error: attErr } = await supabase
