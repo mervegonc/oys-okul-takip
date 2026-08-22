@@ -25,44 +25,51 @@ const AttendanceModule = () => {
   const fetchExamsWithStats = async () => {
     setLoading(true);
     try {
-      const { data: plans, error: planErr } = await supabase
-        .from('seating_plans')
-        .select('exam_id, assignments');
-      if (planErr) throw planErr;
+      // 1. Doğrudan tüm sınavları çekiyoruz
+      const { data: examData, error: examErr } = await supabase
+        .from('exams')
+        .select('*')
+        .order('created_at', { ascending: false });
 
-      const examIds = [...new Set(plans.map(p => p.exam_id))];
-      if (examIds.length === 0) {
+      if (examErr) throw examErr;
+
+      if (!examData || examData.length === 0) {
         setExams([]);
         setLoading(false);
         return;
       }
 
-      const { data: examData, error: examErr } = await supabase
-        .from('exams')
-        .select('*')
-        .in('id', examIds)
-        .order('created_at', { ascending: false });
-      if (examErr) throw examErr;
+      // 2. Tüm oturma planlarını çekiyoruz
+      const { data: plans, error: planErr } = await supabase
+        .from('seating_plans')
+        .select('exam_id, assignments');
 
+      if (planErr) console.error('Seating plans çekilemedi:', planErr);
+
+      // 3. Yoklama verilerini çekiyoruz
       const { data: attData, error: attErr } = await supabase
         .from('attendance')
         .select('*');
-      if (attErr) throw attErr;
 
+      if (attErr) console.error('Attendance çekilemedi:', attErr);
+
+      // 4. Sınavları oturma planı ve yoklama verileriyle eşleştiriyoruz
       const formattedExams = examData.map(exam => {
-        const plan = plans.find(p => p.exam_id === exam.id);
+        // ID karşılaştırmasında tip uyuşmazlığını önlemek için String'e çeviriyoruz
+        const plan = (plans || []).find(p => String(p.exam_id) === String(exam.id));
         const assignments = plan?.assignments || [];
         const totalStudents = assignments.length;
 
-        const examAtt = attData.filter(a => a.exam_id === exam.id);
+        const examAtt = (attData || []).filter(a => String(a.exam_id) === String(exam.id));
         const absentCount = examAtt.filter(a => a.status === 'katilmadi').length;
-        const attendedCount = totalStudents - absentCount;
+        const attendedCount = totalStudents > 0 ? (totalStudents - absentCount) : 0;
 
         return {
           ...exam,
           totalStudents,
           attendedCount,
-          absentCount
+          absentCount,
+          hasPlan: assignments.length > 0
         };
       });
 
@@ -178,47 +185,60 @@ const AttendanceModule = () => {
       {!selectedExam ? (
         <div>
           <h2>📋 Sınav Yoklama Yönetimi</h2>
-          <p style={{ color: '#666' }}>Yoklama almak istediğiniz tanımlanmış ve salon ataması yapılmış sınavı seçin.</p>
+          <p style={{ color: '#666' }}>Yoklama almak istediğiniz tanımlanmış sınavı seçin.</p>
           
           {loading ? <p>Yükleniyor...</p> : (
             <div style={{ display: 'grid', gap: '1rem', marginTop: '1rem' }}>
-              {exams.length === 0 ? <p>Henüz oturma planı oluşturulmuş sınav bulunamadı.</p> : exams.map(exam => (
-                <div 
-                  key={exam.id}
-                  onClick={() => handleSelectExam(exam)}
-                  style={{
-                    padding: '1.2rem',
-                    border: '1px solid #e2e8f0',
-                    borderRadius: '8px',
-                    background: '#fff',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
-                  }}
-                >
-                  <div>
-                    <h3 style={{ margin: '0 0 0.4rem 0', color: '#1a202c' }}>{exam.title}</h3>
-                    <span style={{ fontSize: '0.85rem', color: '#718096' }}> Tarih: {exam.date}</span>
+              {exams.length === 0 ? (
+                <p>Henüz tanımlanmış bir sınav bulunamadı.</p>
+              ) : (
+                exams.map(exam => (
+                  <div 
+                    key={exam.id}
+                    onClick={() => {
+                      if (!exam.hasPlan) {
+                        alert('Bu sınav için henüz oturma planı oluşturulmamış.');
+                        return;
+                      }
+                      handleSelectExam(exam);
+                    }}
+                    style={{
+                      padding: '1.2rem',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '8px',
+                      background: exam.hasPlan ? '#fff' : '#f7fafc',
+                      opacity: exam.hasPlan ? 1 : 0.7,
+                      cursor: exam.hasPlan ? 'pointer' : 'not-allowed',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+                    }}
+                  >
+                    <div>
+                      <h3 style={{ margin: '0 0 0.4rem 0', color: '#1a202c' }}>
+                        {exam.title} {!exam.hasPlan && <span style={{ fontSize: '0.75rem', color: '#e53e3e' }}>(Oturma Planı Yok)</span>}
+                      </h3>
+                      <span style={{ fontSize: '0.85rem', color: '#718096' }}>Tarih: {exam.date}</span>
+                    </div>
+                    
+                    <div style={{ display: 'flex', gap: '1.5rem', textAlign: 'center' }}>
+                      <div>
+                        <div style={{ fontWeight: 'bold', color: '#28a745' }}>{exam.attendedCount}</div>
+                        <div style={{ fontSize: '0.75rem', color: '#718096' }}>Katılan</div>
+                      </div>
+                      <div>
+                        <div style={{ fontWeight: 'bold', color: '#dc3545' }}>{exam.absentCount}</div>
+                        <div style={{ fontSize: '0.75rem', color: '#718096' }}>Katılmayan</div>
+                      </div>
+                      <div>
+                        <div style={{ fontWeight: 'bold', color: '#2d3748' }}>{exam.totalStudents}</div>
+                        <div style={{ fontSize: '0.75rem', color: '#718096' }}>Toplam Öğrenci</div>
+                      </div>
+                    </div>
                   </div>
-                  
-                  <div style={{ display: 'flex', gap: '1.5rem', textAlign: 'center' }}>
-                    <div>
-                      <div style={{ fontWeight: 'bold', color: '#28a745' }}>{exam.attendedCount}</div>
-                      <div style={{ fontSize: '0.75rem', color: '#718096' }}>Katılan</div>
-                    </div>
-                    <div>
-                      <div style={{ fontWeight: 'bold', color: '#dc3545' }}>{exam.absentCount}</div>
-                      <div style={{ fontSize: '0.75rem', color: '#718096' }}>Katılmayan</div>
-                    </div>
-                    <div>
-                      <div style={{ fontWeight: 'bold', color: '#2d3748' }}>{exam.totalStudents}</div>
-                      <div style={{ fontSize: '0.75rem', color: '#718096' }}>Toplam Öğrenci</div>
-                    </div>
-                  </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           )}
         </div>
