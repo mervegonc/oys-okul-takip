@@ -62,7 +62,7 @@ const AttendanceModule = () => {
         const { data, error: attErr } = await supabase.from('attendance').select('*');
         if (!attErr && data) attData = data;
       } catch (err) {
-        console.warn('Attendance tablosu henüz mevcut değil.');
+        console.warn('Attendance tablosu bulunamadı.');
       }
 
       const formattedExams = examData.map(exam => {
@@ -130,16 +130,20 @@ const AttendanceModule = () => {
 
       const statusMap = {};
       const reasonMap = {};
-      
+
+      // Varsayılan durumlar (Tüm öğrencileri String id ile tanımlıyoruz)
       (plan?.assignments || []).forEach(st => {
-        const stId = st.studentId || st.student_id;
+        const rawId = st.studentId ?? st.student_id ?? st.id;
+        const stId = String(rawId);
         statusMap[stId] = 'katildi';
         reasonMap[stId] = '';
       });
 
+      // Supabase'den gelen kayıtları String id ile eşleştiriyoruz
       (attData || []).forEach(att => {
-        statusMap[att.student_id] = att.status;
-        reasonMap[att.student_id] = att.reason || '';
+        const stId = String(att.student_id);
+        statusMap[stId] = att.status;
+        reasonMap[stId] = att.reason || '';
       });
 
       setAttendanceRecords(statusMap);
@@ -152,11 +156,13 @@ const AttendanceModule = () => {
   };
 
   const handleStatusChange = (studentId, status) => {
-    setAttendanceRecords(prev => ({ ...prev, [studentId]: status }));
+    const stId = String(studentId);
+    setAttendanceRecords(prev => ({ ...prev, [stId]: status }));
   };
 
   const handleReasonChange = (studentId, reason) => {
-    setReasons(prev => ({ ...prev, [studentId]: reason }));
+    const stId = String(studentId);
+    setReasons(prev => ({ ...prev, [stId]: reason }));
   };
 
   const handleSaveAttendance = async () => {
@@ -167,10 +173,11 @@ const AttendanceModule = () => {
     try {
       const assignments = seatingPlan?.assignments || [];
       const payload = assignments.map(st => {
-        const stId = st.studentId || st.student_id;
+        const rawId = st.studentId ?? st.student_id ?? st.id;
+        const stId = String(rawId);
         return {
           exam_id: selectedExam.id,
-          student_id: String(stId),
+          student_id: stId,
           status: attendanceRecords[stId] || 'katildi',
           reason: reasons[stId] || '',
           updated_at: new Date().toISOString()
@@ -194,45 +201,55 @@ const AttendanceModule = () => {
   };
 
   const getRoomName = (item) => {
-    // 1. Direkt string olarak metinsel salon adı kaydedilmişse
-    if (item.roomName && isNaN(item.roomName) && item.roomName.length < 20) return item.roomName;
-    if (item.room_name && isNaN(item.room_name) && item.room_name.length < 20) return item.room_name;
-    if (item.salon && isNaN(item.salon) && item.salon.length < 20) return item.salon;
+    const rawRoomId = item.roomId || item.room_id || item.salon_id || item.roomName || item.room_name || item.salon;
 
-    const targetRoomId = item.roomId || item.room_id || item.salon_id || item.roomName || item.room_name || item.salon;
+    if (rooms && rooms.length > 0 && rawRoomId) {
+      const foundInDb = rooms.find(r => String(r.id) === String(rawRoomId));
+      if (foundInDb && foundInDb.name) {
+        return foundInDb.name;
+      }
+    }
 
-    // 2. Seating plan içindeki rooms array'inde ara
     if (seatingPlan?.rooms && Array.isArray(seatingPlan.rooms)) {
       const foundInPlan = seatingPlan.rooms.find(r => 
-        String(r.id) === String(targetRoomId) || String(r.roomId) === String(targetRoomId)
+        String(r.id) === String(rawRoomId) || String(r.roomId) === String(rawRoomId)
       );
       if (foundInPlan) {
-        return foundInPlan.name || foundInPlan.roomName || foundInPlan.salonAdi || `Salon ${foundInPlan.id}`;
+        return foundInPlan.name || foundInPlan.roomName || `Salon ${foundInPlan.id}`;
       }
     }
 
-    // 3. Supabase'den çekilen global rooms tablosunda id eşleştirmesi yap
-    if (rooms && rooms.length > 0) {
-      const foundInDb = rooms.find(r => String(r.id) === String(targetRoomId));
-      if (foundInDb) {
-        return foundInDb.name || foundInDb.room_name || foundInDb.salon_adi || `Salon ${foundInDb.id}`;
-      }
+    if (typeof rawRoomId === 'string' && rawRoomId.length < 20 && !rawRoomId.includes('-')) {
+      return rawRoomId;
     }
 
-    return targetRoomId || '-';
+    return 'Bilinmeyen Salon';
   };
 
   const assignments = seatingPlan?.assignments || [];
+  
   const stats = {
     total: assignments.length,
-    katildi: assignments.filter(a => (attendanceRecords[a.studentId || a.student_id] || 'katildi') === 'katildi').length,
-    katilmadi: assignments.filter(a => attendanceRecords[a.studentId || a.student_id] === 'katilmadi').length,
-    once_alindi: assignments.filter(a => attendanceRecords[a.studentId || a.student_id] === 'once_alindi').length,
-    gec_katilacak: assignments.filter(a => attendanceRecords[a.studentId || a.student_id] === 'gec_katilacak').length,
+    katildi: assignments.filter(a => {
+      const stId = String(a.studentId ?? a.student_id ?? a.id);
+      return (attendanceRecords[stId] || 'katildi') === 'katildi';
+    }).length,
+    katilmadi: assignments.filter(a => {
+      const stId = String(a.studentId ?? a.student_id ?? a.id);
+      return attendanceRecords[stId] === 'katilmadi';
+    }).length,
+    once_alindi: assignments.filter(a => {
+      const stId = String(a.studentId ?? a.student_id ?? a.id);
+      return attendanceRecords[stId] === 'once_alindi';
+    }).length,
+    gec_katilacak: assignments.filter(a => {
+      const stId = String(a.studentId ?? a.student_id ?? a.id);
+      return attendanceRecords[stId] === 'gec_katilacak';
+    }).length,
   };
 
   const absentStudents = assignments.filter(st => {
-    const stId = st.studentId || st.student_id;
+    const stId = String(st.studentId ?? st.student_id ?? st.id);
     return attendanceRecords[stId] === 'katilmadi';
   });
 
@@ -319,7 +336,7 @@ const AttendanceModule = () => {
           </div>
 
           {message && (
-            <p style={{ padding: '0.6rem', borderRadius: '4px', background: message.includes('hata') ? '#f8d7da' : '#d4edda', color: message.includes('hata') ? '#721c24' : '#155724' }}>
+            <p style={{ padding: '0.6rem', borderRadius: '4px', margin: '1rem 0', background: message.includes('hata') ? '#f8d7da' : '#d4edda', color: message.includes('hata') ? '#721c24' : '#155724' }}>
               {message}
             </p>
           )}
@@ -390,7 +407,8 @@ const AttendanceModule = () => {
               </thead>
               <tbody>
                 {assignments.map((item, idx) => {
-                  const stId = item.studentId || item.student_id;
+                  const rawId = item.studentId ?? item.student_id ?? item.id;
+                  const stId = String(rawId);
                   const stName = item.studentName || item.student_name || `${item.first_name || ''} ${item.last_name || ''}`.trim() || item.name;
                   const currentStatus = attendanceRecords[stId] || 'katildi';
                   const roomName = getRoomName(item);
@@ -448,7 +466,8 @@ const AttendanceModule = () => {
                   </thead>
                   <tbody>
                     {absentStudents.map((item, idx) => {
-                      const stId = item.studentId || item.student_id;
+                      const rawId = item.studentId ?? item.student_id ?? item.id;
+                      const stId = String(rawId);
                       const stName = item.studentName || item.student_name || `${item.first_name || ''} ${item.last_name || ''}`.trim() || item.name;
                       const roomName = getRoomName(item);
 
