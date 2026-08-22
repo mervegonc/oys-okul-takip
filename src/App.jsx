@@ -12,7 +12,7 @@ import Rooms from './pages/Rooms';
 import SeatingDistribution from './pages/SeatingDistribution';
 import ConflictGroups from './pages/ConflictGroups';
 import ManualEdit from './pages/ManualEdit';
-import ExamAttendance from './pages/ExamAttendance';
+import AttendanceModule from './pages/AttendanceModule';
 
 function App() {
   const [user, setUser] = useState(null);
@@ -73,8 +73,8 @@ function App() {
                   <Route path="/manual-edit" element={
                     hasPermission(userEmail, 'seating') ? <ManualEdit /> : <Navigate to="/" />
                   } />
-                  <Route path="/exam-attendance" element={
-                    hasPermission(userEmail, 'exam') ? <ExamAttendance /> : <Navigate to="/" />
+                  <Route path="/attendance-module" element={
+                    hasPermission(userEmail, 'exam') ? <AttendanceModule /> : <Navigate to="/" />
                   } />
                   <Route path="/" element={<Navigate to="/students" />} />
                 </Routes>

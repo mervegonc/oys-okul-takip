@@ -14,11 +14,10 @@ const AttendanceModule = () => {
   const [seatingPlan, setSeatingPlan] = useState(null);
   const [attendanceRecords, setAttendanceRecords] = useState({});
   const [reasons, setReasons] = useState({});
-  const [activeTab, setActiveTab] = useState('all'); // 'all' | 'absent'
+  const [activeTab, setActiveTab] = useState('all');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
 
-  // Sınavları ve özet sayıları yükle
   useEffect(() => {
     fetchExamsWithStats();
   }, []);
@@ -26,7 +25,6 @@ const AttendanceModule = () => {
   const fetchExamsWithStats = async () => {
     setLoading(true);
     try {
-      // 1. Oturma planı tanımlanmış sınavları al
       const { data: plans, error: planErr } = await supabase
         .from('seating_plans')
         .select('exam_id, assignments');
@@ -39,7 +37,6 @@ const AttendanceModule = () => {
         return;
       }
 
-      // 2. Sınav detaylarını al
       const { data: examData, error: examErr } = await supabase
         .from('exams')
         .select('*')
@@ -47,13 +44,11 @@ const AttendanceModule = () => {
         .order('created_at', { ascending: false });
       if (examErr) throw examErr;
 
-      // 3. Mevcut yoklama kayıtlarını al
       const { data: attData, error: attErr } = await supabase
         .from('attendance')
         .select('*');
       if (attErr) throw attErr;
 
-      // İstatistikleri haritala
       const formattedExams = examData.map(exam => {
         const plan = plans.find(p => p.exam_id === exam.id);
         const assignments = plan?.assignments || [];
@@ -61,7 +56,7 @@ const AttendanceModule = () => {
 
         const examAtt = attData.filter(a => a.exam_id === exam.id);
         const absentCount = examAtt.filter(a => a.status === 'katilmadi').length;
-        const attendedCount = totalStudents - absentCount; // Varsayılan katıldı kabul edilir
+        const attendedCount = totalStudents - absentCount;
 
         return {
           ...exam,
@@ -79,12 +74,10 @@ const AttendanceModule = () => {
     }
   };
 
-  // Sınav seçildiğinde oturma planı ve yoklama verilerini çek
   const handleSelectExam = async (exam) => {
     setSelectedExam(exam);
     setLoading(true);
     try {
-      // Oturma planını getir
       const { data: planData, error: planErr } = await supabase
         .from('seating_plans')
         .select('*')
@@ -96,7 +89,6 @@ const AttendanceModule = () => {
       const plan = planData[0];
       setSeatingPlan(plan);
 
-      // Mevcut yoklamaları getir
       const { data: attData, error: attErr } = await supabase
         .from('attendance')
         .eq('exam_id', exam.id);
@@ -105,14 +97,12 @@ const AttendanceModule = () => {
       const statusMap = {};
       const reasonMap = {};
       
-      // Varsayılan olarak tüm öğrencileri 'katildi' yap
       (plan?.assignments || []).forEach(st => {
         const stId = st.studentId || st.student_id;
         statusMap[stId] = 'katildi';
         reasonMap[stId] = '';
       });
 
-      // Veritabanında özel durum kaydı varsa üzerine yaz
       (attData || []).forEach(att => {
         statusMap[att.student_id] = att.status;
         reasonMap[att.student_id] = att.reason || '';
@@ -127,17 +117,14 @@ const AttendanceModule = () => {
     }
   };
 
-  // Durum Değişikliği
   const handleStatusChange = (studentId, status) => {
     setAttendanceRecords(prev => ({ ...prev, [studentId]: status }));
   };
 
-  // Mazeret/Neden Değişikliği
   const handleReasonChange = (studentId, reason) => {
     setReasons(prev => ({ ...prev, [studentId]: reason }));
   };
 
-  // Yoklamayı Kaydet
   const handleSaveAttendance = async () => {
     if (!selectedExam) return;
     setLoading(true);
@@ -172,7 +159,6 @@ const AttendanceModule = () => {
     }
   };
 
-  // İstatistik Hesaplamaları (Anlık)
   const assignments = seatingPlan?.assignments || [];
   const stats = {
     total: assignments.length,
@@ -182,7 +168,6 @@ const AttendanceModule = () => {
     gec_katilacak: assignments.filter(a => attendanceRecords[a.studentId || a.student_id] === 'gec_katilacak').length,
   };
 
-  // Katılmayanlar Filtreli Liste
   const absentStudents = assignments.filter(st => {
     const stId = st.studentId || st.student_id;
     return attendanceRecords[stId] === 'katilmadi';
@@ -190,8 +175,6 @@ const AttendanceModule = () => {
 
   return (
     <div style={{ padding: '1.5rem', maxWidth: '1400px', margin: '0 auto', fontFamily: 'sans-serif' }}>
-      
-      {/* ÜST EKRAN: SINAV LİSTESİ */}
       {!selectedExam ? (
         <div>
           <h2>📋 Sınav Yoklama Yönetimi</h2>
@@ -240,7 +223,6 @@ const AttendanceModule = () => {
           )}
         </div>
       ) : (
-        /* ALT EKRAN: YOKLAMA DÜZENLEME */
         <div>
           <button 
             onClick={() => setSelectedExam(null)}
@@ -266,7 +248,6 @@ const AttendanceModule = () => {
             </p>
           )}
 
-          {/* İSTATİSTİK ÖZET KARTLARI */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '1rem', margin: '1.5rem 0' }}>
             <div style={{ background: '#f8f9fa', padding: '1rem', borderRadius: '8px', textAlign: 'center', border: '1px solid #ddd' }}>
               <div style={{ fontSize: '0.85rem', color: '#666' }}>Toplam Öğrenci</div>
@@ -290,7 +271,6 @@ const AttendanceModule = () => {
             </div>
           </div>
 
-          {/* SEKMELER (TÜMÜ / KATILMAYANLAR) */}
           <div style={{ display: 'flex', gap: '0.5rem', borderBottom: '2px solid #e2e8f0', marginBottom: '1rem' }}>
             <button
               onClick={() => setActiveTab('all')}
@@ -321,7 +301,6 @@ const AttendanceModule = () => {
             </button>
           </div>
 
-          {/* TABLO 1: TÜM ÖĞRENCİ LİSTESİ */}
           {activeTab === 'all' && (
             <table style={{ width: '100%', borderCollapse: 'collapse', background: '#fff', borderRadius: '8px', overflow: 'hidden', border: '1px solid #ddd' }}>
               <thead style={{ background: '#f8f9fa' }}>
@@ -374,7 +353,6 @@ const AttendanceModule = () => {
             </table>
           )}
 
-          {/* TABLO 2: KATILMAYANLAR VE MAZERET GİRİŞİ */}
           {activeTab === 'absent' && (
             <div>
               {absentStudents.length === 0 ? (
