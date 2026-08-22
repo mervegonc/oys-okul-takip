@@ -58,11 +58,11 @@ const AttendanceModule = () => {
       if (planErr) console.error('Seating plans çekilemedi:', planErr);
 
       let attData = [];
-      try {
-        const { data, error: attErr } = await supabase.from('attendance').select('*');
-        if (!attErr && data) attData = data;
-      } catch (err) {
-        console.warn('Attendance tablosu bulunamadı.');
+      const { data, error: attErr } = await supabase.from('attendance').select('*');
+      if (attErr) {
+        console.error('Attendance genel okuma hatası:', attErr);
+      } else if (data) {
+        attData = data;
       }
 
       const formattedExams = examData.map(exam => {
@@ -118,14 +118,14 @@ const AttendanceModule = () => {
 
       setSeatingPlan(plan);
 
+      // Attendance verilerini tüm tabloyu çekip JS tarafında filtreleyerek çekiyoruz (filtreleme UUID uyuşmazlığı yaşamamak için)
       let attData = [];
-      try {
-        const { data, error: attErr } = await supabase
-          .from('attendance')
-          .eq('exam_id', exam.id);
-        if (!attErr && data) attData = data;
-      } catch (err) {
-        console.warn('Attendance verisi okunamadı.');
+      const { data, error: attErr } = await supabase.from('attendance').select('*');
+      
+      if (attErr) {
+        console.error('Attendance verisi okunurken Supabase Hatası:', attErr);
+      } else if (data) {
+        attData = data.filter(a => String(a.exam_id) === String(exam.id));
       }
 
       const statusMap = {};
@@ -139,7 +139,7 @@ const AttendanceModule = () => {
         reasonMap[stId] = '';
       });
 
-      // Supabase'den gelen kayıtları String id ile eşleştiriyoruz
+      // Kayıtlı yoklama verilerini yerleştir
       (attData || []).forEach(att => {
         const stId = String(att.student_id);
         statusMap[stId] = att.status;
