@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../supabase';
 import ExcelUpload from '../components/ExcelUpload';
 import { encrypt, decrypt } from '../utils/encryption';
-import { FaTrash, FaUserPlus } from 'react-icons/fa';
+import { FaTrash, FaUserPlus, FaSort, FaSortUp, FaSortDown, FaFilter } from 'react-icons/fa';
 
 const Students = () => {
   const [students, setStudents] = useState([]);
@@ -13,6 +13,13 @@ const Students = () => {
   const [totalCount, setTotalCount] = useState(0);
   const [pageSize] = useState(20);
   const [classStats, setClassStats] = useState({});
+
+  // Filtreleme State'leri
+  const [selectedGradeFilter, setSelectedGradeFilter] = useState('ALL');
+  const [selectedClassFilter, setSelectedClassFilter] = useState('ALL');
+
+  // Sıralama State'leri
+  const [sortConfig, setSortConfig] = useState({ key: 'lastName', direction: 'asc' });
 
   const [newStudent, setNewStudent] = useState({
     firstName: '',
@@ -30,48 +37,73 @@ const Students = () => {
     englishLevel: 'Core',
   });
 
-  // 📊 İstatistikleri getir (Sınıf bazında toplam ve Yeni Kayıt sayısı)
-const fetchStats = async () => {
-  try {
-    const { data, error } = await supabase.rpc('get_class_stats');
-    if (error) throw error;
+  // İstatistikleri getir
+  const fetchStats = async () => {
+    try {
+      const { data, error } = await supabase.rpc('get_class_stats');
+      if (error) throw error;
 
-    const stats = {};
-    data.forEach((row) => {
-      let grade = row.grade;
-      const match = String(grade).match(/(\d+)/);
-      if (match) grade = match[1];
+      const stats = {};
+      (data || []).forEach((row) => {
+        let grade = row.grade;
+        const match = String(grade).match(/(\d+)/);
+        if (match) grade = match[1];
 
-      stats[grade] = {
-        total: Number(row.total),
-        newCount: Number(row.new_count),
-      };
-    });
+        stats[grade] = {
+          total: Number(row.total),
+          newCount: Number(row.new_count),
+        };
+      });
 
-    setClassStats(stats);
-  } catch (error) {
-    console.error('İstatistikler alınamadı:', error);
-  }
-};
+      setClassStats(stats);
+    } catch (error) {
+      console.error('İstatistikler alınamadı:', error);
+    }
+  };
 
-  // 📋 Öğrencileri getir (sayfalama ile)
+  // Öğrencileri getir (Seviye, Şube Filtreleri ve Sayfalama ile)
   const fetchStudents = async (page = 1) => {
     setLoading(true);
     try {
-      const { count, error: countError } = await supabase
-        .from('students')
-        .select('*', { count: 'exact', head: true });
+      // Filtreleme sorgusu oluştur
+      let countQuery = supabase.from('students').select('*', { count: 'exact', head: true });
+      let dataQuery = supabase.from('students').select('*');
 
+      if (selectedGradeFilter !== 'ALL') {
+        countQuery = countQuery.eq('grade', selectedGradeFilter);
+        dataQuery = dataQuery.eq('grade', selectedGradeFilter);
+      }
+
+      if (selectedClassFilter !== 'ALL') {
+        countQuery = countQuery.eq('class', selectedClassFilter);
+        dataQuery = dataQuery.eq('class', selectedClassFilter);
+      }
+
+      const { count, error: countError } = await countQuery;
       if (countError) throw countError;
       setTotalCount(count || 0);
 
       const from = (page - 1) * pageSize;
       const to = from + pageSize - 1;
 
-      const { data, error } = await supabase
-        .from('students')
-        .select('*')
-        .order('last_name', { ascending: true })
+      // Sıralama sütun adı dönüşümü (camelCase -> snake_case)
+      const columnMapping = {
+        firstName: 'first_name',
+        lastName: 'last_name',
+        grade: 'grade',
+        class: 'class',
+        studentNo: 'student_no',
+        tcNo: 'tc_no',
+        field: 'field',
+        secondLang: 'second_lang',
+        gender: 'gender',
+        englishLevel: 'english_level',
+      };
+
+      const dbSortKey = columnMapping[sortConfig.key] || 'last_name';
+      
+      const { data, error } = await dataQuery
+        .order(dbSortKey, { ascending: sortConfig.direction === 'asc' })
         .range(from, to);
 
       if (error) throw error;
@@ -131,9 +163,24 @@ const fetchStats = async () => {
   useEffect(() => {
     fetchStudents(currentPage);
     fetchStats();
-  }, [currentPage]);
+  }, [currentPage, selectedGradeFilter, selectedClassFilter, sortConfig]);
 
-  // ➕ Yeni öğrenci ekle
+  // Sütuna tıklayarak sıralama değiştirme fonksiyonu
+  const handleSort = (key) => {
+    let direction = 'asc';
+    if (sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
+
+  // Sıralama ikonu gösterme yardımcısı
+  const getSortIcon = (key) => {
+    if (sortConfig.key !== key) return <FaSort style={{ opacity: 0.3, marginLeft: '4px' }} />;
+    return sortConfig.direction === 'asc' ? <FaSortUp style={{ marginLeft: '4px', color: '#007bff' }} /> : <FaSortDown style={{ marginLeft: '4px', color: '#007bff' }} />;
+  };
+
+  // Yeni öğrenci ekle
   const handleAddStudent = async (e) => {
     e.preventDefault();
     if (!newStudent.firstName || !newStudent.lastName || !newStudent.grade) {
@@ -158,33 +205,8 @@ const fetchStats = async () => {
         created_at: new Date().toISOString(),
       };
 
-      const { data, error } = await supabase
-        .from('students')
-        .insert(encryptedData)
-        .select();
-
+      const { error } = await supabase.from('students').insert(encryptedData);
       if (error) throw error;
-
-      const newRecord = data[0];
-      setStudents([
-        ...students,
-        {
-          id: newRecord.id,
-          firstName: newStudent.firstName,
-          lastName: newStudent.lastName,
-          grade: newStudent.grade,
-          class: newStudent.class,
-          studentNo: newStudent.studentNo,
-          tcNo: newStudent.tcNo,
-          phone: newStudent.phone,
-          parentPhone: newStudent.parentPhone,
-          parentPhone2: newStudent.parentPhone2,
-          field: newStudent.field,
-          secondLang: newStudent.secondLang,
-          gender: newStudent.gender,
-          englishLevel: newStudent.englishLevel,
-        },
-      ]);
 
       setNewStudent({
         firstName: '',
@@ -211,16 +233,12 @@ const fetchStats = async () => {
     }
   };
 
-  // 🗑️ Tekil sil
+  // Tekil sil
   const handleDelete = async (id) => {
     if (!window.confirm('Bu öğrenciyi silmek istediğinize emin misiniz?')) return;
     try {
-      const { error } = await supabase
-        .from('students')
-        .delete()
-        .eq('id', id);
+      const { error } = await supabase.from('students').delete().eq('id', id);
       if (error) throw error;
-      setStudents(students.filter((s) => s.id !== id));
       fetchStats();
       fetchStudents(currentPage);
     } catch (error) {
@@ -228,7 +246,7 @@ const fetchStats = async () => {
     }
   };
 
-  // 🗑️ Toplu sil (güvenli versiyon)
+  // Toplu sil
   const handleBulkDelete = async () => {
     if (selectedIds.length === 0) {
       alert('Lütfen silmek için en az bir öğrenci seçin.');
@@ -237,24 +255,14 @@ const fetchStats = async () => {
     if (!window.confirm(`${selectedIds.length} öğrenciyi silmek istediğinize emin misiniz?`)) return;
 
     try {
-      const validIds = selectedIds.filter(id => id && typeof id === 'string');
-      if (validIds.length === 0) {
-        alert('Geçerli öğrenci seçilmedi.');
-        return;
-      }
-
-      const deletePromises = validIds.map(id =>
-        supabase.from('students').delete().eq('id', id)
-      );
-
+      const validIds = selectedIds.filter((id) => id && typeof id === 'string');
+      const deletePromises = validIds.map((id) => supabase.from('students').delete().eq('id', id));
       const results = await Promise.all(deletePromises);
-      const errors = results.filter(result => result.error);
+      const errors = results.filter((result) => result.error);
 
       if (errors.length > 0) {
-        console.error('Toplu silme hataları:', errors);
-        alert(`${errors.length} öğrenci silinirken hata oluştu. Detaylar konsolda.`);
+        alert(`${errors.length} öğrenci silinirken hata oluştu.`);
       } else {
-        setStudents(students.filter(s => !validIds.includes(s.id)));
         setSelectedIds([]);
         fetchStats();
         fetchStudents(currentPage);
@@ -262,15 +270,12 @@ const fetchStats = async () => {
       }
     } catch (error) {
       console.error('Toplu silme hatası:', error);
-      alert('Silme işlemi sırasında bir hata oluştu: ' + error.message);
+      alert('Silme işlemi sırasında hata oluştu: ' + error.message);
     }
   };
 
-  // 🔄 Seçim işlemleri
   const toggleSelect = (id) => {
-    setSelectedIds((prev) =>
-      prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
-    );
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]));
   };
 
   const toggleSelectAll = () => {
@@ -289,33 +294,42 @@ const fetchStats = async () => {
     setSelectedIds([]);
   };
 
-  if (loading && students.length === 0) return <div style={{ padding: '2rem', textAlign: 'center' }}>Yükleniyor...</div>;
-
   return (
-    <div style={{ padding: '1rem', maxWidth: '1200px', margin: '0 auto' }}>
+    <div style={{ padding: '1rem', maxWidth: '1300px', margin: '0 auto' }}>
       <h2>👨‍🎓 Öğrenci Yönetimi</h2>
 
       {/* Sınıf İstatistikleri */}
-      <div style={{
-        display: 'flex',
-        flexWrap: 'wrap',
-        gap: '0.5rem',
-        marginBottom: '1rem',
-        padding: '0.8rem',
-        background: '#f8f9fa',
-        borderRadius: '8px',
-        border: '1px solid #e0e0e0'
-      }}>
+      <div
+        style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: '0.5rem',
+          marginBottom: '1rem',
+          padding: '0.8rem',
+          background: '#f8f9fa',
+          borderRadius: '8px',
+          border: '1px solid #e0e0e0',
+        }}
+      >
         {Object.keys(classStats)
           .sort((a, b) => Number(a) - Number(b))
           .map((grade) => (
-            <div key={grade} style={{
-              background: 'white',
-              padding: '0.3rem 0.8rem',
-              borderRadius: '16px',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-              fontSize: '0.9rem'
-            }}>
+            <div
+              key={grade}
+              style={{
+                background: 'white',
+                padding: '0.3rem 0.8rem',
+                borderRadius: '16px',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+                fontSize: '0.9rem',
+                cursor: 'pointer',
+                border: selectedGradeFilter === grade ? '2px solid #007bff' : 'none',
+              }}
+              onClick={() => {
+                setSelectedGradeFilter(selectedGradeFilter === grade ? 'ALL' : grade);
+                setCurrentPage(1);
+              }}
+            >
               <strong>{grade}. Sınıf</strong>: {classStats[grade].total} kişi
               {classStats[grade].newCount > 0 && (
                 <span style={{ color: '#856404', marginLeft: '0.3rem' }}>
@@ -326,10 +340,68 @@ const fetchStats = async () => {
           ))}
       </div>
 
-      <ExcelUpload onUploadComplete={() => {
-        fetchStudents(currentPage);
-        fetchStats();
-      }} />
+      {/* Filtreleme ve Arama Çubuğu */}
+      <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem', background: '#eef2f7', padding: '0.8rem', borderRadius: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <FaFilter style={{ color: '#007bff' }} /> <strong>Filtrele:</strong>
+        </div>
+
+        <div>
+          <label style={{ fontSize: '0.85rem', marginRight: '0.3rem' }}>Sınıf / Seviye:</label>
+          <select
+            value={selectedGradeFilter}
+            onChange={(e) => {
+              setSelectedGradeFilter(e.target.value);
+              setCurrentPage(1);
+            }}
+            style={{ padding: '0.4rem', borderRadius: '4px', border: '1px solid #ccc' }}
+          >
+            <option value="ALL">Tüm Sınıflar</option>
+            <option value="9">9. Sınıflar</option>
+            <option value="10">10. Sınıflar</option>
+            <option value="11">11. Sınıflar</option>
+            <option value="12">12. Sınıflar</option>
+            <option value="Mezun">Mezun</option>
+          </select>
+        </div>
+
+        <div>
+          <label style={{ fontSize: '0.85rem', marginRight: '0.3rem' }}>Şube:</label>
+          <select
+            value={selectedClassFilter}
+            onChange={(e) => {
+              setSelectedClassFilter(e.target.value);
+              setCurrentPage(1);
+            }}
+            style={{ padding: '0.4rem', borderRadius: '4px', border: '1px solid #ccc' }}
+          >
+            <option value="ALL">Tüm Şubeler</option>
+            {['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'].map((c) => (
+              <option key={c} value={c}>{c} Şubesi</option>
+            ))}
+          </select>
+        </div>
+
+        {(selectedGradeFilter !== 'ALL' || selectedClassFilter !== 'ALL') && (
+          <button
+            onClick={() => {
+              setSelectedGradeFilter('ALL');
+              setSelectedClassFilter('ALL');
+              setCurrentPage(1);
+            }}
+            style={{ padding: '0.4rem 0.8rem', background: '#6c757d', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem' }}
+          >
+            Filtreleri Temizle
+          </button>
+        )}
+      </div>
+
+      <ExcelUpload
+        onUploadComplete={() => {
+          fetchStudents(currentPage);
+          fetchStats();
+        }}
+      />
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
         <div>
@@ -370,7 +442,7 @@ const fetchStats = async () => {
           )}
         </div>
         <div style={{ fontSize: '0.9rem', color: '#666' }}>
-          Toplam {totalCount} öğrenci | Sayfa {currentPage} / {totalPages}
+          Toplam {totalCount} öğrenci | Sayfa {currentPage} / {totalPages || 1}
         </div>
       </div>
 
@@ -424,48 +496,64 @@ const fetchStats = async () => {
       {/* Öğrenci Listesi Tablosu */}
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', background: 'white', borderRadius: '8px', overflow: 'hidden', boxShadow: '0 0 10px rgba(0,0,0,0.05)' }}>
-          <thead style={{ background: '#f1f1f1' }}>
+          <thead style={{ background: '#f1f1f1', cursor: 'pointer', userSelect: 'none' }}>
             <tr>
               <th style={{ padding: '0.5rem' }}>
                 <input type="checkbox" checked={selectedIds.length === students.length && students.length > 0} onChange={toggleSelectAll} />
               </th>
               <th>#</th>
-              <th>Ad</th><th>Soyad</th><th>Sınıf</th><th>Şube</th><th>No</th>
-              <th>TC</th><th>Telefon</th><th>Veli1</th><th>Veli2</th>
-              <th>Alan</th><th>2.Dil</th><th>Cinsiyet</th><th>İng.</th><th>İşlem</th>
+              <th onClick={() => handleSort('firstName')}>Ad {getSortIcon('firstName')}</th>
+              <th onClick={() => handleSort('lastName')}>Soyad {getSortIcon('lastName')}</th>
+              <th onClick={() => handleSort('grade')}>Sınıf {getSortIcon('grade')}</th>
+              <th onClick={() => handleSort('class')}>Şube {getSortIcon('class')}</th>
+              <th onClick={() => handleSort('studentNo')}>No {getSortIcon('studentNo')}</th>
+              <th>TC</th>
+              <th>Telefon</th>
+              <th>Veli1</th>
+              <th>Veli2</th>
+              <th onClick={() => handleSort('field')}>Alan {getSortIcon('field')}</th>
+              <th onClick={() => handleSort('secondLang')}>2.Dil {getSortIcon('secondLang')}</th>
+              <th onClick={() => handleSort('gender')}>Cinsiyet {getSortIcon('gender')}</th>
+              <th onClick={() => handleSort('englishLevel')}>İng. {getSortIcon('englishLevel')}</th>
+              <th>İşlem</th>
             </tr>
           </thead>
           <tbody>
-            {students.map((student, index) => (
-              <tr key={student.id} style={{ borderBottom: '1px solid #eee' }}>
-                <td style={{ padding: '0.5rem', textAlign: 'center' }}>
-                  <input type="checkbox" checked={selectedIds.includes(student.id)} onChange={() => toggleSelect(student.id)} />
-                </td>
-                <td style={{ padding: '0.5rem', textAlign: 'center' }}>{(currentPage - 1) * pageSize + index + 1}</td>
-                <td style={{ padding: '0.5rem' }}>{student.firstName}</td>
-                <td style={{ padding: '0.5rem' }}>{student.lastName}</td>
-                <td style={{ padding: '0.5rem' }}>{student.grade}</td>
-                <td style={{ padding: '0.5rem' }}>{student.class}</td>
-                <td style={{ padding: '0.5rem' }}>{student.studentNo}</td>
-                <td style={{ padding: '0.5rem' }}>{student.tcNo}</td>
-                <td style={{ padding: '0.5rem' }}>{student.phone}</td>
-                <td style={{ padding: '0.5rem' }}>{student.parentPhone}</td>
-                <td style={{ padding: '0.5rem' }}>{student.parentPhone2}</td>
-                <td style={{ padding: '0.5rem' }}>{student.field}</td>
-                <td style={{ padding: '0.5rem' }}>{student.secondLang}</td>
-                <td style={{ padding: '0.5rem' }}>{student.gender}</td>
-                <td style={{ padding: '0.5rem' }}>{student.englishLevel}</td>
-                <td style={{ padding: '0.5rem' }}>
-                  <button onClick={() => handleDelete(student.id)} style={{ background: 'transparent', border: 'none', color: '#dc3545', cursor: 'pointer' }}>
-                    <FaTrash />
-                  </button>
-                </td>
+            {loading ? (
+              <tr>
+                <td colSpan="16" style={{ textAlign: 'center', padding: '1.5rem' }}>Yükleniyor...</td>
               </tr>
-            ))}
-            {students.length === 0 && (
+            ) : students.length > 0 ? (
+              students.map((student, index) => (
+                <tr key={student.id} style={{ borderBottom: '1px solid #eee' }}>
+                  <td style={{ padding: '0.5rem', textAlign: 'center' }}>
+                    <input type="checkbox" checked={selectedIds.includes(student.id)} onChange={() => toggleSelect(student.id)} />
+                  </td>
+                  <td style={{ padding: '0.5rem', textAlign: 'center' }}>{(currentPage - 1) * pageSize + index + 1}</td>
+                  <td style={{ padding: '0.5rem' }}>{student.firstName}</td>
+                  <td style={{ padding: '0.5rem', fontWeight: '500' }}>{student.lastName}</td>
+                  <td style={{ padding: '0.5rem', textAlign: 'center' }}>{student.grade}</td>
+                  <td style={{ padding: '0.5rem', textAlign: 'center' }}>{student.class}</td>
+                  <td style={{ padding: '0.5rem', textAlign: 'center' }}>{student.studentNo}</td>
+                  <td style={{ padding: '0.5rem' }}>{student.tcNo}</td>
+                  <td style={{ padding: '0.5rem' }}>{student.phone}</td>
+                  <td style={{ padding: '0.5rem' }}>{student.parentPhone}</td>
+                  <td style={{ padding: '0.5rem' }}>{student.parentPhone2}</td>
+                  <td style={{ padding: '0.5rem' }}>{student.field}</td>
+                  <td style={{ padding: '0.5rem' }}>{student.secondLang}</td>
+                  <td style={{ padding: '0.5rem' }}>{student.gender}</td>
+                  <td style={{ padding: '0.5rem' }}>{student.englishLevel}</td>
+                  <td style={{ padding: '0.5rem', textAlign: 'center' }}>
+                    <button onClick={() => handleDelete(student.id)} style={{ background: 'transparent', border: 'none', color: '#dc3545', cursor: 'pointer' }}>
+                      <FaTrash />
+                    </button>
+                  </td>
+                </tr>
+              ))
+            ) : (
               <tr>
                 <td colSpan="16" style={{ textAlign: 'center', padding: '1rem' }}>
-                  Henüz öğrenci eklenmemiş.
+                  Filtrelere uygun öğrenci bulunamadı.
                 </td>
               </tr>
             )}
