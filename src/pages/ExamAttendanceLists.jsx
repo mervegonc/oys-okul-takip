@@ -14,8 +14,8 @@ const ExamAttendanceLists = () => {
   const [showTc, setShowTc] = useState(false);
   const [examCategory, setExamCategory] = useState('akademik'); // 'akademik' | 'yabanci_dil' | 'ortaokul_yazili'
   const [schoolType, setSchoolType] = useState('lise'); // 'lise' | 'ortaokul'
-  const [sessionType, setSessionType] = useState('sozel'); // Ortaokul Akademik için: 'sozel' | 'sayisal'
-  const [invigilators, setInvigilators] = useState({}); // { roomId/roomName: "Gözetmen Adı" }
+  const [sessionType, setSessionType] = useState('sozel'); // Ortaokul Akademik: 'sozel' | 'sayisal'
+  const [invigilators, setInvigilators] = useState({});
 
   useEffect(() => {
     fetchExams();
@@ -81,38 +81,67 @@ const ExamAttendanceLists = () => {
     window.print();
   };
 
-  // Assignments
-  const assignments = seatingPlan?.assignments || [];
-
-  // Salon/Sınıf bazlı gruplama
-  const groupedByRoom = assignments.reduce((acc, curr) => {
-    const rawRoomId = curr.roomId || curr.room_id || curr.salon_id || curr.roomName || curr.room_name || curr.salon || 'Tanımsız Salon';
+  // Esnek Öğrenci Detayları Çözücü (TC, Öğrenci No, Ad Soyad)
+  const getStudentDetails = (st) => {
+    const rawTc = st.tc || st.tc_no || st.tcNo || st.identity_number || st.tc_kimlik_no || '-';
+    const rawStudentNo = st.studentNo || st.student_no || st.student_number || st.school_number || st.ogr_no || '-';
     
-    let roomName = rawRoomId;
-    if (rooms && rooms.length > 0) {
-      const found = rooms.find(r => String(r.id) === String(rawRoomId));
-      if (found && found.name) roomName = found.name;
+    // İsim Ayrıştırma
+    let fullName = st.studentName || st.student_name || st.name || `${st.first_name || ''} ${st.last_name || ''}`.trim() || 'İsimsiz Öğrenci';
+    let surname = st.last_name || st.surname || st.soyad || '';
+    let firstName = st.first_name || st.name || st.ad || '';
+
+    if (!surname && fullName) {
+      const parts = fullName.trim().split(' ');
+      if (parts.length > 1) {
+        surname = parts.pop();
+        firstName = parts.join(' ');
+      } else {
+        firstName = fullName;
+      }
     }
 
+    const surnameFirstFormat = surname ? `${surname.toUpperCase()}, ${firstName}` : fullName;
+
+    return {
+      tc: rawTc,
+      studentNo: rawStudentNo,
+      fullName,
+      surnameFirstFormat,
+      grade: st.grade || st.sinif || '',
+      className: st.class || st.className || st.sube || ''
+    };
+  };
+
+  const getRoomName = (item) => {
+    const rawRoomId = item.roomId || item.room_id || item.salon_id || item.roomName || item.room_name || item.salon;
+    if (rooms && rooms.length > 0 && rawRoomId) {
+      const foundInDb = rooms.find(r => String(r.id) === String(rawRoomId));
+      if (foundInDb && foundInDb.name) return foundInDb.name;
+    }
+    return rawRoomId || 'Tanımsız Salon';
+  };
+
+  const assignments = seatingPlan?.assignments || [];
+
+  // Salon Gruplaması
+  const groupedByRoom = assignments.reduce((acc, curr) => {
+    const roomName = getRoomName(curr);
     if (!acc[roomName]) acc[roomName] = [];
     acc[roomName].push(curr);
     return acc;
   }, {});
 
-  // Soyada Göre Türkçe A-Z Sıralama
+  // Soyada Göre A-Z Sıralama
   const getSortedBySurname = () => {
     return [...assignments].sort((a, b) => {
-      const nameA = a.studentName || a.student_name || `${a.first_name || ''} ${a.last_name || ''}`.trim() || '';
-      const nameB = b.studentName || b.student_name || `${b.first_name || ''} ${b.last_name || ''}`.trim() || '';
-
-      const surnameA = nameA.split(' ').pop() || '';
-      const surnameB = nameB.split(' ').pop() || '';
-
-      return surnameA.localeCompare(surnameB, 'tr', { sensitivity: 'base' });
+      const detA = getStudentDetails(a);
+      const detB = getStudentDetails(b);
+      return detA.surnameFirstFormat.localeCompare(detB.surnameFirstFormat, 'tr', { sensitivity: 'base' });
     });
   };
 
-  // Excel İndirme İşlemi
+  // Excel Aktarımı
   const exportToExcel = () => {
     if (!selectedExam || assignments.length === 0) return;
 
@@ -120,29 +149,30 @@ const ExamAttendanceLists = () => {
 
     if (activeTab === 'surname') {
       dataToExport = getSortedBySurname().map((st, index) => {
-        const fullNm = st.studentName || st.student_name || `${st.first_name || ''} ${st.last_name || ''}`.trim();
+        const det = getStudentDetails(st);
         return {
           'Sıra No': index + 1,
-          'Öğrenci Soyadı ve Adı': fullNm,
-          'Sınıf/Şube': `${st.grade || ''}-${st.class || st.className || ''}`,
-          'Salon Adı': st.roomName || st.room_name || st.roomId || '',
-          'Masa Sıra No': st.seatNumber || st.seat_number || ''
+          'Öğrenci Soyadı, Adı': det.surnameFirstFormat,
+          'Sınıf/Şube': `${det.grade}-${det.className}`,
+          'Salon Adı': getRoomName(st),
+          'Sıra No (Koltuk)': st.seatNumber || st.seat_number || ''
         };
       });
     } else {
       dataToExport = assignments.map((st, index) => {
+        const det = getStudentDetails(st);
         const item = {
           'Sıra No': index + 1,
-          'Salon Adı': st.roomName || st.room_name || st.roomId || '',
+          'Salon Adı': getRoomName(st),
           'Masa Sıra No': st.seatNumber || st.seat_number || '',
-          'Öğrenci Adı Soyadı': st.studentName || st.student_name || `${st.first_name || ''} ${st.last_name || ''}`.trim(),
-          'Sınıf/Şube': `${st.grade || ''}-${st.class || st.className || ''}`
+          'Öğrenci Adı Soyadı': det.fullName,
+          'Sınıf/Şube': `${det.grade}-${det.className}`
         };
         if (showTc && examCategory !== 'ortaokul_yazili') {
-          item['TC Kimlik No'] = st.tc || st.tc_no || '';
+          item['TC Kimlik No'] = det.tc;
         }
         if (examCategory !== 'ortaokul_yazili') {
-          item['Öğrenci No'] = st.studentNo || st.student_number || '';
+          item['Öğrenci No'] = det.studentNo;
         }
         return item;
       });
@@ -154,71 +184,52 @@ const ExamAttendanceLists = () => {
     XLSX.writeFile(workbook, `${selectedExam.title}_Listesi.xlsx`);
   };
 
-  // Yabancı Dil İstatistik Hesaplayıcı
   const calculateLangStats = (roomStudents) => {
-    let coreCount = 0;
-    let extCount = 0;
-    let almCount = 0;
-    let fraCount = 0;
-    let ispCount = 0;
-
+    let coreCount = 0, extCount = 0, almCount = 0, fraCount = 0, ispCount = 0;
     roomStudents.forEach(st => {
-      const level = (st.englishLevel || st.level || st.eng_level || '').toLowerCase();
+      const level = (st.englishLevel || st.level || '').toLowerCase();
       if (level.includes('core')) coreCount++;
       if (level.includes('ext')) extCount++;
-
-      const secondLang = (st.secondLanguage || st.second_lang || st.ikinci_dil || '').toLowerCase();
+      const secondLang = (st.secondLanguage || st.second_lang || '').toLowerCase();
       if (secondLang.includes('alm')) almCount++;
       if (secondLang.includes('fra')) fraCount++;
       if (secondLang.includes('isp')) ispCount++;
     });
-
     return { coreCount, extCount, almCount, fraCount, ispCount };
   };
 
-  // Akademik Lise TM/MF İstatistik Hesaplayıcı
-  const calculateTrackStats = (roomStudents) => {
-    let tmCount = 0;
-    let mfCount = 0;
-
-    roomStudents.forEach(st => {
-      const grade = parseInt(st.grade || '0', 10);
-      const track = (st.track || st.alan || st.branch || '').toUpperCase();
-      if (grade === 11 || grade === 12) {
-        if (track.includes('TM') || track.includes('EŞİT')) tmCount++;
-        if (track.includes('MF') || track.includes('SAYISAL')) mfCount++;
-      }
-    });
-
-    return { tmCount, mfCount };
-  };
-
   return (
-    <div className="lists-container" style={{ padding: '1.5rem', maxWidth: '1400px', margin: '0 auto', fontFamily: 'Arial, sans-serif' }}>
-      {/* BASKI ÖZEL CSS KONTROLLERİ */}
+    <div className="lists-container" style={{ padding: '1.5rem', maxWidth: '1400px', margin: '0 auto', fontFamily: 'Segoe UI, Tahoma, Geneva, Verdana, sans-serif' }}>
+      
+      {/* KESİNTİSİZ A4 BASKI CSS KURALLARI */}
       <style>{`
         @media print {
-          body {
-            background: #fff !important;
-            font-size: 11pt;
-          }
-          .no-print, .no-print * {
+          /* Navbar ve Uygulama Elemanlarını Tamamen Gizle */
+          header, nav, .navbar, #navbar, .no-print, body > *:not(.lists-container) {
             display: none !important;
           }
-          .print-only {
-            display: block !important;
+          body {
+            background: #fff !important;
+            margin: 0 !important;
+            padding: 0 !important;
+          }
+          .lists-container {
+            padding: 0 !important;
+            margin: 0 !important;
+            width: 100% !important;
           }
           .page-break {
-            page-break-after: always;
-            break-after: page;
-            display: block;
-            clear: both;
+            page-break-after: always !important;
+            break-after: page !important;
+            display: block !important;
+            margin: 0 !important;
+            padding: 10mm !important;
+            box-sizing: border-box !important;
+            height: 100vh;
           }
           .print-card {
             border: none !important;
             box-shadow: none !important;
-            padding: 0 !important;
-            margin: 0 !important;
           }
           table {
             width: 100% !important;
@@ -226,8 +237,12 @@ const ExamAttendanceLists = () => {
           }
           th, td {
             border: 1px solid #000 !important;
-            padding: 5px 8px !important;
-            font-size: 10pt !important;
+            padding: 6px 8px !important;
+            font-size: 9.5pt !important;
+          }
+          th {
+            background-color: #f0f0f0 !important;
+            -webkit-print-color-adjust: exact;
           }
           input {
             border: none !important;
@@ -236,38 +251,37 @@ const ExamAttendanceLists = () => {
         }
       `}</style>
 
-      {/* EKRAN ÜST BAŞLIK & SINAV SEÇİMİ (BASKIDA GİZLİ) */}
+      {/* EKRAN KONTROLLERİ */}
       <div className="no-print">
         <h2>📑 Listeler</h2>
-        <p style={{ color: '#666' }}>Sınıf/Salon yoklama listeleri, soyad sıralı listeler ve Excel çıktılarını bu ekrandan yönetebilirsiniz.</p>
+        <p style={{ color: '#666' }}>Sınav salon ve soyad sıralı listelerini yönetin ve bastırın.</p>
 
         {!selectedExam ? (
           <div style={{ marginTop: '1.5rem' }}>
             <h3>Lütfen Bir Sınav Seçin</h3>
             {loading ? <p>Sınavlar yükleniyor...</p> : (
               <div style={{ display: 'grid', gap: '1rem', marginTop: '1rem' }}>
-                {exams.length === 0 ? <p>Kayıtlı sınav bulunamadı.</p> : exams.map(exam => (
+                {exams.map(exam => (
                   <div
                     key={exam.id}
                     onClick={() => handleSelectExam(exam)}
                     style={{
-                      padding: '1rem 1.5rem',
+                      padding: '1.2rem',
                       border: '1px solid #e2e8f0',
                       borderRadius: '8px',
                       background: '#fff',
                       cursor: 'pointer',
                       display: 'flex',
                       justifyContent: 'space-between',
-                      alignItems: 'center',
-                      boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+                      alignItems: 'center'
                     }}
                   >
                     <div>
-                      <h4 style={{ margin: 0, color: '#2b6cb0' }}>{exam.title}</h4>
+                      <h4 style={{ margin: 0, color: '#2b6cb0', fontSize: '1.1rem' }}>{exam.title}</h4>
                       <span style={{ fontSize: '0.85rem', color: '#718096' }}>Tarih: {exam.date}</span>
                     </div>
-                    <button style={{ padding: '0.4rem 0.8rem', background: '#3182ce', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
-                      Listeleri Görüntüle →
+                    <button style={{ padding: '0.5rem 1rem', background: '#3182ce', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
+                      Listeleri Aç →
                     </button>
                   </div>
                 ))}
@@ -280,31 +294,31 @@ const ExamAttendanceLists = () => {
               onClick={() => setSelectedExam(null)}
               style={{ padding: '0.4rem 0.8rem', background: '#e2e8f0', border: 'none', borderRadius: '4px', cursor: 'pointer', marginBottom: '1rem' }}
             >
-              ← Sınav Listesine Dön
+              ← Sınav Seçimine Dön
             </button>
 
-            {/* FİLTRE VE SINAV TÜRÜ SEÇENEKLERİ */}
-            <div style={{ background: '#f7fafc', padding: '1rem', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '1.5rem', display: 'flex', flexWrap: 'wrap', gap: '1.5rem', alignItems: 'center' }}>
+            {/* FİLTRE & AYAR PANALİ */}
+            <div style={{ background: '#f8fafc', padding: '1.2rem', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '1.5rem', display: 'flex', flexWrap: 'wrap', gap: '1.5rem', alignItems: 'center' }}>
               <div>
-                <label style={{ fontWeight: 'bold', fontSize: '0.85rem', display: 'block' }}>Sınav Kategori:</label>
+                <label style={{ fontWeight: 'bold', fontSize: '0.85rem', display: 'block' }}>Sınav Türü:</label>
                 <select value={examCategory} onChange={(e) => setExamCategory(e.target.value)} style={{ padding: '0.4rem', borderRadius: '4px', border: '1px solid #ccc' }}>
-                  <option value="akademik">Akademik Sınav (Deneme vb.)</option>
+                  <option value="akademik">Akademik Sınav (Deneme)</option>
                   <option value="yabanci_dil">Yabancı Dil Sınavı</option>
-                  <option value="ortaokul_yazili">Ortaokul Yazılı Sınavı (Karma Değil)</option>
+                  <option value="ortaokul_yazili">Ortaokul Yazılı Sınavı (Sınıf İçi)</option>
                 </select>
               </div>
 
               <div>
-                <label style={{ fontWeight: 'bold', fontSize: '0.85rem', display: 'block' }}>Okul Kademesi:</label>
+                <label style={{ fontWeight: 'bold', fontSize: '0.85rem', display: 'block' }}>Kademe:</label>
                 <select value={schoolType} onChange={(e) => setSchoolType(e.target.value)} style={{ padding: '0.4rem', borderRadius: '4px', border: '1px solid #ccc' }}>
-                  <option value="lise">Lise</option>
-                  <option value="ortaokul">Ortaokul</option>
+                  <option value="lise">Lise (9-12)</option>
+                  <option value="ortaokul">Ortaokul (5-8)</option>
                 </select>
               </div>
 
               {examCategory === 'akademik' && schoolType === 'ortaokul' && (
                 <div>
-                  <label style={{ fontWeight: 'bold', fontSize: '0.85rem', display: 'block' }}>Oturum Türü:</label>
+                  <label style={{ fontWeight: 'bold', fontSize: '0.85rem', display: 'block' }}>Oturum:</label>
                   <select value={sessionType} onChange={(e) => setSessionType(e.target.value)} style={{ padding: '0.4rem', borderRadius: '4px', border: '1px solid #ccc' }}>
                     <option value="sozel">Sözel Oturumu</option>
                     <option value="sayisal">Sayısal Oturumu</option>
@@ -314,19 +328,19 @@ const ExamAttendanceLists = () => {
 
               {examCategory !== 'ortaokul_yazili' && (
                 <div style={{ display: 'flex', alignItems: 'center', marginTop: '1.2rem' }}>
-                  <label style={{ fontSize: '0.9rem', cursor: 'pointer', userSelect: 'none' }}>
-                    <input type="checkbox" checked={showTc} onChange={(e) => setShowTc(e.target.checked)} style={{ marginRight: '0.4rem' }} />
-                    TC Kimlik Numaralarını Göster
+                  <label style={{ fontSize: '0.9rem', cursor: 'pointer', fontWeight: '500' }}>
+                    <input type="checkbox" checked={showTc} onChange={(e) => setShowTc(e.target.checked)} style={{ marginRight: '0.5rem' }} />
+                    TC Kimlik No Göster
                   </label>
                 </div>
               )}
 
-              <div style={{ marginLeft: 'auto', display: 'flex', gap: '0.5rem' }}>
+              <div style={{ marginLeft: 'auto' }}>
                 <button
                   onClick={handlePrint}
-                  style={{ padding: '0.6rem 1.2rem', background: '#2b6cb0', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}
+                  style={{ padding: '0.6rem 1.4rem', background: '#1e293b', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.95rem' }}
                 >
-                  🖨️ Yazdır / A4 Baskı Al
+                  🖨️ A4 Baskı Al (Ctrl+P)
                 </button>
               </div>
             </div>
@@ -339,9 +353,9 @@ const ExamAttendanceLists = () => {
                   padding: '0.6rem 1.2rem',
                   border: 'none',
                   background: 'none',
-                  borderBottom: activeTab === 'attendance' ? '3px solid #3182ce' : 'none',
+                  borderBottom: activeTab === 'attendance' ? '3px solid #007bff' : 'none',
                   fontWeight: activeTab === 'attendance' ? 'bold' : 'normal',
-                  color: activeTab === 'attendance' ? '#3182ce' : '#4a5568',
+                  color: activeTab === 'attendance' ? '#007bff' : '#4a5568',
                   cursor: 'pointer'
                 }}
               >
@@ -353,9 +367,9 @@ const ExamAttendanceLists = () => {
                   padding: '0.6rem 1.2rem',
                   border: 'none',
                   background: 'none',
-                  borderBottom: activeTab === 'surname' ? '3px solid #3182ce' : 'none',
+                  borderBottom: activeTab === 'surname' ? '3px solid #007bff' : 'none',
                   fontWeight: activeTab === 'surname' ? 'bold' : 'normal',
-                  color: activeTab === 'surname' ? '#3182ce' : '#4a5568',
+                  color: activeTab === 'surname' ? '#007bff' : '#4a5568',
                   cursor: 'pointer'
                 }}
               >
@@ -380,187 +394,180 @@ const ExamAttendanceLists = () => {
         )}
       </div>
 
-      {/* İÇERİK BÖLÜMÜ (BASKIDA BURASI ÇIKACAK) */}
+      {/* BASKI VE LİSTE ALANI */}
       {selectedExam && (
         <div>
-          {/* 1. SEKMELİ YAPI: SALON / SINIF YOKLAMA LİSTESİ */}
+          {/* 1. SEKMELİ YAPI: SALON YOKLAMA LİSTESİ */}
           {activeTab === 'attendance' && (
             <div>
-              {Object.keys(groupedByRoom).length === 0 ? (
-                <p>Bu sınav için oluşturulmuş salon yerleşimi bulunamadı.</p>
-              ) : (
-                Object.keys(groupedByRoom).map((roomName, roomIdx) => {
-                  const students = groupedByRoom[roomName];
-                  const langStats = calculateLangStats(students);
-                  const trackStats = calculateTrackStats(students);
+              {Object.keys(groupedByRoom).map((roomName) => {
+                const students = groupedByRoom[roomName];
+                const langStats = calculateLangStats(students);
 
-                  return (
-                    <div key={roomName} className="print-card page-break" style={{ background: '#fff', border: '1px solid #ccc', padding: '1.5rem', marginBottom: '2rem', borderRadius: '4px' }}>
-                      {/* LİSTE BAŞLIĞI */}
-                      <div style={{ textAlign: 'center', marginBottom: '1rem', borderBottom: '2px solid #000', paddingBottom: '0.5rem' }}>
-                        <h3 style={{ margin: '0 0 0.2rem 0', fontSize: '14pt', textTransform: 'uppercase' }}>{selectedExam.title}</h3>
-                        <div style={{ fontSize: '10pt', fontWeight: 'bold' }}>
-                          Sınav Tarihi: {selectedExam.date} | Salon / Sınıf: <span style={{ textDecoration: 'underline' }}>{roomName}</span>
-                          {examCategory === 'akademik' && schoolType === 'ortaokul' && (
-                            <span style={{ marginLeft: '10px', color: '#d97706' }}>
-                              ({sessionType === 'sozel' ? 'SÖZEL OTURUMU' : 'SAYISAL OTURUMU'})
-                            </span>
-                          )}
-                          {examCategory === 'yabanci_dil' && (
-                            <span style={{ marginLeft: '10px', color: '#2563eb' }}>(YABANCI DİL SINAVI)</span>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* GÖZETMEN ADI ALANI */}
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.8rem', fontSize: '9pt' }}>
-                        <div><strong>Gözetmen Adı Soyadı:</strong> 
-                          <input
-                            type="text"
-                            placeholder="..........................................."
-                            value={invigilators[roomName] || ''}
-                            onChange={(e) => handleInvigilatorChange(roomName, e.target.value)}
-                            style={{ border: 'none', borderBottom: '1px dotted #000', outline: 'none', marginLeft: '5px', fontSize: '10pt' }}
-                          />
-                        </div>
-                        <div><strong>Toplam Öğrenci Sayısı:</strong> {students.length}</div>
-                      </div>
-
-                      {/* ÖĞRENCİ TABLOSU */}
-                      <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                        <thead>
-                          <tr style={{ background: '#f2f2f2' }}>
-                            <th style={{ width: '5%', textAlign: 'center' }}>Sıra</th>
-                            {examCategory !== 'ortaokul_yazili' && showTc && <th style={{ width: '15%' }}>TC Kimlik No</th>}
-                            {examCategory !== 'ortaokul_yazili' && <th style={{ width: '12%' }}>Öğrenci No</th>}
-                            <th>Öğrenci Adı Soyadı</th>
-                            <th style={{ width: '10%', textAlign: 'center' }}>Sınıf/Şube</th>
-                            {examCategory === 'yabanci_dil' && schoolType === 'lise' && (
-                              <>
-                                <th style={{ width: '10%', textAlign: 'center' }}>İng. Seviye</th>
-                                <th style={{ width: '12%', textAlign: 'center' }}>2. Yabancı Dil</th>
-                              </>
-                            )}
-                            {examCategory === 'yabanci_dil' && schoolType === 'ortaokul' && (
-                              <th style={{ width: '15%', textAlign: 'center' }}>2. Yabancı Dil</th>
-                            )}
-                            <th style={{ width: '20%', textAlign: 'center' }}>İmza / Yoklama</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {students.map((st, sIdx) => {
-                            const name = st.studentName || st.student_name || `${st.first_name || ''} ${st.last_name || ''}`.trim();
-                            const gradeClass = `${st.grade || ''}-${st.class || st.className || ''}`;
-
-                            return (
-                              <tr key={st.studentId || st.id || sIdx}>
-                                <td style={{ textAlign: 'center', fontWeight: 'bold' }}>{st.seatNumber || st.seat_number || (sIdx + 1)}</td>
-                                {examCategory !== 'ortaokul_yazili' && showTc && <td>{st.tc || st.tc_no || '-'}</td>}
-                                {examCategory !== 'ortaokul_yazili' && <td>{st.studentNo || st.student_number || '-'}</td>}
-                                <td>{name}</td>
-                                <td style={{ textAlign: 'center' }}>{gradeClass}</td>
-
-                                {/* Yabancı Dil Özel Kolonları */}
-                                {examCategory === 'yabanci_dil' && schoolType === 'lise' && (
-                                  <>
-                                    <td style={{ textAlign: 'center', fontSize: '8.5pt' }}>{st.englishLevel || st.level || '-'}</td>
-                                    <td style={{ textAlign: 'center', fontSize: '8.5pt' }}>{st.secondLanguage || st.second_lang || '-'}</td>
-                                  </>
-                                )}
-                                {examCategory === 'yabanci_dil' && schoolType === 'ortaokul' && (
-                                  <td style={{ textAlign: 'center', fontSize: '8.5pt' }}>{st.secondLanguage || st.second_lang || '-'}</td>
-                                )}
-
-                                <td style={{ textAlign: 'center', color: '#ccc' }}>[ &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; ]</td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-
-                      {/* DİNAMİK ÖZET İSTATİSTİK VE İMZA ALANI */}
-                      <div style={{ marginTop: '1.2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                        {/* Sol Taraf: İstatistik Kutusu */}
-                        <div style={{ border: '1px solid #000', padding: '0.5rem 0.8rem', fontSize: '8.5pt', borderRadius: '4px', maxWidth: '60%' }}>
-                          <strong style={{ display: 'block', marginBottom: '4px', textDecoration: 'underline' }}>Sınav Katılım Özet Tablosu:</strong>
-                          
-                          {/* Lise Akademik İstatistiği */}
-                          {examCategory === 'akademik' && schoolType === 'lise' && (
-                            <div>
-                              <span><strong>TM Katılan:</strong> ____ &nbsp;|&nbsp; </span>
-                              <span><strong>MF Katılan:</strong> ____ &nbsp;|&nbsp; </span>
-                              <span><strong>Toplam Katılan:</strong> ____ &nbsp;|&nbsp; </span>
-                              <span><strong>Katılmayan:</strong> ____</span>
-                            </div>
-                          )}
-
-                          {/* Yabancı Dil Lise İstatistiği */}
-                          {examCategory === 'yabanci_dil' && schoolType === 'lise' && (
-                            <div>
-                              {langStats.coreCount > 0 && <span><strong>Core:</strong> {langStats.coreCount} &nbsp;|&nbsp; </span>}
-                              {langStats.extCount > 0 && <span><strong>Ext:</strong> {langStats.extCount} &nbsp;|&nbsp; </span>}
-                              {langStats.almCount > 0 && <span><strong>Almanca:</strong> {langStats.almCount} &nbsp;|&nbsp; </span>}
-                              {langStats.fraCount > 0 && <span><strong>Fransızca:</strong> {langStats.fraCount} &nbsp;|&nbsp; </span>}
-                              {langStats.ispCount > 0 && <span><strong>İspanyolca:</strong> {langStats.ispCount} &nbsp;|&nbsp; </span>}
-                              <div style={{ marginTop: '3px' }}>
-                                <span><strong>Toplam Katılan:</strong> ____ &nbsp;|&nbsp; </span>
-                                <span><strong>Katılmayan:</strong> ____</span>
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Genel / Ortaokul İstatistiği */}
-                          {((examCategory === 'akademik' && schoolType === 'ortaokul') || examCategory === 'ortaokul_yazili' || (examCategory === 'yabanci_dil' && schoolType === 'ortaokul')) && (
-                            <div>
-                              <span><strong>Toplam Katılan Öğrenci:</strong> ________ &nbsp;|&nbsp; </span>
-                              <span><strong>Katılmayan Öğrenci:</strong> ________</span>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Sağ Taraf: Gözetmen İmza Kutusu */}
-                        <div style={{ textAlign: 'center', width: '200px', border: '1px solid #000', padding: '0.5rem', borderRadius: '4px' }}>
-                          <div style={{ fontSize: '8.5pt', fontWeight: 'bold' }}>Gözetmen İmza</div>
-                          <div style={{ height: '35px' }}></div>
-                          <div style={{ fontSize: '8pt', color: '#555' }}>Teslim Eden / Teslim Alan</div>
-                        </div>
+                return (
+                  <div key={roomName} className="print-card page-break" style={{ background: '#fff', border: '1px solid #cbd5e1', padding: '1.5rem', marginBottom: '2rem', borderRadius: '6px' }}>
+                    
+                    {/* BÜYÜK ESTETİK BAŞLIK */}
+                    <div style={{ border: '2px solid #000', padding: '0.8rem', textAlign: 'center', marginBottom: '1rem', background: '#fafafa' }}>
+                      <h1 style={{ margin: '0 0 0.3rem 0', fontSize: '16pt', fontWeight: 'bold', letterSpacing: '0.5px', textTransform: 'uppercase' }}>
+                        {selectedExam.title}
+                      </h1>
+                      <div style={{ fontSize: '11pt', fontWeight: 'bold', display: 'flex', justifyContent: 'space-around', borderTop: '1px solid #000', paddingTop: '0.4rem', marginTop: '0.4rem' }}>
+                        <span>TARİH: {selectedExam.date}</span>
+                        <span>SALON / SINIF: <span style={{ textDecoration: 'underline' }}>{roomName.toUpperCase()}</span></span>
+                        {examCategory === 'akademik' && schoolType === 'ortaokul' && (
+                          <span>OTURUM: {sessionType === 'sozel' ? 'SÖZEL' : 'SAYISAL'}</span>
+                        )}
                       </div>
                     </div>
-                  );
-                })
-              )}
+
+                    {/* GÖZETMEN VE ÜST BİLGİ */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.8rem', fontSize: '10pt', fontWeight: 'bold' }}>
+                      <div>
+                        <span>GÖZETMEN ADI SOYADI: </span>
+                        <input
+                          type="text"
+                          placeholder="......................................................"
+                          value={invigilators[roomName] || ''}
+                          onChange={(e) => handleInvigilatorChange(roomName, e.target.value)}
+                          style={{ border: 'none', borderBottom: '1px solid #000', outline: 'none', fontWeight: 'bold', fontSize: '10pt' }}
+                        />
+                      </div>
+                      <div>SALON KAPASİTESİ: {students.length} ÖĞRENCİ</div>
+                    </div>
+
+                    {/* ÖĞRENCİ TABLOSU */}
+                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                      <thead>
+                        <tr style={{ background: '#eee' }}>
+                          <th style={{ width: '6%', textAlign: 'center' }}>SIRA</th>
+                          {examCategory !== 'ortaokul_yazili' && showTc && <th style={{ width: '16%' }}>TC KİMLİK NO</th>}
+                          {examCategory !== 'ortaokul_yazili' && <th style={{ width: '12%' }}>ÖĞR. NO</th>}
+                          <th>ÖĞRENCİ ADI SOYADI</th>
+                          <th style={{ width: '12%', textAlign: 'center' }}>SINIF / ŞUBE</th>
+                          {examCategory === 'yabanci_dil' && schoolType === 'lise' && (
+                            <>
+                              <th style={{ width: '10%', textAlign: 'center' }}>İNG. SEVİYE</th>
+                              <th style={{ width: '12%', textAlign: 'center' }}>2. YABANCI DİL</th>
+                            </>
+                          )}
+                          {examCategory === 'yabanci_dil' && schoolType === 'ortaokul' && (
+                            <th style={{ width: '15%', textAlign: 'center' }}>2. YABANCI DİL</th>
+                          )}
+                          <th style={{ width: '22%', textAlign: 'center' }}>İMZA / YOKLAMA</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {students.map((st, sIdx) => {
+                          const det = getStudentDetails(st);
+                          return (
+                            <tr key={st.studentId || st.id || sIdx}>
+                              <td style={{ textAlign: 'center', fontWeight: 'bold' }}>{st.seatNumber || st.seat_number || (sIdx + 1)}</td>
+                              {examCategory !== 'ortaokul_yazili' && showTc && <td style={{ fontFamily: 'monospace' }}>{det.tc}</td>}
+                              {examCategory !== 'ortaokul_yazili' && <td>{det.studentNo}</td>}
+                              <td style={{ fontWeight: '500' }}>{det.fullName}</td>
+                              <td style={{ textAlign: 'center' }}>{det.grade}-{det.className}</td>
+
+                              {examCategory === 'yabanci_dil' && schoolType === 'lise' && (
+                                <>
+                                  <td style={{ textAlign: 'center', fontSize: '8.5pt' }}>{st.englishLevel || st.level || '-'}</td>
+                                  <td style={{ textAlign: 'center', fontSize: '8.5pt' }}>{st.secondLanguage || st.second_lang || '-'}</td>
+                                </>
+                              )}
+                              {examCategory === 'yabanci_dil' && schoolType === 'ortaokul' && (
+                                <td style={{ textAlign: 'center', fontSize: '8.5pt' }}>{st.secondLanguage || st.second_lang || '-'}</td>
+                              )}
+
+                              <td style={{ textAlign: 'center', color: '#999' }}>[ &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; ]</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+
+                    {/* ALT ÖZET VE İMZA KUTUSU */}
+                    <div style={{ marginTop: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'stretch' }}>
+                      <div style={{ border: '1px solid #000', padding: '0.6rem 1rem', fontSize: '9pt', borderRadius: '4px', flexGrow: 1, marginRight: '1rem' }}>
+                        <strong style={{ display: 'block', marginBottom: '6px', textDecoration: 'underline' }}>SINAV KATILIM ÖZETİ:</strong>
+                        
+                        {examCategory === 'akademik' && schoolType === 'lise' && (
+                          <div style={{ display: 'flex', gap: '1.5rem' }}>
+                            <span><strong>TM KATILAN:</strong> ______</span>
+                            <span><strong>MF KATILAN:</strong> ______</span>
+                            <span><strong>TOPLAM KATILAN:</strong> ______</span>
+                            <span><strong>KATILMAYAN:</strong> ______</span>
+                          </div>
+                        )}
+
+                        {examCategory === 'yabanci_dil' && schoolType === 'lise' && (
+                          <div>
+                            <div style={{ marginBottom: '4px' }}>
+                              {langStats.coreCount > 0 && <span style={{ marginRight: '10px' }}><strong>Core:</strong> {langStats.coreCount}</span>}
+                              {langStats.extCount > 0 && <span style={{ marginRight: '10px' }}><strong>Ext:</strong> {langStats.extCount}</span>}
+                              {langStats.almCount > 0 && <span style={{ marginRight: '10px' }}><strong>Almanca:</strong> {langStats.almCount}</span>}
+                              {langStats.fraCount > 0 && <span style={{ marginRight: '10px' }}><strong>Fransızca:</strong> {langStats.fraCount}</span>}
+                              {langStats.ispCount > 0 && <span><strong>İspanyolca:</strong> {langStats.ispCount}</span>}
+                            </div>
+                            <div style={{ display: 'flex', gap: '1.5rem', marginTop: '4px' }}>
+                              <span><strong>TOPLAM KATILAN:</strong> ______</span>
+                              <span><strong>KATILMAYAN:</strong> ______</span>
+                            </div>
+                          </div>
+                        )}
+
+                        {((examCategory === 'akademik' && schoolType === 'ortaokul') || examCategory === 'ortaokul_yazili' || (examCategory === 'yabanci_dil' && schoolType === 'ortaokul')) && (
+                          <div style={{ display: 'flex', gap: '2rem' }}>
+                            <span><strong>TOPLAM KATILAN ÖĞRENCİ:</strong> ________</span>
+                            <span><strong>KATILMAYAN ÖĞRENCİ:</strong> ________</span>
+                          </div>
+                        )}
+                      </div>
+
+                      <div style={{ border: '1px solid #000', padding: '0.5rem', textAlign: 'center', width: '220px', borderRadius: '4px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                        <div style={{ fontSize: '9pt', fontWeight: 'bold' }}>GÖZETMEN İMZA</div>
+                        <div style={{ height: '30px' }}></div>
+                        <div style={{ fontSize: '8pt', color: '#444' }}>Teslim Eden / Teslim Alan</div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
 
           {/* 2. SEKMELİ YAPI: SOYAD SIRALI LİSTE (A-Z) */}
           {activeTab === 'surname' && (
-            <div className="print-card" style={{ background: '#fff', border: '1px solid #ccc', padding: '1.5rem', borderRadius: '4px' }}>
-              <div style={{ textAlign: 'center', marginBottom: '1rem', borderBottom: '2px solid #000', paddingBottom: '0.5rem' }}>
-                <h3 style={{ margin: 0, textTransform: 'uppercase' }}>{selectedExam.title} - SOYAD SIRALI ÖĞRENCİ LİSTESİ</h3>
-                <div style={{ fontSize: '10pt', fontWeight: 'bold', marginTop: '4px' }}>Sınav Tarihi: {selectedExam.date}</div>
+            <div className="print-card page-break" style={{ background: '#fff', border: '1px solid #cbd5e1', padding: '1.5rem', borderRadius: '6px' }}>
+              <div style={{ border: '2px solid #000', padding: '0.8rem', textAlign: 'center', marginBottom: '1.2rem', background: '#fafafa' }}>
+                <h1 style={{ margin: '0 0 0.3rem 0', fontSize: '15pt', fontWeight: 'bold', textTransform: 'uppercase' }}>
+                  {selectedExam.title} - SOYAD SIRALI ÖĞRENCİ LİSTESİ
+                </h1>
+                <div style={{ fontSize: '10.5pt', fontWeight: 'bold', borderTop: '1px solid #000', paddingTop: '0.4rem', marginTop: '0.4rem' }}>
+                  TARİH: {selectedExam.date} &nbsp;|&nbsp; KADEMESİ: {schoolType.toUpperCase()}
+                </div>
               </div>
 
               <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                 <thead>
-                  <tr style={{ background: '#f2f2f2' }}>
-                    <th style={{ width: '8%', textAlign: 'center' }}>Sıra No</th>
-                    <th>Öğrenci Soyadı ve Adı</th>
-                    <th style={{ width: '15%', textAlign: 'center' }}>Sınıf/Şube</th>
-                    <th style={{ width: '20%', textAlign: 'center' }}>Sınav Salonu</th>
-                    <th style={{ width: '15%', textAlign: 'center' }}>Masa Sıra No</th>
+                  <tr style={{ background: '#eee' }}>
+                    <th style={{ width: '6%', textAlign: 'center' }}>SIRA</th>
+                    <th>ÖĞRENCİ SOYADI, ADI</th>
+                    <th style={{ width: '15%', textAlign: 'center' }}>SINIF / ŞUBE</th>
+                    <th style={{ width: '25%', textAlign: 'center' }}>SINAV SALONU</th>
+                    <th style={{ width: '15%', textAlign: 'center' }}>SIRA NO</th>
                   </tr>
                 </thead>
                 <tbody>
                   {getSortedBySurname().map((st, idx) => {
-                    const fullName = st.studentName || st.student_name || `${st.first_name || ''} ${st.last_name || ''}`.trim();
-                    const roomName = st.roomName || st.room_name || st.roomId || 'Salon -';
+                    const det = getStudentDetails(st);
+                    const roomName = getRoomName(st);
 
                     return (
                       <tr key={st.studentId || st.id || idx}>
                         <td style={{ textAlign: 'center', fontWeight: 'bold' }}>{idx + 1}</td>
-                        <td style={{ fontWeight: '500' }}>{fullName}</td>
-                        <td style={{ textAlign: 'center' }}>{st.grade || ''}-{st.class || st.className || ''}</td>
-                        <td style={{ textAlign: 'center' }}>{roomName}</td>
+                        <td style={{ fontWeight: 'bold' }}>{det.surnameFirstFormat}</td>
+                        <td style={{ textAlign: 'center' }}>{det.grade}-{det.className}</td>
+                        <td style={{ textAlign: 'center', fontWeight: '500' }}>{roomName}</td>
                         <td style={{ textAlign: 'center', fontWeight: 'bold' }}>{st.seatNumber || st.seat_number || '-'}</td>
                       </tr>
                     );
@@ -570,26 +577,24 @@ const ExamAttendanceLists = () => {
             </div>
           )}
 
-          {/* 3. SEKMELİ YAPI: EXCEL DIŞARI AKTAR */}
+          {/* 3. SEKMELİ YAPI: EXCEL AKTAR */}
           {activeTab === 'excel' && (
-            <div className="no-print" style={{ background: '#f8fafc', padding: '2rem', border: '1px solid #cbd5e1', borderRadius: '8px', textAlign: 'center' }}>
-              <h3 style={{ color: '#1e293b' }}>📊 Excel Formatında Dışarı Aktar</h3>
-              <p style={{ color: '#64748b', maxWidth: '600px', margin: '0.5rem auto 1.5rem auto' }}>
-                Mevcut sınavın verilerini, seçili filtreler doğrultusunda Excel (.xlsx) dosyası olarak indirebilirsiniz.
+            <div className="no-print" style={{ background: '#f8fafc', padding: '2.5rem', border: '1px solid #cbd5e1', borderRadius: '8px', textAlign: 'center' }}>
+              <h3 style={{ color: '#1e293b', margin: 0 }}>📊 Excel Dışarı Aktar</h3>
+              <p style={{ color: '#64748b', margin: '0.5rem 0 1.5rem 0' }}>
+                Aktif sınav verilerini salon, sıra ve öğrenci bilgileriyle birlikte Excel dosyası olarak kaydedin.
               </p>
-
               <button
                 onClick={exportToExcel}
                 style={{
-                  padding: '0.8rem 1.8rem',
+                  padding: '0.8rem 2rem',
                   background: '#16a34a',
                   color: '#fff',
                   border: 'none',
                   borderRadius: '6px',
                   fontWeight: 'bold',
                   fontSize: '1rem',
-                  cursor: 'pointer',
-                  boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+                  cursor: 'pointer'
                 }}
               >
                 📥 Excel Dosyasını İndir (.xlsx)
