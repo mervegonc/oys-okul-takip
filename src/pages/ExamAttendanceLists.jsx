@@ -7,17 +7,14 @@ import CryptoJS from 'crypto-js';
 const decryptTC = (cipherText) => {
   if (!cipherText || typeof cipherText !== 'string') return '-';
 
-  // Şifreli değilse (OpenSSL/CryptoJS Salt öneki 'U2FsdGVkX1' ile başlamıyorsa) doğrudan döndür
   if (!cipherText.startsWith('U2FsdGVkX1')) {
     return cipherText;
   }
 
-  // Vite projelerinde env değişkenlerine import.meta.env üzerinden erişilir.
   const envKey = import.meta.env ? import.meta.env.VITE_ENCRYPTION_KEY : null;
 
   const SECRET_KEYS = [
     envKey,
-    // Olası alternatif key isimleri veya fallback değerler
     typeof process !== 'undefined' ? process.env?.VITE_ENCRYPTION_KEY : null,
     typeof process !== 'undefined' ? process.env?.REACT_APP_ENCRYPTION_KEY : null,
   ].filter(Boolean);
@@ -34,7 +31,6 @@ const decryptTC = (cipherText) => {
     }
   }
 
-  // Key olmaksızın veya hata durumunda hammaddesini döndür
   return cipherText;
 };
 
@@ -51,6 +47,7 @@ const ExamAttendanceLists = () => {
   const [showTc, setShowTc] = useState(true);
   const [examCategory, setExamCategory] = useState('akademik');
   const [schoolType, setSchoolType] = useState('lise');
+  const [sessionType, setSessionType] = useState('sozel'); // 'sozel' veya 'sayisal'
   const [invigilators, setInvigilators] = useState({});
 
   useEffect(() => {
@@ -163,7 +160,6 @@ const ExamAttendanceLists = () => {
 
     const dbSt = studentMap[rawId] || studentMap[rawTc] || studentMap[rawNo] || {};
 
-    // Şifreli metni veritabanından veya atamadan al ve deşifre et
     const cipherTc = dbSt.tc_no || st.tc_no || st.tc || st.tcNo || '';
     const tc = decryptTC(cipherTc);
 
@@ -230,6 +226,15 @@ const ExamAttendanceLists = () => {
     return `${sortedGrades.join(' ve ')}. Sınıf`;
   };
 
+  // Dinamik Başlık Oluşturucu
+  const getHeaderTitle = (roomName, gradeSummary) => {
+    if (schoolType === 'ortaokul') {
+      const sessionLabel = sessionType === 'sayisal' ? 'SAYISAL OTURUMU' : 'SÖZEL OTURUMU';
+      return `${selectedExam.title} - ${gradeSummary} (${sessionLabel}) - ${roomName.toUpperCase()} YOKLAMA LİSTESİ`;
+    }
+    return `${selectedExam.title} - ${gradeSummary} - ${roomName.toUpperCase()} YOKLAMA LİSTESİ`;
+  };
+
   const assignments = seatingPlan?.assignments || [];
 
   const groupedByRoom = assignments.reduce((acc, curr) => {
@@ -255,14 +260,17 @@ const ExamAttendanceLists = () => {
     if (activeTab === 'surname') {
       dataToExport = getSortedBySurname().map((st, index) => {
         const det = getStudentDetails(st);
-        return {
+        const item = {
           'Sıra No': index + 1,
           'Öğrenci Soyadı, Adı': det.surnameFirstFormat,
-          'Sınıf/Şube': `${det.grade}-${det.className}`,
-          'Alan': det.track,
-          'Salon Adı': getRoomName(st),
-          'Masa Sıra No': st.seatNumber || st.seat_number || ''
+          'Sınıf/Şube': `${det.grade}-${det.className}`
         };
+        if (schoolType !== 'ortaokul') {
+          item['Alan'] = det.track;
+        }
+        item['Salon Adı'] = getRoomName(st);
+        item['Masa Sıra No'] = st.seatNumber || st.seat_number || '';
+        return item;
       });
     } else {
       dataToExport = assignments.map((st, index) => {
@@ -272,9 +280,11 @@ const ExamAttendanceLists = () => {
           'Salon Adı': getRoomName(st),
           'Masa Sıra No': st.seatNumber || st.seat_number || '',
           'Öğrenci Adı Soyadı': det.fullName,
-          'Sınıf/Şube': `${det.grade}-${det.className}`,
-          'Alan': det.track
+          'Sınıf/Şube': `${det.grade}-${det.className}`
         };
+        if (schoolType !== 'ortaokul') {
+          item['Alan'] = det.track;
+        }
         if (showTc) {
           item['TC Kimlik No'] = det.tc;
         }
@@ -407,6 +417,17 @@ const ExamAttendanceLists = () => {
                 </select>
               </div>
 
+              {/* Ortaokul seçilirse Oturum Türü Seçeneği Çıksın */}
+              {schoolType === 'ortaokul' && (
+                <div>
+                  <label style={{ fontWeight: 'bold', fontSize: '0.85rem', display: 'block', color: '#2b6cb0' }}>Oturum Türü:</label>
+                  <select value={sessionType} onChange={(e) => setSessionType(e.target.value)} style={{ padding: '0.4rem', borderRadius: '4px', border: '1px solid #2b6cb0', fontWeight: 'bold' }}>
+                    <option value="sozel">Sözel Oturum</option>
+                    <option value="sayisal">Sayısal Oturum</option>
+                  </select>
+                </div>
+              )}
+
               <div style={{ display: 'flex', alignItems: 'center', marginTop: '1.2rem' }}>
                 <label style={{ fontSize: '0.9rem', cursor: 'pointer', fontWeight: 'bold', color: '#2b6cb0' }}>
                   <input type="checkbox" checked={showTc} onChange={(e) => setShowTc(e.target.checked)} style={{ marginRight: '0.5rem' }} />
@@ -485,7 +506,7 @@ const ExamAttendanceLists = () => {
                     
                     <div style={{ border: '2px solid #000', padding: '0.6rem', textAlign: 'center', marginBottom: '0.8rem', background: '#fafafa' }}>
                       <h1 style={{ margin: '0 0 0.3rem 0', fontSize: '14pt', fontWeight: 'bold', textTransform: 'uppercase' }}>
-                        {selectedExam.title} - {gradeSummary} - {roomName.toUpperCase()} YOKLAMA LİSTESİ
+                        {getHeaderTitle(roomName, gradeSummary)}
                       </h1>
                       <div style={{ fontSize: '10pt', fontWeight: 'bold', display: 'flex', justifyContent: 'space-around', borderTop: '1px solid #000', paddingTop: '0.3rem', marginTop: '0.3rem' }}>
                         <span>TARİH: {selectedExam.date}</span>
@@ -515,7 +536,7 @@ const ExamAttendanceLists = () => {
                           <th style={{ width: '12%', textAlign: 'center' }}>ÖĞR. NO</th>
                           <th>ÖĞRENCİ ADI SOYADI</th>
                           <th style={{ width: '12%', textAlign: 'center' }}>SINIF / ŞUBE</th>
-                          <th style={{ width: '10%', textAlign: 'center' }}>ALAN</th>
+                          {schoolType !== 'ortaokul' && <th style={{ width: '10%', textAlign: 'center' }}>ALAN</th>}
                           <th style={{ width: '20%', textAlign: 'center' }}>İMZA / YOKLAMA</th>
                         </tr>
                       </thead>
@@ -529,7 +550,9 @@ const ExamAttendanceLists = () => {
                               <td style={{ textAlign: 'center', fontWeight: '600' }}>{det.studentNo}</td>
                               <td style={{ fontWeight: '500' }}>{det.fullName}</td>
                               <td style={{ textAlign: 'center' }}>{det.grade}-{det.className}</td>
-                              <td style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '8.5pt' }}>{det.track}</td>
+                              {schoolType !== 'ortaokul' && (
+                                <td style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '8.5pt' }}>{det.track}</td>
+                              )}
                               <td style={{ textAlign: 'center', color: '#999' }}>[ &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; ]</td>
                             </tr>
                           );
@@ -575,7 +598,6 @@ const ExamAttendanceLists = () => {
                     <th style={{ width: '6%', textAlign: 'center' }}>SIRA</th>
                     <th>ÖĞRENCİ SOYADI, ADI</th>
                     <th style={{ width: '15%', textAlign: 'center' }}>SINIF / ŞUBE</th>
-                  
                     <th style={{ width: '25%', textAlign: 'center' }}>SINAV SALONU</th>
                     <th style={{ width: '12%', textAlign: 'center' }}>SIRA NO</th>
                   </tr>
@@ -590,7 +612,6 @@ const ExamAttendanceLists = () => {
                         <td style={{ textAlign: 'center', fontWeight: 'bold' }}>{idx + 1}</td>
                         <td style={{ fontWeight: 'bold' }}>{det.surnameFirstFormat}</td>
                         <td style={{ textAlign: 'center' }}>{det.grade}-{det.className}</td>
-                      
                         <td style={{ textAlign: 'center', fontWeight: '500' }}>{roomName}</td>
                         <td style={{ textAlign: 'center', fontWeight: 'bold' }}>{st.seatNumber || st.seat_number || '-'}</td>
                       </tr>
