@@ -145,24 +145,51 @@ const SeatingDistribution = () => {
     return arr;
   };
 
-  // Şubeler arası dönel (Interleaved) karma algoritması + Rastgele Başlangıç Sırası
+  // Şubeler arası dönel (Interleaved) karma algoritması
+  // KURAL: Üst üste en fazla 3 aynı şube gelebilir
   const interleaveStudentsByClass = (classList, studentMap) => {
-    // Şube sırasını da her karma işleminde rastgele karıştırıyoruz
-    const shuffledClassList = shuffleArray(classList);
-    const classQueues = shuffledClassList.map(cls => shuffleArray([...(studentMap[cls] || [])]));
-    
-    const result = [];
-    let added = true;
+    const classQueues = {};
+    classList.forEach(cls => {
+      classQueues[cls] = shuffleArray([...(studentMap[cls] || [])]);
+    });
 
-    while (added) {
-      added = false;
-      for (let i = 0; i < classQueues.length; i++) {
-        if (classQueues[i].length > 0) {
-          result.push(classQueues[i].shift());
-          added = true;
+    const result = [];
+    const totalStudents = Object.values(classQueues).reduce((acc, q) => acc + q.length, 0);
+
+    while (result.length < totalStudents) {
+      // Son 3 öğrencinin şubesini kontrol et
+      let lastClass = null;
+      let consecutiveCount = 0;
+
+      if (result.length >= 3) {
+        const c1 = `${result[result.length - 1].grade}-${result[result.length - 1].class}`;
+        const c2 = `${result[result.length - 2].grade}-${result[result.length - 2].class}`;
+        const c3 = `${result[result.length - 3].grade}-${result[result.length - 3].class}`;
+
+        if (c1 === c2 && c2 === c3) {
+          lastClass = c1;
+          consecutiveCount = 3;
         }
       }
+
+      // Uygun şubeleri filtrele (eğer üst üste 3 tane geldiyse o şubeyi hariç tut)
+      let availableClasses = classList.filter(cls => classQueues[cls] && classQueues[cls].length > 0);
+
+      if (consecutiveCount >= 3 && lastClass) {
+        const filteredClasses = availableClasses.filter(cls => cls !== lastClass);
+        if (filteredClasses.length > 0) {
+          availableClasses = filteredClasses;
+        }
+      }
+
+      if (availableClasses.length === 0) break;
+
+      // Kullanılabilir şubeler arasından rastgele birini seç
+      const chosenClass = availableClasses[Math.floor(Math.random() * availableClasses.length)];
+      const student = classQueues[chosenClass].shift();
+      result.push(student);
     }
+
     return result;
   };
 
@@ -249,7 +276,6 @@ const SeatingDistribution = () => {
         const groupStudents = interleaveStudentsByClass(group.classes, studentMap);
         if (groupStudents.length === 0) continue;
 
-        // Salon listesini de her karmada rastgele sıralayarak başlangıç odasını değiştiriyoruz
         const groupRooms = shuffleArray(roomUsage.filter(r => group.roomIds.includes(r.roomId)));
         if (groupRooms.length === 0) {
           setMessage(`"${group.name}" için uygun salon bulunamadı.`);
