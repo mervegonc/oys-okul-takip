@@ -3,39 +3,38 @@ import { supabase } from '../supabase';
 import * as XLSX from 'xlsx';
 import CryptoJS from 'crypto-js';
 
-// TC Şifre Çözücü Yardımcı Fonksiyon
+// TC Şifre Çözme Yardımcı Fonksiyonu
 const decryptTC = (cipherText) => {
   if (!cipherText || typeof cipherText !== 'string') return '-';
-  
-  // Şifreli değilse (Salt öneki 'U2FsdGVkX1' ile başlamıyorsa) doğrudan döndür
+
+  // Şifreli değilse (OpenSSL/CryptoJS Salt öneki 'U2FsdGVkX1' ile başlamıyorsa) doğrudan döndür
   if (!cipherText.startsWith('U2FsdGVkX1')) {
     return cipherText;
   }
 
-  // Projenizde kullanılan gizli anahtarlar (varsayılan bilinen key'ler eklenmiştir)
+  // Vite projelerinde env değişkenlerine import.meta.env üzerinden erişilir.
+  const envKey = import.meta.env ? import.meta.env.VITE_ENCRYPTION_KEY : null;
+
   const SECRET_KEYS = [
-    process.env.REACT_APP_ENCRYPTION_KEY,
-    process.env.VITE_ENCRYPTION_KEY,
-    'secret_key',
-    'secret-key',
-    'nesibe_aydin_secret',
-    'tc_secret_key',
-    '123456'
+    envKey,
+    // Olası alternatif key isimleri veya fallback değerler
+    typeof process !== 'undefined' ? process.env?.VITE_ENCRYPTION_KEY : null,
+    typeof process !== 'undefined' ? process.env?.REACT_APP_ENCRYPTION_KEY : null,
   ].filter(Boolean);
 
   for (const key of SECRET_KEYS) {
     try {
       const bytes = CryptoJS.AES.decrypt(cipherText, key);
       const decrypted = bytes.toString(CryptoJS.enc.Utf8);
-      if (decrypted && decrypted.length === 11 && !isNaN(decrypted)) {
-        return decrypted;
+      if (decrypted && decrypted.trim().length > 0) {
+        return decrypted.trim();
       }
     } catch (e) {
-      // Key uyuşmadıysa sonraki key'e geç
+      // Key eşleşmediyse sıradakini dene
     }
   }
 
-  // Çözülemezse yine de görüntüyü bozmamak için kısa halini göster veya hammaddesini ver
+  // Key olmaksızın veya hata durumunda hammaddesini döndür
   return cipherText;
 };
 
@@ -164,7 +163,7 @@ const ExamAttendanceLists = () => {
 
     const dbSt = studentMap[rawId] || studentMap[rawTc] || studentMap[rawNo] || {};
 
-    // TC 'tc_no' sütunundan çekilir ve deşifre edilir
+    // Şifreli metni veritabanından veya atamadan al ve deşifre et
     const cipherTc = dbSt.tc_no || st.tc_no || st.tc || st.tcNo || '';
     const tc = decryptTC(cipherTc);
 
