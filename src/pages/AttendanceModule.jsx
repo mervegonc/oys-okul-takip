@@ -4,8 +4,9 @@ import { supabase } from '../supabase';
 const STATUS_OPTIONS = [
   { value: 'katildi', label: 'Katıldı', color: '#28a745' },
   { value: 'katilmadi', label: 'Katılmadı', color: '#dc3545' },
-  { value: 'once_alindi', label: 'Sınavdan Önce Alındı', color: '#ffc107' },
-  { value: 'gec_katilacak', label: 'Geç Katılacak', color: '#17a2b8' }
+  { value: 'once_alindi', label: 'Sınav Uygulama Tarihinden Önce Alındı', color: '#ffc107' },
+  { value: 'gec_katildi', label: 'Sınav Günü Geç Katıldı', color: '#17a2b8' },
+  { value: 'sonra_katilacak', label: 'Sınav Tarihinden Sonra Katılacak', color: '#6c757d' }
 ];
 
 const AttendanceModule = () => {
@@ -51,19 +52,8 @@ const AttendanceModule = () => {
         return;
       }
 
-      const { data: plans, error: planErr } = await supabase
-        .from('seating_plans')
-        .select('*');
-
-      if (planErr) console.error('Seating plans çekilemedi:', planErr);
-
-      let attData = [];
-      const { data, error: attErr } = await supabase.from('attendance').select('*');
-      if (attErr) {
-        console.error('Attendance genel okuma hatası:', attErr);
-      } else if (data) {
-        attData = data;
-      }
+      const { data: plans } = await supabase.from('seating_plans').select('*');
+      const { data: attData } = await supabase.from('attendance').select('*');
 
       const formattedExams = examData.map(exam => {
         const plan = (plans || []).find(p => String(p.exam_id) === String(exam.id));
@@ -77,7 +67,10 @@ const AttendanceModule = () => {
 
         const totalStudents = assignments.length;
         const examAtt = (attData || []).filter(a => String(a.exam_id) === String(exam.id));
-        const absentCount = examAtt.filter(a => a.status === 'katilmadi').length;
+        
+        // Katılmadı sayılanlar: 'katilmadi' veya 'sonra_katilacak'
+        const absentCount = examAtt.filter(a => a.status === 'katilmadi' || a.status === 'sonra_katilacak').length;
+        // Katıldı sayılanlar: Diğer tüm kayıtlar veya henüz girilmeyen kayıtlar
         const attendedCount = totalStudents > 0 ? (totalStudents - absentCount) : 0;
 
         return {
@@ -118,32 +111,34 @@ const AttendanceModule = () => {
 
       setSeatingPlan(plan);
 
-      // Attendance verilerini tüm tabloyu çekip JS tarafında filtreleyerek çekiyoruz (filtreleme UUID uyuşmazlığı yaşamamak için)
-      let attData = [];
-      const { data, error: attErr } = await supabase.from('attendance').select('*');
-      
+      // Veritabanından mevcut yoklama verisini çek
+      const { data: attData, error: attErr } = await supabase
+        .from('attendance')
+        .select('*')
+        .eq('exam_id', exam.id);
+
       if (attErr) {
         console.error('Attendance verisi okunurken Supabase Hatası:', attErr);
-      } else if (data) {
-        attData = data.filter(a => String(a.exam_id) === String(exam.id));
       }
 
       const statusMap = {};
       const reasonMap = {};
 
-      // Varsayılan durumlar (Tüm öğrencileri String id ile tanımlıyoruz)
-      (plan?.assignments || []).forEach(st => {
-        const rawId = st.studentId ?? st.student_id ?? st.id;
-        const stId = String(rawId);
-        statusMap[stId] = 'katildi';
-        reasonMap[stId] = '';
-      });
-
-      // Kayıtlı yoklama verilerini yerleştir
+      // 1. Önce DB'den gelen mevcut kayıtları eşle
       (attData || []).forEach(att => {
         const stId = String(att.student_id);
         statusMap[stId] = att.status;
         reasonMap[stId] = att.reason || '';
+      });
+
+      // 2. Eğer öğrenciden hiç yoklama kaydı gelmediyse varsayılan 'katildi' ver
+      (plan?.assignments || []).forEach(st => {
+        const rawId = st.studentId ?? st.student_id ?? st.id;
+        const stId = String(rawId);
+        if (!statusMap[stId]) {
+          statusMap[stId] = 'katildi';
+          reasonMap[stId] = '';
+        }
       });
 
       setAttendanceRecords(statusMap);
@@ -219,38 +214,35 @@ const AttendanceModule = () => {
       }
     }
 
-    if (typeof rawRoomId === 'string' && rawRoomId.length < 20 && !rawRoomId.includes('-')) {
-      return rawRoomId;
-    }
-
-    return 'Bilinmeyen Salon';
+    return rawRoomId || 'Bilinmeyen Salon';
   };
 
   const assignments = seatingPlan?.assignments || [];
   
+  // Alt kırılımlar
+  const rawKatildi = assignments.filter(a => attendanceRecords[String(a.studentId ?? a.student_id ?? a.id)] === 'katildi').length;
+  const onceAlindi = assignments.filter(a => attendanceRecords[String(a.studentId ?? a.student_id ?? a.id)] === 'once_alindi').length;
+  const gecKatildi = assignments.filter(a => attendanceRecords[String(a.studentId ?? a.student_id ?? a.id)] === 'gec_katildi').length;
+  
+  const rawKatilmadi = assignments.filter(a => attendanceRecords[String(a.studentId ?? a.student_id ?? a.id)] === 'katilmadi').length;
+  const sonraKatilacak = assignments.filter(a => attendanceRecords[String(a.studentId ?? a.student_id ?? a.id)] === 'sonra_katilacak').length;
+
   const stats = {
     total: assignments.length,
-    katildi: assignments.filter(a => {
-      const stId = String(a.studentId ?? a.student_id ?? a.id);
-      return (attendanceRecords[stId] || 'katildi') === 'katildi';
-    }).length,
-    katilmadi: assignments.filter(a => {
-      const stId = String(a.studentId ?? a.student_id ?? a.id);
-      return attendanceRecords[stId] === 'katilmadi';
-    }).length,
-    once_alindi: assignments.filter(a => {
-      const stId = String(a.studentId ?? a.student_id ?? a.id);
-      return attendanceRecords[stId] === 'once_alindi';
-    }).length,
-    gec_katilacak: assignments.filter(a => {
-      const stId = String(a.studentId ?? a.student_id ?? a.id);
-      return attendanceRecords[stId] === 'gec_katilacak';
-    }).length,
+    // Toplam Katıldı = Katıldı + Önce Alındı + Geç Katıldı
+    totalKatildi: rawKatildi + onceAlindi + gecKatildi,
+    // Toplam Katılmadı = Katılmadı + Sonra Katılacak
+    totalKatilmadi: rawKatilmadi + sonraKatilacak,
+    onceAlindi,
+    gecKatildi,
+    sonraKatilacak
   };
 
+  // Mazeret ve Katılmayanlar listesinde "Katılmadı" ve "Sonra Katılacak" olanlar listelenir
   const absentStudents = assignments.filter(st => {
     const stId = String(st.studentId ?? st.student_id ?? st.id);
-    return attendanceRecords[stId] === 'katilmadi';
+    const status = attendanceRecords[stId];
+    return status === 'katilmadi' || status === 'sonra_katilacak';
   });
 
   return (
@@ -341,29 +333,35 @@ const AttendanceModule = () => {
             </p>
           )}
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '1rem', margin: '1.5rem 0' }}>
-            <div style={{ background: '#f8f9fa', padding: '1rem', borderRadius: '8px', textAlign: 'center', border: '1px solid #ddd' }}>
-              <div style={{ fontSize: '0.85rem', color: '#666' }}>Toplam Öğrenci</div>
-              <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#333' }}>{stats.total}</div>
+          {/* İSTATİSTİK KARTLARI */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '0.8rem', margin: '1.5rem 0' }}>
+            <div style={{ background: '#f8f9fa', padding: '0.8rem', borderRadius: '8px', textAlign: 'center', border: '1px solid #ddd' }}>
+              <div style={{ fontSize: '0.75rem', color: '#666' }}>Toplam Öğrenci</div>
+              <div style={{ fontSize: '1.4rem', fontWeight: 'bold', color: '#333' }}>{stats.total}</div>
             </div>
-            <div style={{ background: '#d4edda', padding: '1rem', borderRadius: '8px', textAlign: 'center', border: '1px solid #c3e6cb' }}>
-              <div style={{ fontSize: '0.85rem', color: '#155724' }}>Katıldı</div>
-              <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#155724' }}>{stats.katildi}</div>
+            <div style={{ background: '#d4edda', padding: '0.8rem', borderRadius: '8px', textAlign: 'center', border: '1px solid #c3e6cb' }}>
+              <div style={{ fontSize: '0.75rem', color: '#155724', fontWeight: 'bold' }}>Top. Katıldı</div>
+              <div style={{ fontSize: '1.4rem', fontWeight: 'bold', color: '#155724' }}>{stats.totalKatildi}</div>
             </div>
-            <div style={{ background: '#f8d7da', padding: '1rem', borderRadius: '8px', textAlign: 'center', border: '1px solid #f5c6cb' }}>
-              <div style={{ fontSize: '0.85rem', color: '#721c24' }}>Katılmadı</div>
-              <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#721c24' }}>{stats.katilmadi}</div>
+            <div style={{ background: '#f8d7da', padding: '0.8rem', borderRadius: '8px', textAlign: 'center', border: '1px solid #f5c6cb' }}>
+              <div style={{ fontSize: '0.75rem', color: '#721c24', fontWeight: 'bold' }}>Top. Katılmadı</div>
+              <div style={{ fontSize: '1.4rem', fontWeight: 'bold', color: '#721c24' }}>{stats.totalKatilmadi}</div>
             </div>
-            <div style={{ background: '#fff3cd', padding: '1rem', borderRadius: '8px', textAlign: 'center', border: '1px solid #ffeeba' }}>
-              <div style={{ fontSize: '0.85rem', color: '#856404' }}>Sınavdan Önce Alındı</div>
-              <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#856404' }}>{stats.once_alindi}</div>
+            <div style={{ background: '#fff3cd', padding: '0.8rem', borderRadius: '8px', textAlign: 'center', border: '1px solid #ffeeba' }}>
+              <div style={{ fontSize: '0.75rem', color: '#856404' }}>Önce Alındı</div>
+              <div style={{ fontSize: '1.4rem', fontWeight: 'bold', color: '#856404' }}>{stats.onceAlindi}</div>
             </div>
-            <div style={{ background: '#d1ecf1', padding: '1rem', borderRadius: '8px', textAlign: 'center', border: '1px solid #bee5eb' }}>
-              <div style={{ fontSize: '0.85rem', color: '#0c5460' }}>Geç Katılacak</div>
-              <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#0c5460' }}>{stats.gec_katilacak}</div>
+            <div style={{ background: '#d1ecf1', padding: '0.8rem', borderRadius: '8px', textAlign: 'center', border: '1px solid #bee5eb' }}>
+              <div style={{ fontSize: '0.75rem', color: '#0c5460' }}>Geç Katıldı</div>
+              <div style={{ fontSize: '1.4rem', fontWeight: 'bold', color: '#0c5460' }}>{stats.gecKatildi}</div>
+            </div>
+            <div style={{ background: '#e2e3e5', padding: '0.8rem', borderRadius: '8px', textAlign: 'center', border: '1px solid #d6d8db' }}>
+              <div style={{ fontSize: '0.75rem', color: '#383d41' }}>Sonra Katılacak</div>
+              <div style={{ fontSize: '1.4rem', fontWeight: 'bold', color: '#383d41' }}>{stats.sonraKatilacak}</div>
             </div>
           </div>
 
+          {/* TAB MENÜSÜ */}
           <div style={{ display: 'flex', gap: '0.5rem', borderBottom: '2px solid #e2e8f0', marginBottom: '1rem' }}>
             <button
               onClick={() => setActiveTab('all')}
@@ -452,7 +450,7 @@ const AttendanceModule = () => {
             <div>
               {absentStudents.length === 0 ? (
                 <p style={{ padding: '2rem', textAlign: 'center', background: '#f8f9fa', borderRadius: '8px' }}>
-                  🎉 Harika! Sınava katılmayan öğrenci bulunmuyor.
+                  🎉 Sınava katılmayan veya sonradan katılacak öğrenci bulunmuyor.
                 </p>
               ) : (
                 <table style={{ width: '100%', borderCollapse: 'collapse', background: '#fff', borderRadius: '8px', overflow: 'hidden', border: '1px solid #ddd' }}>
@@ -461,6 +459,7 @@ const AttendanceModule = () => {
                       <th style={{ padding: '0.8rem', borderBottom: '1px solid #ddd' }}>Salon - Sıra</th>
                       <th style={{ padding: '0.8rem', borderBottom: '1px solid #ddd', textAlign: 'left' }}>Öğrenci Adı</th>
                       <th style={{ padding: '0.8rem', borderBottom: '1px solid #ddd' }}>Sınıf</th>
+                      <th style={{ padding: '0.8rem', borderBottom: '1px solid #ddd' }}>Durumu</th>
                       <th style={{ padding: '0.8rem', borderBottom: '1px solid #ddd', textAlign: 'left' }}>Katılmama Nedeni / Mazeret Açıklaması</th>
                     </tr>
                   </thead>
@@ -470,6 +469,7 @@ const AttendanceModule = () => {
                       const stId = String(rawId);
                       const stName = item.studentName || item.student_name || `${item.first_name || ''} ${item.last_name || ''}`.trim() || item.name;
                       const roomName = getRoomName(item);
+                      const currentStatus = attendanceRecords[stId];
 
                       return (
                         <tr key={stId || idx} style={{ borderBottom: '1px solid #eee' }}>
@@ -478,6 +478,17 @@ const AttendanceModule = () => {
                           </td>
                           <td style={{ padding: '0.6rem', fontWeight: '500' }}>{stName}</td>
                           <td style={{ padding: '0.6rem', textAlign: 'center' }}>{item.grade || ''}-{item.class || item.className || ''}</td>
+                          <td style={{ padding: '0.6rem', textAlign: 'center' }}>
+                            <span style={{ 
+                              padding: '0.2rem 0.5rem', 
+                              borderRadius: '4px', 
+                              fontSize: '0.8rem',
+                              color: '#fff',
+                              background: currentStatus === 'katilmadi' ? '#dc3545' : '#6c757d'
+                            }}>
+                              {currentStatus === 'katilmadi' ? 'Katılmadı' : 'Sonra Katılacak'}
+                            </span>
+                          </td>
                           <td style={{ padding: '0.6rem' }}>
                             <input
                               type="text"
