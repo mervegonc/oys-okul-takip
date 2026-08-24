@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabase';
-import { FaSync, FaPlus, FaTrash, FaSave } from 'react-icons/fa';
+import { FaSync, FaPlus, FaTrash } from 'react-icons/fa';
 
 const SeatingDistribution = () => {
   const [exams, setExams] = useState([]);
@@ -17,7 +17,6 @@ const SeatingDistribution = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // 🛠️ createdAt yerine created_at düzeltildi
         const { data: examData, error: examError } = await supabase
           .from('exams')
           .select('*')
@@ -50,7 +49,6 @@ const SeatingDistribution = () => {
       const exam = exams.find(e => e.id === selectedExam);
       if (!exam) return;
 
-      // 🛠️ grade_levels or gradeLevels kontrolü
       const gradeLevels = exam.grade_levels || exam.gradeLevels || [];
       if (gradeLevels.length === 0) {
         setStudents([]);
@@ -68,7 +66,7 @@ const SeatingDistribution = () => {
 
         setStudents(data || []);
 
-        // Benzersiz şubeleri çıkar (grade + class)
+        // Benzersiz şubeleri çıkar (grade-class)
         const classSet = new Set();
         (data || []).forEach(s => {
           if (s.grade && s.class) {
@@ -136,6 +134,34 @@ const SeatingDistribution = () => {
     }));
   };
 
+  // Yardımcı Fonksiyon: Diziyi karıştırma (Fisher-Yates Shuffle)
+  const shuffleArray = (array) => {
+    const arr = [...array];
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+  };
+
+  // Şubeler arası dönel (Interleaved) karma algoritması
+  const interleaveStudentsByClass = (classList, studentMap) => {
+    const classQueues = classList.map(cls => shuffleArray([...(studentMap[cls] || [])]));
+    const result = [];
+    let added = true;
+
+    while (added) {
+      added = false;
+      for (let i = 0; i < classQueues.length; i++) {
+        if (classQueues[i].length > 0) {
+          result.push(classQueues[i].shift());
+          added = true;
+        }
+      }
+    }
+    return result;
+  };
+
   // Karma dağıtım
   const runDistribution = async () => {
     if (!selectedExam) {
@@ -162,7 +188,37 @@ const SeatingDistribution = () => {
     setMessage('Karma dağıtım başlatılıyor...');
 
     try {
-      // 1. ÇAKIŞMA KONTROLÜ
+      // 1. GEÇMİŞ SINAV YERLEŞİMLERİNİ ALMA (1. kural için)
+      const currentExam = exams.find(e => e.id === selectedExam);
+      const currentGrades = (currentExam?.grade_levels || currentExam?.gradeLevels || []).map(String);
+
+      const { data: previousPlans, error: prevPlanError } = await supabase
+        .from('seating_plans')
+        .select('exam_id, assignments')
+        .neq('exam_id', selectedExam);
+
+      if (prevPlanError) {
+        console.warn('Geçmiş oturum planları okunamadı:', prevPlanError);
+      }
+
+      // Geçmiş oturum kayıtları: studentHistoryMap[studentId] = Set("roomId_seatNo")
+      const studentHistoryMap = {};
+      if (previousPlans && previousPlans.length > 0) {
+        previousPlans.forEach(plan => {
+          const assignmentsList = plan.assignments || [];
+          assignmentsList.forEach(asgn => {
+            if (asgn.student_id && asgn.room_id && asgn.seat_number) {
+              const sId = String(asgn.student_id);
+              if (!studentHistoryMap[sId]) {
+                studentHistoryMap[sId] = new Set();
+              }
+              studentHistoryMap[sId].add(`${asgn.room_id}_${asgn.seat_number}`);
+            }
+          });
+        });
+      }
+
+      // 2. ÇAKIŞMA GROUPS KONTROLÜ
       const { data: conflictGroups, error: conflictError } = await supabase
         .from('conflict_groups')
         .select('*');
@@ -170,7 +226,7 @@ const SeatingDistribution = () => {
         console.warn('Çakışma grupları okunamadı:', conflictError);
       }
 
-      // Öğrencileri şubelerine göre grupla
+      // Öğrencileri şubelerine göre haritala
       const studentMap = {};
       students.forEach(s => {
         const key = `${s.grade}-${s.class}`;
@@ -178,24 +234,19 @@ const SeatingDistribution = () => {
         studentMap[key].push(s);
       });
 
-      // Salonları hazırla
+      // Salon kullanım durumunu oluştur
       const allRoomIds = [...new Set(groups.flatMap(g => g.roomIds))];
       const roomData = rooms.filter(r => allRoomIds.includes(r.id));
       const roomUsage = roomData.map(room => ({
         roomId: room.id,
         capacity: Number(room.capacity || 0) + Number(room.extra_seats_added || room.extraSeatsAdded || 0),
-        students: [],
+        seats: [], // { student, seatNumber }
       }));
 
-      // Normal dağıtım
-      const assignments = [];
+      // 3. ŞUBE VE GRUP BAZINDA DAĞITIM (KARMA / INTERLEAVED)
       for (const group of groups) {
-        const groupStudents = [];
-        group.classes.forEach(cls => {
-          if (studentMap[cls]) {
-            groupStudents.push(...studentMap[cls]);
-          }
-        });
+        // Şubeler arası dönel karıştırma
+        const groupStudents = interleaveStudentsByClass(group.classes, studentMap);
         if (groupStudents.length === 0) continue;
 
         const groupRooms = roomUsage.filter(r => group.roomIds.includes(r.roomId));
@@ -205,83 +256,123 @@ const SeatingDistribution = () => {
           return;
         }
 
+        // Salon kapasitelerini dengelemek adına odaları sırayla doldur
         let roomIndex = 0;
         for (const student of groupStudents) {
           let placed = false;
+          const studentHistory = studentHistoryMap[String(student.id)] || new Set();
+
+          // Öncelik 1: Öğrencinin geçmişte oturmadığı bir sandalye/salon seçmek
           for (let i = 0; i < groupRooms.length; i++) {
             const idx = (roomIndex + i) % groupRooms.length;
             const ra = groupRooms[idx];
-            if (ra.students.length < ra.capacity) {
-              ra.students.push(student);
-              placed = true;
-              roomIndex = idx + 1;
-              break;
+
+            if (ra.seats.length < ra.capacity) {
+              const candidateSeatNo = ra.seats.length + 1;
+              const seatKey = `${ra.roomId}_${candidateSeatNo}`;
+
+              // Daha önce bu koltukta oturmamışsa öncelikli oturt
+              if (!studentHistory.has(seatKey)) {
+                ra.seats.push({ student, seatNumber: candidateSeatNo });
+                placed = true;
+                roomIndex = idx + 1;
+                break;
+              }
             }
           }
+
+          // Öncelik 2: Eğer tüm salon ve koltuklar çakışıyorsa kapasitesi boş olan ilk yere koy
+          if (!placed) {
+            for (let i = 0; i < groupRooms.length; i++) {
+              const idx = (roomIndex + i) % groupRooms.length;
+              const ra = groupRooms[idx];
+              if (ra.seats.length < ra.capacity) {
+                const seatNo = ra.seats.length + 1;
+                ra.seats.push({ student, seatNumber: seatNo });
+                placed = true;
+                roomIndex = idx + 1;
+                break;
+              }
+            }
+          }
+
           if (!placed) {
             throw new Error(`"${group.name}" için yeterli salon kapasitesi yok.`);
           }
         }
       }
 
-      // 2. ÇAKIŞMA DÜZELTMESİ
+      // 4. ÇAKIŞMA GRUPLARININ FARKLI SALONLARA DAĞITILMASI
       if (conflictGroups && conflictGroups.length > 0) {
         for (const conflictGroup of conflictGroups) {
-          const conflictStudentIds = conflictGroup.student_ids || conflictGroup.studentIds || [];
+          const conflictStudentIds = (conflictGroup.student_ids || conflictGroup.studentIds || []).map(String);
           if (conflictStudentIds.length < 2) continue;
 
-          const conflictAssignments = [];
+          // Çakışan öğrencilerin şu an oturduğu yerleri bul
+          const currentConflictAssignments = [];
           for (const ra of roomUsage) {
-            for (const student of ra.students) {
-              if (conflictStudentIds.includes(student.id)) {
-                conflictAssignments.push({ student, roomId: ra.roomId });
+            for (const seatObj of ra.seats) {
+              if (conflictStudentIds.includes(String(seatObj.student.id))) {
+                currentConflictAssignments.push({ student: seatObj.student, roomId: ra.roomId, seatNumber: seatObj.seatNumber });
               }
             }
           }
 
           const roomMap = {};
-          conflictAssignments.forEach(item => {
+          currentConflictAssignments.forEach(item => {
             if (!roomMap[item.roomId]) roomMap[item.roomId] = [];
-            roomMap[item.roomId].push(item.student);
+            roomMap[item.roomId].push(item);
           });
 
+          // Aynı salonda birden fazla çakışan varsa diğer odalara kaydır
           for (const roomId of Object.keys(roomMap)) {
-            const studentsInRoom = roomMap[roomId];
-            if (studentsInRoom.length > 1) {
-              const studentToMove = studentsInRoom[0];
-              const targetRoom = roomUsage.find(r =>
-                r.roomId !== roomId &&
-                r.students.length < r.capacity
-              );
-              if (targetRoom) {
-                const oldRoom = roomUsage.find(r => r.roomId === roomId);
-                oldRoom.students = oldRoom.students.filter(s => s.id !== studentToMove.id);
-                targetRoom.students.push(studentToMove);
-              } else {
-                setMessage('Çakışma düzeltilemedi: yeterli kapasite yok.');
-                setLoading(false);
-                return;
+            const conflictItems = roomMap[roomId];
+            if (conflictItems.length > 1) {
+              for (let c = 1; c < conflictItems.length; c++) {
+                const itemToMove = conflictItems[c];
+                const targetRoom = roomUsage.find(r =>
+                  r.roomId !== roomId &&
+                  r.seats.length < r.capacity
+                );
+
+                if (targetRoom) {
+                  const sourceRoom = roomUsage.find(r => r.roomId === roomId);
+                  sourceRoom.seats = sourceRoom.seats.filter(s => String(s.student.id) !== String(itemToMove.student.id));
+
+                  // Koltuk numaralarını yeniden düzenle
+                  sourceRoom.seats.forEach((s, idx) => { s.seatNumber = idx + 1; });
+
+                  const newSeatNo = targetRoom.seats.length + 1;
+                  targetRoom.seats.push({ student: itemToMove.student, seatNumber: newSeatNo });
+                } else {
+                  setMessage('Çakışma grubu düzeltilemedi: yeterli alternatif salon yok.');
+                  setLoading(false);
+                  return;
+                }
               }
             }
           }
         }
       }
 
-      // 3. Assignments listesini oluştur
+      // 5. ATAMALARI DÜZENLEME VE VERİTABANINA KAYIT
+      const assignments = [];
       roomUsage.forEach(ra => {
-        ra.students.forEach((student, idx) => {
+        ra.seats.forEach((seatObj) => {
           assignments.push({
-            student_id: student.id,
+            student_id: seatObj.student.id,
             room_id: ra.roomId,
-            seat_number: idx + 1,
-            student_name: `${student.first_name || student.firstName || ''} ${student.last_name || student.lastName || ''}`.trim(),
-            class: student.class,
-            grade: student.grade,
+            seat_number: seatObj.seatNumber,
+            student_name: `${seatObj.student.first_name || seatObj.student.firstName || ''} ${seatObj.student.last_name || seatObj.student.lastName || ''}`.trim(),
+            class: seatObj.student.class,
+            grade: seatObj.student.grade,
           });
         });
       });
 
-      // Supabase'e kaydet (snake_case haritalama)
+      // Eski aynı sınav planını silip yenisini ekle veya güncelle
+      await supabase.from('seating_plans').delete().eq('exam_id', selectedExam);
+
       const { error: insertError } = await supabase
         .from('seating_plans')
         .insert({
@@ -289,10 +380,11 @@ const SeatingDistribution = () => {
           created_at: new Date().toISOString(),
           assignments: assignments,
         });
+
       if (insertError) throw insertError;
 
       setDistributions(assignments);
-      setMessage(`${assignments.length} öğrenci başarıyla dağıtıldı.`);
+      setMessage(`${assignments.length} öğrenci başarıyla karma olarak dağıtıldı.`);
     } catch (error) {
       console.error('Karma hatası:', error);
       setMessage('Karma sırasında hata oluştu: ' + error.message);
