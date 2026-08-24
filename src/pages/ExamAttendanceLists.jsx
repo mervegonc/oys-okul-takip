@@ -575,7 +575,7 @@ const ExamAttendanceLists = () => {
                     <th style={{ width: '6%', textAlign: 'center' }}>SIRA</th>
                     <th>ÖĞRENCİ SOYADI, ADI</th>
                     <th style={{ width: '15%', textAlign: 'center' }}>SINIF / ŞUBE</th>
-                    <th style={{ width: '12%', textAlign: 'center' }}>ALAN</th>
+                  
                     <th style={{ width: '25%', textAlign: 'center' }}>SINAV SALONU</th>
                     <th style={{ width: '12%', textAlign: 'center' }}>SIRA NO</th>
                   </tr>
@@ -590,7 +590,7 @@ const ExamAttendanceLists = () => {
                         <td style={{ textAlign: 'center', fontWeight: 'bold' }}>{idx + 1}</td>
                         <td style={{ fontWeight: 'bold' }}>{det.surnameFirstFormat}</td>
                         <td style={{ textAlign: 'center' }}>{det.grade}-{det.className}</td>
-                        <td style={{ textAlign: 'center', fontWeight: 'bold' }}>{det.track}</td>
+                      
                         <td style={{ textAlign: 'center', fontWeight: '500' }}>{roomName}</td>
                         <td style={{ textAlign: 'center', fontWeight: 'bold' }}>{st.seatNumber || st.seat_number || '-'}</td>
                       </tr>
