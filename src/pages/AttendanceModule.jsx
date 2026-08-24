@@ -68,9 +68,9 @@ const AttendanceModule = () => {
         const totalStudents = assignments.length;
         const examAtt = (attData || []).filter(a => String(a.exam_id) === String(exam.id));
         
-        // Katılmadı sayılanlar: 'katilmadi' veya 'sonra_katilacak'
-        const absentCount = examAtt.filter(a => a.status === 'katilmadi' || a.status === 'sonra_katilacak').length;
-        // Katıldı sayılanlar: Diğer tüm kayıtlar veya henüz girilmeyen kayıtlar
+        // Yalnızca 'katilmadi' seçilenler katılmadı sayılır
+        const absentCount = examAtt.filter(a => a.status === 'katilmadi').length;
+        // Geri kalan tüm durumlar (katıldı, önce alındı, geç katıldı, sonra katılacak veya henüz girilmemiş) katıldı grubundadır
         const attendedCount = totalStudents > 0 ? (totalStudents - absentCount) : 0;
 
         return {
@@ -124,14 +124,14 @@ const AttendanceModule = () => {
       const statusMap = {};
       const reasonMap = {};
 
-      // 1. Önce DB'den gelen mevcut kayıtları eşle
+      // 1. DB'den gelen kayıtları eşle
       (attData || []).forEach(att => {
         const stId = String(att.student_id);
         statusMap[stId] = att.status;
         reasonMap[stId] = att.reason || '';
       });
 
-      // 2. Eğer öğrenciden hiç yoklama kaydı gelmediyse varsayılan 'katildi' ver
+      // 2. Henüz yoklama kaydı bulunmayan öğrencilere varsayılan 'katildi' ver
       (plan?.assignments || []).forEach(st => {
         const rawId = st.studentId ?? st.student_id ?? st.id;
         const stId = String(rawId);
@@ -223,26 +223,25 @@ const AttendanceModule = () => {
   const rawKatildi = assignments.filter(a => attendanceRecords[String(a.studentId ?? a.student_id ?? a.id)] === 'katildi').length;
   const onceAlindi = assignments.filter(a => attendanceRecords[String(a.studentId ?? a.student_id ?? a.id)] === 'once_alindi').length;
   const gecKatildi = assignments.filter(a => attendanceRecords[String(a.studentId ?? a.student_id ?? a.id)] === 'gec_katildi').length;
+  const sonraKatilacak = assignments.filter(a => attendanceRecords[String(a.studentId ?? a.student_id ?? a.id)] === 'sonra_katilacak').length;
   
   const rawKatilmadi = assignments.filter(a => attendanceRecords[String(a.studentId ?? a.student_id ?? a.id)] === 'katilmadi').length;
-  const sonraKatilacak = assignments.filter(a => attendanceRecords[String(a.studentId ?? a.student_id ?? a.id)] === 'sonra_katilacak').length;
 
   const stats = {
     total: assignments.length,
-    // Toplam Katıldı = Katıldı + Önce Alındı + Geç Katıldı
-    totalKatildi: rawKatildi + onceAlindi + gecKatildi,
-    // Toplam Katılmadı = Katılmadı + Sonra Katılacak
-    totalKatilmadi: rawKatilmadi + sonraKatilacak,
+    // Toplam Katıldı = Katıldı + Önce Alındı + Geç Katıldı + Sonra Katılacak
+    totalKatildi: rawKatildi + onceAlindi + gecKatildi + sonraKatilacak,
+    // Toplam Katılmadı = Sadece Katılmadı işaretlenenler
+    totalKatilmadi: rawKatilmadi,
     onceAlindi,
     gecKatildi,
     sonraKatilacak
   };
 
-  // Mazeret ve Katılmayanlar listesinde "Katılmadı" ve "Sonra Katılacak" olanlar listelenir
+  // Sadece tam olarak "Katılmadı" seçilen öğrenciler mazeret ve mazeretsiz katılmayanlar sekmesinde gösterilir
   const absentStudents = assignments.filter(st => {
     const stId = String(st.studentId ?? st.student_id ?? st.id);
-    const status = attendanceRecords[stId];
-    return status === 'katilmadi' || status === 'sonra_katilacak';
+    return attendanceRecords[stId] === 'katilmadi';
   });
 
   return (
@@ -450,7 +449,7 @@ const AttendanceModule = () => {
             <div>
               {absentStudents.length === 0 ? (
                 <p style={{ padding: '2rem', textAlign: 'center', background: '#f8f9fa', borderRadius: '8px' }}>
-                  🎉 Sınava katılmayan veya sonradan katılacak öğrenci bulunmuyor.
+                  🎉 Sınava katılmayan öğrenci bulunmuyor.
                 </p>
               ) : (
                 <table style={{ width: '100%', borderCollapse: 'collapse', background: '#fff', borderRadius: '8px', overflow: 'hidden', border: '1px solid #ddd' }}>
@@ -459,7 +458,6 @@ const AttendanceModule = () => {
                       <th style={{ padding: '0.8rem', borderBottom: '1px solid #ddd' }}>Salon - Sıra</th>
                       <th style={{ padding: '0.8rem', borderBottom: '1px solid #ddd', textAlign: 'left' }}>Öğrenci Adı</th>
                       <th style={{ padding: '0.8rem', borderBottom: '1px solid #ddd' }}>Sınıf</th>
-                      <th style={{ padding: '0.8rem', borderBottom: '1px solid #ddd' }}>Durumu</th>
                       <th style={{ padding: '0.8rem', borderBottom: '1px solid #ddd', textAlign: 'left' }}>Katılmama Nedeni / Mazeret Açıklaması</th>
                     </tr>
                   </thead>
@@ -469,7 +467,6 @@ const AttendanceModule = () => {
                       const stId = String(rawId);
                       const stName = item.studentName || item.student_name || `${item.first_name || ''} ${item.last_name || ''}`.trim() || item.name;
                       const roomName = getRoomName(item);
-                      const currentStatus = attendanceRecords[stId];
 
                       return (
                         <tr key={stId || idx} style={{ borderBottom: '1px solid #eee' }}>
@@ -478,17 +475,6 @@ const AttendanceModule = () => {
                           </td>
                           <td style={{ padding: '0.6rem', fontWeight: '500' }}>{stName}</td>
                           <td style={{ padding: '0.6rem', textAlign: 'center' }}>{item.grade || ''}-{item.class || item.className || ''}</td>
-                          <td style={{ padding: '0.6rem', textAlign: 'center' }}>
-                            <span style={{ 
-                              padding: '0.2rem 0.5rem', 
-                              borderRadius: '4px', 
-                              fontSize: '0.8rem',
-                              color: '#fff',
-                              background: currentStatus === 'katilmadi' ? '#dc3545' : '#6c757d'
-                            }}>
-                              {currentStatus === 'katilmadi' ? 'Katılmadı' : 'Sonra Katılacak'}
-                            </span>
-                          </td>
                           <td style={{ padding: '0.6rem' }}>
                             <input
                               type="text"
