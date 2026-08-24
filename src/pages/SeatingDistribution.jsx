@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabase';
-import { FaSync, FaPlus, FaTrash } from 'react-icons/fa';
+import { FaSync, FaPlus, FaTrash, FaRedo } from 'react-icons/fa';
 
 const SeatingDistribution = () => {
   const [exams, setExams] = useState([]);
@@ -43,6 +43,7 @@ const SeatingDistribution = () => {
       setStudents([]);
       setAllClasses([]);
       setGroups([]);
+      setDistributions([]);
       return;
     }
     const fetchStudentsForExam = async () => {
@@ -134,7 +135,7 @@ const SeatingDistribution = () => {
     }));
   };
 
-  // Yardımcı Fonksiyon: Diziyi karıştırma (Fisher-Yates Shuffle)
+  // Fisher-Yates Shuffle (Diziyi Rastgele Karıştırma)
   const shuffleArray = (array) => {
     const arr = [...array];
     for (let i = arr.length - 1; i > 0; i--) {
@@ -144,9 +145,12 @@ const SeatingDistribution = () => {
     return arr;
   };
 
-  // Şubeler arası dönel (Interleaved) karma algoritması
+  // Şubeler arası dönel (Interleaved) karma algoritması + Rastgele Başlangıç Sırası
   const interleaveStudentsByClass = (classList, studentMap) => {
-    const classQueues = classList.map(cls => shuffleArray([...(studentMap[cls] || [])]));
+    // Şube sırasını da her karma işleminde rastgele karıştırıyoruz
+    const shuffledClassList = shuffleArray(classList);
+    const classQueues = shuffledClassList.map(cls => shuffleArray([...(studentMap[cls] || [])]));
+    
     const result = [];
     let added = true;
 
@@ -185,13 +189,10 @@ const SeatingDistribution = () => {
     }
 
     setLoading(true);
-    setMessage('Karma dağıtım başlatılıyor...');
+    setMessage('Karma dağıtım yapılıyor...');
 
     try {
       // 1. GEÇMİŞ SINAV YERLEŞİMLERİNİ ALMA (1. kural için)
-      const currentExam = exams.find(e => e.id === selectedExam);
-      const currentGrades = (currentExam?.grade_levels || currentExam?.gradeLevels || []).map(String);
-
       const { data: previousPlans, error: prevPlanError } = await supabase
         .from('seating_plans')
         .select('exam_id, assignments')
@@ -218,7 +219,7 @@ const SeatingDistribution = () => {
         });
       }
 
-      // 2. ÇAKIŞMA GROUPS KONTROLÜ
+      // 2. ÇAKIŞMA GRUPLARI KONTROLÜ
       const { data: conflictGroups, error: conflictError } = await supabase
         .from('conflict_groups')
         .select('*');
@@ -240,29 +241,28 @@ const SeatingDistribution = () => {
       const roomUsage = roomData.map(room => ({
         roomId: room.id,
         capacity: Number(room.capacity || 0) + Number(room.extra_seats_added || room.extraSeatsAdded || 0),
-        seats: [], // { student, seatNumber }
+        seats: [],
       }));
 
-      // 3. ŞUBE VE GRUP BAZINDA DAĞITIM (KARMA / INTERLEAVED)
+      // 3. ŞUBE VE GRUP BAZINDA DAĞITIM
       for (const group of groups) {
-        // Şubeler arası dönel karıştırma
         const groupStudents = interleaveStudentsByClass(group.classes, studentMap);
         if (groupStudents.length === 0) continue;
 
-        const groupRooms = roomUsage.filter(r => group.roomIds.includes(r.roomId));
+        // Salon listesini de her karmada rastgele sıralayarak başlangıç odasını değiştiriyoruz
+        const groupRooms = shuffleArray(roomUsage.filter(r => group.roomIds.includes(r.roomId)));
         if (groupRooms.length === 0) {
           setMessage(`"${group.name}" için uygun salon bulunamadı.`);
           setLoading(false);
           return;
         }
 
-        // Salon kapasitelerini dengelemek adına odaları sırayla doldur
-        let roomIndex = 0;
+        let roomIndex = Math.floor(Math.random() * groupRooms.length);
         for (const student of groupStudents) {
           let placed = false;
           const studentHistory = studentHistoryMap[String(student.id)] || new Set();
 
-          // Öncelik 1: Öğrencinin geçmişte oturmadığı bir sandalye/salon seçmek
+          // Öncelik 1: Geçmişte oturmadığı koltuk ve salona yerleştir
           for (let i = 0; i < groupRooms.length; i++) {
             const idx = (roomIndex + i) % groupRooms.length;
             const ra = groupRooms[idx];
@@ -271,7 +271,6 @@ const SeatingDistribution = () => {
               const candidateSeatNo = ra.seats.length + 1;
               const seatKey = `${ra.roomId}_${candidateSeatNo}`;
 
-              // Daha önce bu koltukta oturmamışsa öncelikli oturt
               if (!studentHistory.has(seatKey)) {
                 ra.seats.push({ student, seatNumber: candidateSeatNo });
                 placed = true;
@@ -281,7 +280,7 @@ const SeatingDistribution = () => {
             }
           }
 
-          // Öncelik 2: Eğer tüm salon ve koltuklar çakışıyorsa kapasitesi boş olan ilk yere koy
+          // Öncelik 2: Alternatif yer yoksa boş olan ilk yere yerleştir
           if (!placed) {
             for (let i = 0; i < groupRooms.length; i++) {
               const idx = (roomIndex + i) % groupRooms.length;
@@ -302,13 +301,12 @@ const SeatingDistribution = () => {
         }
       }
 
-      // 4. ÇAKIŞMA GRUPLARININ FARKLI SALONLARA DAĞITILMASI
+      // 4. ÇAKIŞMA GRUPLARININ DÜZENLENMESİ
       if (conflictGroups && conflictGroups.length > 0) {
         for (const conflictGroup of conflictGroups) {
           const conflictStudentIds = (conflictGroup.student_ids || conflictGroup.studentIds || []).map(String);
           if (conflictStudentIds.length < 2) continue;
 
-          // Çakışan öğrencilerin şu an oturduğu yerleri bul
           const currentConflictAssignments = [];
           for (const ra of roomUsage) {
             for (const seatObj of ra.seats) {
@@ -324,7 +322,6 @@ const SeatingDistribution = () => {
             roomMap[item.roomId].push(item);
           });
 
-          // Aynı salonda birden fazla çakışan varsa diğer odalara kaydır
           for (const roomId of Object.keys(roomMap)) {
             const conflictItems = roomMap[roomId];
             if (conflictItems.length > 1) {
@@ -339,7 +336,6 @@ const SeatingDistribution = () => {
                   const sourceRoom = roomUsage.find(r => r.roomId === roomId);
                   sourceRoom.seats = sourceRoom.seats.filter(s => String(s.student.id) !== String(itemToMove.student.id));
 
-                  // Koltuk numaralarını yeniden düzenle
                   sourceRoom.seats.forEach((s, idx) => { s.seatNumber = idx + 1; });
 
                   const newSeatNo = targetRoom.seats.length + 1;
@@ -370,7 +366,7 @@ const SeatingDistribution = () => {
         });
       });
 
-      // Eski aynı sınav planını silip yenisini ekle veya güncelle
+      // Eski planı temizle ve yenisini kaydet
       await supabase.from('seating_plans').delete().eq('exam_id', selectedExam);
 
       const { error: insertError } = await supabase
@@ -384,7 +380,7 @@ const SeatingDistribution = () => {
       if (insertError) throw insertError;
 
       setDistributions(assignments);
-      setMessage(`${assignments.length} öğrenci başarıyla karma olarak dağıtıldı.`);
+      setMessage(`${assignments.length} öğrenci başarıyla yeniden karılarak dağıtıldı.`);
     } catch (error) {
       console.error('Karma hatası:', error);
       setMessage('Karma sırasında hata oluştu: ' + error.message);
@@ -548,32 +544,73 @@ const SeatingDistribution = () => {
         )}
       </div>
 
-      {/* Karma Butonu */}
-      <button
-        onClick={runDistribution}
-        disabled={loading || !selectedExam || groups.length === 0}
-        style={{
-          padding: '0.6rem 1.5rem',
-          background: '#007bff',
-          color: 'white',
-          border: 'none',
-          borderRadius: '6px',
-          cursor: 'pointer',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '0.5rem',
-          marginBottom: '1rem',
-        }}
-      >
-        <FaSync /> {loading ? 'Dağıtılıyor...' : 'Karma Dağıtımı Başlat'}
-      </button>
+      {/* Karma Butonları */}
+      <div style={{ display: 'flex', gap: '0.8rem', marginBottom: '1rem' }}>
+        <button
+          onClick={runDistribution}
+          disabled={loading || !selectedExam || groups.length === 0}
+          style={{
+            padding: '0.6rem 1.5rem',
+            background: '#007bff',
+            color: 'white',
+            border: 'none',
+            borderRadius: '6px',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+          }}
+        >
+          <FaSync /> {loading ? 'Dağıtılıyor...' : distributions.length > 0 ? 'Tekrar Kar (Yeniden Dağıt)' : 'Karma Dağıtımı Başlat'}
+        </button>
+
+        {distributions.length > 0 && (
+          <button
+            onClick={runDistribution}
+            disabled={loading}
+            style={{
+              padding: '0.6rem 1.2rem',
+              background: '#17a2b8',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+            }}
+          >
+            <FaRedo /> Yeniden Kar
+          </button>
+        )}
+      </div>
 
       {message && <p style={{ margin: '0.5rem 0', color: message.includes('hata') ? 'red' : 'green' }}>{message}</p>}
 
       {/* Dağıtım Sonucu */}
       {distributions.length > 0 && (
         <div style={{ marginTop: '2rem' }}>
-          <h4>Dağıtım Sonucu ({distributions.length} öğrenci)</h4>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+            <h4>Dağıtım Sonucu ({distributions.length} öğrenci)</h4>
+            <button
+              onClick={runDistribution}
+              disabled={loading}
+              style={{
+                padding: '0.3rem 0.8rem',
+                background: '#6c757d',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontSize: '0.85rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.3rem',
+              }}
+            >
+              <FaRedo /> Beğenmedim, Tekrar Kar
+            </button>
+          </div>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', background: 'white', borderRadius: '8px', overflow: 'hidden', boxShadow: '0 0 10px rgba(0,0,0,0.05)' }}>
               <thead style={{ background: '#f1f1f1' }}>
