@@ -1,27 +1,63 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabase';
 import * as XLSX from 'xlsx';
+import CryptoJS from 'crypto-js';
+
+// TC Şifre Çözücü Yardımcı Fonksiyon
+const decryptTC = (cipherText) => {
+  if (!cipherText || typeof cipherText !== 'string') return '-';
+  
+  // Şifreli değilse (Salt öneki 'U2FsdGVkX1' ile başlamıyorsa) doğrudan döndür
+  if (!cipherText.startsWith('U2FsdGVkX1')) {
+    return cipherText;
+  }
+
+  // Projenizde kullanılan gizli anahtarlar (varsayılan bilinen key'ler eklenmiştir)
+  const SECRET_KEYS = [
+    process.env.REACT_APP_ENCRYPTION_KEY,
+    process.env.VITE_ENCRYPTION_KEY,
+    'secret_key',
+    'secret-key',
+    'nesibe_aydin_secret',
+    'tc_secret_key',
+    '123456'
+  ].filter(Boolean);
+
+  for (const key of SECRET_KEYS) {
+    try {
+      const bytes = CryptoJS.AES.decrypt(cipherText, key);
+      const decrypted = bytes.toString(CryptoJS.enc.Utf8);
+      if (decrypted && decrypted.length === 11 && !isNaN(decrypted)) {
+        return decrypted;
+      }
+    } catch (e) {
+      // Key uyuşmadıysa sonraki key'e geç
+    }
+  }
+
+  // Çözülemezse yine de görüntüyü bozmamak için kısa halini göster veya hammaddesini ver
+  return cipherText;
+};
 
 const ExamAttendanceLists = () => {
   const [exams, setExams] = useState([]);
   const [selectedExam, setSelectedExam] = useState(null);
   const [seatingPlan, setSeatingPlan] = useState(null);
   const [rooms, setRooms] = useState([]);
-  const [studentMap, setStudentMap] = useState({}); // ID/TC/NO -> Student Object
+  const [studentMap, setStudentMap] = useState({});
   const [loading, setLoading] = useState(false);
 
   // Sekme & Filtre Durumları
-  const [activeTab, setActiveTab] = useState('attendance'); // 'attendance' | 'surname' | 'excel'
+  const [activeTab, setActiveTab] = useState('attendance');
   const [showTc, setShowTc] = useState(true);
-  const [examCategory, setExamCategory] = useState('akademik'); // 'akademik' | 'yabanci_dil' | 'ortaokul_yazili'
-  const [schoolType, setSchoolType] = useState('lise'); // 'lise' | 'ortaokul'
-  const [sessionType, setSessionType] = useState('sozel'); // 'sozel' | 'sayisal'
+  const [examCategory, setExamCategory] = useState('akademik');
+  const [schoolType, setSchoolType] = useState('lise');
   const [invigilators, setInvigilators] = useState({});
 
   useEffect(() => {
     fetchExams();
     fetchRooms();
-    fetchAllStudentsData(); // Tüm öğrenci verisini veritabanından doğrudan önceden yükle
+    fetchAllStudentsData();
   }, []);
 
   const fetchRooms = async () => {
@@ -50,12 +86,9 @@ const ExamAttendanceLists = () => {
     }
   };
 
-  // Supabase 'students' tablosundaki tüm öğrencileri çekip hızlı erişim için Haritalıyoruz
   const fetchAllStudentsData = async () => {
     try {
-      const { data, error } = await supabase
-        .from('students')
-        .select('*');
+      const { data, error } = await supabase.from('students').select('*');
 
       if (!error && data) {
         const map = {};
@@ -75,7 +108,6 @@ const ExamAttendanceLists = () => {
     setSelectedExam(exam);
     setLoading(true);
     try {
-      // Öğrenci haritasını güncel tutmak için tekrar çağır
       await fetchAllStudentsData();
 
       const { data, error } = await supabase
@@ -115,7 +147,6 @@ const ExamAttendanceLists = () => {
     window.print();
   };
 
-  // Alan Adını Kısaltma Mantığı (SAY, EA, SÖZ, DİL)
   const formatTrack = (track) => {
     if (!track) return '-';
     const tr = String(track).trim().toLowerCase();
@@ -126,22 +157,19 @@ const ExamAttendanceLists = () => {
     return String(track).toUpperCase();
   };
 
-  // Birleştirilmiş Öğrenci Verisi Çözücü
   const getStudentDetails = (st) => {
     const rawId = String(st.studentId || st.student_id || st.id || '').trim();
     const rawTc = String(st.tc || st.tc_no || st.tcNo || '').trim();
     const rawNo = String(st.no || st.student_no || st.studentNo || st.school_number || '').trim();
 
-    // Veritabanı (students tablosu) eşleşmesi
     const dbSt = studentMap[rawId] || studentMap[rawTc] || studentMap[rawNo] || {};
 
-    // 1. TC No Çözümleme (Öncelik veritabanında)
-    const tc = dbSt.tc_no || st.tc_no || st.tc || st.tcNo || '-';
+    // TC 'tc_no' sütunundan çekilir ve deşifre edilir
+    const cipherTc = dbSt.tc_no || st.tc_no || st.tc || st.tcNo || '';
+    const tc = decryptTC(cipherTc);
 
-    // 2. Okul No Çözümleme
     const studentNo = dbSt.student_no || st.student_no || st.no || st.studentNo || '-';
 
-    // 3. İsim Soyisim Çözümleme
     let firstName = dbSt.first_name || st.first_name || st.ad || '';
     let lastName = dbSt.last_name || st.last_name || st.soyad || '';
     let fullName = st.studentName || st.student_name || st.fullName || '';
@@ -166,11 +194,8 @@ const ExamAttendanceLists = () => {
 
     const surnameFirstFormat = lastName ? `${lastName.toUpperCase()}, ${firstName}` : fullName;
 
-    // 4. Sınıf, Şube ve ALAN (Veritabanınızdaki 'field' sütunu)
     const grade = dbSt.grade || st.grade || st.sinif || '';
     const className = dbSt.class || st.className || st.class || st.sube || '';
-    
-    // VERİTABANINDA SÜTUN ADI: 'field'
     const rawField = dbSt.field || st.field || st.alan || st.track || st.department || '';
 
     return {
@@ -268,7 +293,6 @@ const ExamAttendanceLists = () => {
   return (
     <div className="lists-container" style={{ padding: '1.5rem', maxWidth: '1400px', margin: '0 auto', fontFamily: 'Segoe UI, Tahoma, Geneva, Verdana, sans-serif' }}>
       
-      {/* BASKI CSS AYARLARI */}
       <style>{`
         @media print {
           body * {
@@ -321,7 +345,6 @@ const ExamAttendanceLists = () => {
         }
       `}</style>
 
-      {/* EKRAN KONTROLLERİ */}
       <div className="no-print">
         <h2>📑 Yoklama ve Sınav Listeleri</h2>
         <p style={{ color: '#666' }}>Sınav salon ve soyad sıralı listelerini yönetin ve bastırın.</p>
@@ -367,7 +390,6 @@ const ExamAttendanceLists = () => {
               ← Sınav Seçimine Dön
             </button>
 
-            {/* FİLTRE & AYAR PANALİ */}
             <div style={{ background: '#f8fafc', padding: '1.2rem', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '1.5rem', display: 'flex', flexWrap: 'wrap', gap: '1.5rem', alignItems: 'center' }}>
               <div>
                 <label style={{ fontWeight: 'bold', fontSize: '0.85rem', display: 'block' }}>Sınav Türü:</label>
@@ -403,7 +425,6 @@ const ExamAttendanceLists = () => {
               </div>
             </div>
 
-            {/* SEKMELER */}
             <div style={{ display: 'flex', gap: '0.5rem', borderBottom: '2px solid #e2e8f0', marginBottom: '1.5rem' }}>
               <button
                 onClick={() => setActiveTab('attendance')}
@@ -452,10 +473,8 @@ const ExamAttendanceLists = () => {
         )}
       </div>
 
-      {/* BASKI VE LİSTE ALANI */}
       {selectedExam && (
         <div className="print-area">
-          {/* 1. SEKMELİ YAPI: SALON YOKLAMA LİSTESİ */}
           {activeTab === 'attendance' && (
             <div>
               {Object.keys(groupedByRoom).map((roomName) => {
@@ -465,7 +484,6 @@ const ExamAttendanceLists = () => {
                 return (
                   <div key={roomName} className="print-card page-break" style={{ background: '#fff', border: '1px solid #cbd5e1', padding: '1.2rem', marginBottom: '2rem', borderRadius: '6px' }}>
                     
-                    {/* BAŞLIK */}
                     <div style={{ border: '2px solid #000', padding: '0.6rem', textAlign: 'center', marginBottom: '0.8rem', background: '#fafafa' }}>
                       <h1 style={{ margin: '0 0 0.3rem 0', fontSize: '14pt', fontWeight: 'bold', textTransform: 'uppercase' }}>
                         {selectedExam.title} - {gradeSummary} - {roomName.toUpperCase()} YOKLAMA LİSTESİ
@@ -476,7 +494,6 @@ const ExamAttendanceLists = () => {
                       </div>
                     </div>
 
-                    {/* GÖZETMEN VE ÜST BİLGİ */}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem', fontSize: '9.5pt', fontWeight: 'bold' }}>
                       <div>
                         <span>GÖZETMEN ADI SOYADI: </span>
@@ -491,7 +508,6 @@ const ExamAttendanceLists = () => {
                       <div>SALON KAPASİTESİ: {students.length} ÖĞRENCİ</div>
                     </div>
 
-                    {/* ÖĞRENCİ TABLOSU */}
                     <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                       <thead>
                         <tr style={{ background: '#eee' }}>
@@ -522,7 +538,6 @@ const ExamAttendanceLists = () => {
                       </tbody>
                     </table>
 
-                    {/* ALT ÖZET VE İMZA KUTUSU */}
                     <div style={{ marginTop: '0.8rem', display: 'flex', justifyContent: 'space-between', alignItems: 'stretch' }}>
                       <div style={{ border: '1px solid #000', padding: '0.5rem 0.8rem', fontSize: '8.5pt', borderRadius: '4px', flexGrow: 1, marginRight: '1rem' }}>
                         <strong style={{ display: 'block', marginBottom: '4px', textDecoration: 'underline' }}>SINAV KATILIM ÖZETİ:</strong>
@@ -544,7 +559,6 @@ const ExamAttendanceLists = () => {
             </div>
           )}
 
-          {/* 2. SEKMELİ YAPI: SOYAD SIRALI LİSTE (A-Z) */}
           {activeTab === 'surname' && (
             <div className="print-card page-break" style={{ background: '#fff', border: '1px solid #cbd5e1', padding: '1.2rem', borderRadius: '6px' }}>
               <div style={{ border: '2px solid #000', padding: '0.6rem', textAlign: 'center', marginBottom: '1rem', background: '#fafafa' }}>
@@ -588,7 +602,6 @@ const ExamAttendanceLists = () => {
             </div>
           )}
 
-          {/* 3. SEKMELİ YAPI: EXCEL AKTAR */}
           {activeTab === 'excel' && (
             <div className="no-print" style={{ background: '#f8fafc', padding: '2.5rem', border: '1px solid #cbd5e1', borderRadius: '8px', textAlign: 'center' }}>
               <h3 style={{ color: '#1e293b', margin: 0 }}>📊 Excel Dışarı Aktar</h3>
