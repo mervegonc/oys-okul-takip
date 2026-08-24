@@ -81,13 +81,26 @@ const ExamAttendanceLists = () => {
     window.print();
   };
 
-  // Esnek Öğrenci Detayları Çözücü (TC, Öğrenci No, Ad Soyad)
+  // Alan Adını Kısaltma Mantığı (SAY, EA, SÖZ, DİL)
+  const formatTrack = (track) => {
+    if (!track) return '-';
+    const tr = String(track).trim().toLowerCase();
+    if (tr.includes('say')) return 'SAY';
+    if (tr.includes('eş') || tr.includes('es') || tr.includes('ea')) return 'EA';
+    if (tr.includes('söz') || tr.includes('soz')) return 'SÖZ';
+    if (tr.includes('dil')) return 'DİL';
+    return String(track).toUpperCase();
+  };
+
+  // Esnek Öğrenci Detayları Çözücü
   const getStudentDetails = (st) => {
     const rawTc = st.tc || st.tc_no || st.tcNo || st.identity_number || st.tc_kimlik_no || '-';
-    const rawStudentNo = st.studentNo || st.student_no || st.student_number || st.school_number || st.ogr_no || '-';
+    
+    // Öğrenci Numarası Alımı
+    const rawStudentNo = st.no || st.student_no || st.studentNo || st.school_number || st.ogr_no || st.number || '-';
     
     // İsim Ayrıştırma
-    let fullName = st.studentName || st.student_name || st.name || `${st.first_name || ''} ${st.last_name || ''}`.trim() || 'İsimsiz Öğrenci';
+    let fullName = st.studentName || st.student_name || st.name || `${st.first_name || st.ad || ''} ${st.last_name || st.soyad || ''}`.trim() || 'İsimsiz Öğrenci';
     let surname = st.last_name || st.surname || st.soyad || '';
     let firstName = st.first_name || st.name || st.ad || '';
 
@@ -102,14 +115,18 @@ const ExamAttendanceLists = () => {
     }
 
     const surnameFirstFormat = surname ? `${surname.toUpperCase()}, ${firstName}` : fullName;
+    const rawGrade = st.grade || st.sinif || st.grade_level || '';
+    const rawClass = st.class || st.className || st.sube || st.class_name || '';
+    const rawTrack = st.alan || st.track || st.field || st.department || '';
 
     return {
       tc: rawTc,
       studentNo: rawStudentNo,
       fullName,
       surnameFirstFormat,
-      grade: st.grade || st.sinif || '',
-      className: st.class || st.className || st.sube || ''
+      grade: rawGrade,
+      className: rawClass,
+      track: formatTrack(rawTrack)
     };
   };
 
@@ -120,6 +137,20 @@ const ExamAttendanceLists = () => {
       if (foundInDb && foundInDb.name) return foundInDb.name;
     }
     return rawRoomId || 'Tanımsız Salon';
+  };
+
+  // Liste İçindeki Sınıf Seviyelerini Çıkarma (Örn: "12. Sınıf" veya "11 ve 12. Sınıf")
+  const getGradeSummary = (studentList) => {
+    const grades = new Set();
+    studentList.forEach(st => {
+      const det = getStudentDetails(st);
+      if (det.grade) grades.add(String(det.grade).replace('.', ''));
+    });
+    
+    const sortedGrades = Array.from(grades).sort((a, b) => a - b);
+    if (sortedGrades.length === 0) return 'Tüm Sınıflar';
+    if (sortedGrades.length === 1) return `${sortedGrades[0]}. Sınıf`;
+    return `${sortedGrades.join(' ve ')}. Sınıf`;
   };
 
   const assignments = seatingPlan?.assignments || [];
@@ -154,8 +185,9 @@ const ExamAttendanceLists = () => {
           'Sıra No': index + 1,
           'Öğrenci Soyadı, Adı': det.surnameFirstFormat,
           'Sınıf/Şube': `${det.grade}-${det.className}`,
+          'Alan': det.track,
           'Salon Adı': getRoomName(st),
-          'Sıra No (Koltuk)': st.seatNumber || st.seat_number || ''
+          'Masa Sıra No': st.seatNumber || st.seat_number || ''
         };
       });
     } else {
@@ -166,7 +198,8 @@ const ExamAttendanceLists = () => {
           'Salon Adı': getRoomName(st),
           'Masa Sıra No': st.seatNumber || st.seat_number || '',
           'Öğrenci Adı Soyadı': det.fullName,
-          'Sınıf/Şube': `${det.grade}-${det.className}`
+          'Sınıf/Şube': `${det.grade}-${det.className}`,
+          'Alan': det.track
         };
         if (showTc && examCategory !== 'ortaokul_yazili') {
           item['TC Kimlik No'] = det.tc;
@@ -201,72 +234,58 @@ const ExamAttendanceLists = () => {
   return (
     <div className="lists-container" style={{ padding: '1.5rem', maxWidth: '1400px', margin: '0 auto', fontFamily: 'Segoe UI, Tahoma, Geneva, Verdana, sans-serif' }}>
       
-      {/* KESİNTİSİZ A4 BASKI CSS KURALLARI */}
-<style>{`
-  @media print {
-    /* Uygulamanın tüm dış layout ve root elemanlarını baskıda serbest bırak/gizle */
-    body * {
-      visibility: hidden;
-    }
-
-    /* Yalnızca yazdırma alanını ve içindeki tüm elemanları görünür kıl */
-    .print-area, .print-area * {
-      visibility: visible !important;
-    }
-
-    /* Print alanını sayfanın en üstüne sabitle */
-    .print-area {
-      position: absolute !important;
-      left: 0 !important;
-      top: 0 !important;
-      width: 100% !important;
-      margin: 0 !important;
-      padding: 0 !important;
-    }
-
-    @page {
-      size: A4 portrait;
-      margin: 10mm;
-    }
-
-    /* Gizlenecek elemanlar */
-    .no-print {
-      display: none !important;
-    }
-
-    /* Her salon için sayfa sonu */
-    .page-break {
-      page-break-after: always !important;
-      break-after: page !important;
-      display: block !important;
-      margin-bottom: 0 !important;
-      padding-bottom: 20px !important;
-    }
-
-    table {
-      width: 100% !important;
-      border-collapse: collapse !important;
-    }
-
-    th, td {
-      border: 1px solid #000 !important;
-      padding: 6px 8px !important;
-      font-size: 9pt !important;
-      color: #000 !important;
-    }
-
-    th {
-      background-color: #eee !important;
-      -webkit-print-color-adjust: exact;
-      print-color-adjust: exact;
-    }
-
-    input {
-      border: none !important;
-      background: transparent !important;
-    }
-  }
-`}</style>
+      {/* BASKI CSS AYARLARI */}
+      <style>{`
+        @media print {
+          body * {
+            visibility: hidden;
+          }
+          .print-area, .print-area * {
+            visibility: visible !important;
+          }
+          .print-area {
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+          }
+          @page {
+            size: A4 portrait;
+            margin: 10mm;
+          }
+          .no-print {
+            display: none !important;
+          }
+          .page-break {
+            page-break-after: always !important;
+            break-after: page !important;
+            display: block !important;
+            margin-bottom: 0 !important;
+            padding-bottom: 20px !important;
+          }
+          table {
+            width: 100% !important;
+            border-collapse: collapse !important;
+          }
+          th, td {
+            border: 1px solid #000 !important;
+            padding: 6px 8px !important;
+            font-size: 9pt !important;
+            color: #000 !important;
+          }
+          th {
+            background-color: #eee !important;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
+          input {
+            border: none !important;
+            background: transparent !important;
+          }
+        }
+      `}</style>
 
       {/* EKRAN KONTROLLERİ */}
       <div className="no-print">
@@ -420,18 +439,25 @@ const ExamAttendanceLists = () => {
               {Object.keys(groupedByRoom).map((roomName) => {
                 const students = groupedByRoom[roomName];
                 const langStats = calculateLangStats(students);
+                const gradeSummary = getGradeSummary(students);
+
+                // 11 veya 12. sınıf öğrencisi var mı kontrolü
+                const hasUpperGrades = students.some(st => {
+                  const g = String(getStudentDetails(st).grade);
+                  return g.includes('11') || g.includes('12');
+                });
 
                 return (
                   <div key={roomName} className="print-card page-break" style={{ background: '#fff', border: '1px solid #cbd5e1', padding: '1.5rem', marginBottom: '2rem', borderRadius: '6px' }}>
                     
-                    {/* BÜYÜK ESTETİK BAŞLIK */}
+                    {/* YENİ BAŞLIK YAPISI: Sınav ismi + Sınıf Seviyesi + Salon İsmi + Yoklama Listesi */}
                     <div style={{ border: '2px solid #000', padding: '0.8rem', textAlign: 'center', marginBottom: '1rem', background: '#fafafa' }}>
-                      <h1 style={{ margin: '0 0 0.3rem 0', fontSize: '16pt', fontWeight: 'bold', letterSpacing: '0.5px', textTransform: 'uppercase' }}>
-                        {selectedExam.title}
+                      <h1 style={{ margin: '0 0 0.3rem 0', fontSize: '15pt', fontWeight: 'bold', letterSpacing: '0.5px', textTransform: 'uppercase' }}>
+                        {selectedExam.title} - {gradeSummary} - {roomName.toUpperCase()} YOKLAMA LİSTESİ
                       </h1>
-                      <div style={{ fontSize: '11pt', fontWeight: 'bold', display: 'flex', justifyContent: 'space-around', borderTop: '1px solid #000', paddingTop: '0.4rem', marginTop: '0.4rem' }}>
+                      <div style={{ fontSize: '10.5pt', fontWeight: 'bold', display: 'flex', justifyContent: 'space-around', borderTop: '1px solid #000', paddingTop: '0.4rem', marginTop: '0.4rem' }}>
                         <span>TARİH: {selectedExam.date}</span>
-                        <span>SALON / SINIF: <span style={{ textDecoration: 'underline' }}>{roomName.toUpperCase()}</span></span>
+                        <span>SALON: {roomName.toUpperCase()}</span>
                         {examCategory === 'akademik' && schoolType === 'ortaokul' && (
                           <span>OTURUM: {sessionType === 'sozel' ? 'SÖZEL' : 'SAYISAL'}</span>
                         )}
@@ -458,10 +484,11 @@ const ExamAttendanceLists = () => {
                       <thead>
                         <tr style={{ background: '#eee' }}>
                           <th style={{ width: '6%', textAlign: 'center' }}>SIRA</th>
-                          {examCategory !== 'ortaokul_yazili' && showTc && <th style={{ width: '16%' }}>TC KİMLİK NO</th>}
+                          {examCategory !== 'ortaokul_yazili' && showTc && <th style={{ width: '15%' }}>TC KİMLİK NO</th>}
                           {examCategory !== 'ortaokul_yazili' && <th style={{ width: '12%' }}>ÖĞR. NO</th>}
                           <th>ÖĞRENCİ ADI SOYADI</th>
                           <th style={{ width: '12%', textAlign: 'center' }}>SINIF / ŞUBE</th>
+                          {hasUpperGrades && schoolType === 'lise' && <th style={{ width: '8%', textAlign: 'center' }}>ALAN</th>}
                           {examCategory === 'yabanci_dil' && schoolType === 'lise' && (
                             <>
                               <th style={{ width: '10%', textAlign: 'center' }}>İNG. SEVİYE</th>
@@ -481,9 +508,12 @@ const ExamAttendanceLists = () => {
                             <tr key={st.studentId || st.id || sIdx}>
                               <td style={{ textAlign: 'center', fontWeight: 'bold' }}>{st.seatNumber || st.seat_number || (sIdx + 1)}</td>
                               {examCategory !== 'ortaokul_yazili' && showTc && <td style={{ fontFamily: 'monospace' }}>{det.tc}</td>}
-                              {examCategory !== 'ortaokul_yazili' && <td>{det.studentNo}</td>}
+                              {examCategory !== 'ortaokul_yazili' && <td style={{ fontWeight: '600' }}>{det.studentNo}</td>}
                               <td style={{ fontWeight: '500' }}>{det.fullName}</td>
                               <td style={{ textAlign: 'center' }}>{det.grade}-{det.className}</td>
+                              {hasUpperGrades && schoolType === 'lise' && (
+                                <td style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '8.5pt' }}>{det.track}</td>
+                              )}
 
                               {examCategory === 'yabanci_dil' && schoolType === 'lise' && (
                                 <>
@@ -560,7 +590,7 @@ const ExamAttendanceLists = () => {
                   {selectedExam.title} - SOYAD SIRALI ÖĞRENCİ LİSTESİ
                 </h1>
                 <div style={{ fontSize: '10.5pt', fontWeight: 'bold', borderTop: '1px solid #000', paddingTop: '0.4rem', marginTop: '0.4rem' }}>
-                  TARİH: {selectedExam.date} &nbsp;|&nbsp; KADEMESİ: {schoolType.toUpperCase()}
+                  TARİH: {selectedExam.date} &nbsp;|&nbsp; SINIF SEVİYESİ: {getGradeSummary(assignments)}
                 </div>
               </div>
 
@@ -570,8 +600,9 @@ const ExamAttendanceLists = () => {
                     <th style={{ width: '6%', textAlign: 'center' }}>SIRA</th>
                     <th>ÖĞRENCİ SOYADI, ADI</th>
                     <th style={{ width: '15%', textAlign: 'center' }}>SINIF / ŞUBE</th>
+                    <th style={{ width: '10%', textAlign: 'center' }}>ALAN</th>
                     <th style={{ width: '25%', textAlign: 'center' }}>SINAV SALONU</th>
-                    <th style={{ width: '15%', textAlign: 'center' }}>SIRA NO</th>
+                    <th style={{ width: '12%', textAlign: 'center' }}>SIRA NO</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -584,6 +615,7 @@ const ExamAttendanceLists = () => {
                         <td style={{ textAlign: 'center', fontWeight: 'bold' }}>{idx + 1}</td>
                         <td style={{ fontWeight: 'bold' }}>{det.surnameFirstFormat}</td>
                         <td style={{ textAlign: 'center' }}>{det.grade}-{det.className}</td>
+                        <td style={{ textAlign: 'center', fontWeight: 'bold' }}>{det.track}</td>
                         <td style={{ textAlign: 'center', fontWeight: '500' }}>{roomName}</td>
                         <td style={{ textAlign: 'center', fontWeight: 'bold' }}>{st.seatNumber || st.seat_number || '-'}</td>
                       </tr>
