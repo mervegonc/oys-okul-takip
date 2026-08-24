@@ -202,54 +202,71 @@ const ExamAttendanceLists = () => {
     <div className="lists-container" style={{ padding: '1.5rem', maxWidth: '1400px', margin: '0 auto', fontFamily: 'Segoe UI, Tahoma, Geneva, Verdana, sans-serif' }}>
       
       {/* KESİNTİSİZ A4 BASKI CSS KURALLARI */}
-      <style>{`
-        @media print {
-          /* Navbar ve Uygulama Elemanlarını Tamamen Gizle */
-          header, nav, .navbar, #navbar, .no-print, body > *:not(.lists-container) {
-            display: none !important;
-          }
-          body {
-            background: #fff !important;
-            margin: 0 !important;
-            padding: 0 !important;
-          }
-          .lists-container {
-            padding: 0 !important;
-            margin: 0 !important;
-            width: 100% !important;
-          }
-          .page-break {
-            page-break-after: always !important;
-            break-after: page !important;
-            display: block !important;
-            margin: 0 !important;
-            padding: 10mm !important;
-            box-sizing: border-box !important;
-            height: 100vh;
-          }
-          .print-card {
-            border: none !important;
-            box-shadow: none !important;
-          }
-          table {
-            width: 100% !important;
-            border-collapse: collapse !important;
-          }
-          th, td {
-            border: 1px solid #000 !important;
-            padding: 6px 8px !important;
-            font-size: 9.5pt !important;
-          }
-          th {
-            background-color: #f0f0f0 !important;
-            -webkit-print-color-adjust: exact;
-          }
-          input {
-            border: none !important;
-            background: transparent !important;
-          }
-        }
-      `}</style>
+<style>{`
+  @media print {
+    /* Uygulamanın tüm dış layout ve root elemanlarını baskıda serbest bırak/gizle */
+    body * {
+      visibility: hidden;
+    }
+
+    /* Yalnızca yazdırma alanını ve içindeki tüm elemanları görünür kıl */
+    .print-area, .print-area * {
+      visibility: visible !important;
+    }
+
+    /* Print alanını sayfanın en üstüne sabitle */
+    .print-area {
+      position: absolute !important;
+      left: 0 !important;
+      top: 0 !important;
+      width: 100% !important;
+      margin: 0 !important;
+      padding: 0 !important;
+    }
+
+    @page {
+      size: A4 portrait;
+      margin: 10mm;
+    }
+
+    /* Gizlenecek elemanlar */
+    .no-print {
+      display: none !important;
+    }
+
+    /* Her salon için sayfa sonu */
+    .page-break {
+      page-break-after: always !important;
+      break-after: page !important;
+      display: block !important;
+      margin-bottom: 0 !important;
+      padding-bottom: 20px !important;
+    }
+
+    table {
+      width: 100% !important;
+      border-collapse: collapse !important;
+    }
+
+    th, td {
+      border: 1px solid #000 !important;
+      padding: 6px 8px !important;
+      font-size: 9pt !important;
+      color: #000 !important;
+    }
+
+    th {
+      background-color: #eee !important;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+
+    input {
+      border: none !important;
+      background: transparent !important;
+    }
+  }
+`}</style>
 
       {/* EKRAN KONTROLLERİ */}
       <div className="no-print">
@@ -396,7 +413,7 @@ const ExamAttendanceLists = () => {
 
       {/* BASKI VE LİSTE ALANI */}
       {selectedExam && (
-        <div>
+        <div className="print-area">
           {/* 1. SEKMELİ YAPI: SALON YOKLAMA LİSTESİ */}
           {activeTab === 'attendance' && (
             <div>
