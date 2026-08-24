@@ -65,7 +65,6 @@ const Students = () => {
   const fetchStudents = async (page = 1) => {
     setLoading(true);
     try {
-      // Filtreleme sorgusu oluştur
       let countQuery = supabase.from('students').select('*', { count: 'exact', head: true });
       let dataQuery = supabase.from('students').select('*');
 
@@ -86,7 +85,6 @@ const Students = () => {
       const from = (page - 1) * pageSize;
       const to = from + pageSize - 1;
 
-      // Sıralama sütun adı dönüşümü (camelCase -> snake_case)
       const columnMapping = {
         firstName: 'first_name',
         lastName: 'last_name',
@@ -101,7 +99,7 @@ const Students = () => {
       };
 
       const dbSortKey = columnMapping[sortConfig.key] || 'last_name';
-      
+
       const { data, error } = await dataQuery
         .order(dbSortKey, { ascending: sortConfig.direction === 'asc' })
         .range(from, to);
@@ -165,7 +163,6 @@ const Students = () => {
     fetchStats();
   }, [currentPage, selectedGradeFilter, selectedClassFilter, sortConfig]);
 
-  // Sütuna tıklayarak sıralama değiştirme fonksiyonu
   const handleSort = (key) => {
     let direction = 'asc';
     if (sortConfig.key === key && sortConfig.direction === 'asc') {
@@ -174,13 +171,15 @@ const Students = () => {
     setSortConfig({ key, direction });
   };
 
-  // Sıralama ikonu gösterme yardımcısı
   const getSortIcon = (key) => {
     if (sortConfig.key !== key) return <FaSort style={{ opacity: 0.3, marginLeft: '4px' }} />;
-    return sortConfig.direction === 'asc' ? <FaSortUp style={{ marginLeft: '4px', color: '#007bff' }} /> : <FaSortDown style={{ marginLeft: '4px', color: '#007bff' }} />;
+    return sortConfig.direction === 'asc' ? (
+      <FaSortUp style={{ marginLeft: '4px', color: '#007bff' }} />
+    ) : (
+      <FaSortDown style={{ marginLeft: '4px', color: '#007bff' }} />
+    );
   };
 
-  // Yeni öğrenci ekle
   const handleAddStudent = async (e) => {
     e.preventDefault();
     if (!newStudent.firstName || !newStudent.lastName || !newStudent.grade) {
@@ -233,7 +232,6 @@ const Students = () => {
     }
   };
 
-  // Tekil sil
   const handleDelete = async (id) => {
     if (!window.confirm('Bu öğrenciyi silmek istediğinize emin misiniz?')) return;
     try {
@@ -246,7 +244,6 @@ const Students = () => {
     }
   };
 
-  // Toplu sil
   const handleBulkDelete = async () => {
     if (selectedIds.length === 0) {
       alert('Lütfen silmek için en az bir öğrenci seçin.');
@@ -294,6 +291,17 @@ const Students = () => {
     setSelectedIds([]);
   };
 
+  // Mevcut sınıfların listesini dinamik çıkarma (Sayısal sıralama ile)
+  const availableGrades = useMemo(() => {
+    const keys = Object.keys(classStats);
+    return keys.sort((a, b) => {
+      const numA = parseInt(a, 10);
+      const numB = parseInt(b, 10);
+      if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
+      return a.localeCompare(b);
+    });
+  }, [classStats]);
+
   return (
     <div style={{ padding: '1rem', maxWidth: '1300px', margin: '0 auto' }}>
       <h2>👨‍🎓 Öğrenci Yönetimi</h2>
@@ -311,37 +319,46 @@ const Students = () => {
           border: '1px solid #e0e0e0',
         }}
       >
-        {Object.keys(classStats)
-          .sort((a, b) => Number(a) - Number(b))
-          .map((grade) => (
-            <div
-              key={grade}
-              style={{
-                background: 'white',
-                padding: '0.3rem 0.8rem',
-                borderRadius: '16px',
-                boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-                fontSize: '0.9rem',
-                cursor: 'pointer',
-                border: selectedGradeFilter === grade ? '2px solid #007bff' : 'none',
-              }}
-              onClick={() => {
-                setSelectedGradeFilter(selectedGradeFilter === grade ? 'ALL' : grade);
-                setCurrentPage(1);
-              }}
-            >
-              <strong>{grade}. Sınıf</strong>: {classStats[grade].total} kişi
-              {classStats[grade].newCount > 0 && (
-                <span style={{ color: '#856404', marginLeft: '0.3rem' }}>
-                  ({classStats[grade].newCount} Y.K.)
-                </span>
-              )}
-            </div>
-          ))}
+        {availableGrades.map((grade) => (
+          <div
+            key={grade}
+            style={{
+              background: 'white',
+              padding: '0.3rem 0.8rem',
+              borderRadius: '16px',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+              fontSize: '0.9rem',
+              cursor: 'pointer',
+              border: selectedGradeFilter === grade ? '2px solid #007bff' : '1px solid #eee',
+            }}
+            onClick={() => {
+              setSelectedGradeFilter(selectedGradeFilter === grade ? 'ALL' : grade);
+              setCurrentPage(1);
+            }}
+          >
+            <strong>{grade}. Sınıf</strong>: {classStats[grade].total} kişi
+            {classStats[grade].newCount > 0 && (
+              <span style={{ color: '#856404', marginLeft: '0.3rem' }}>
+                ({classStats[grade].newCount} Y.K.)
+              </span>
+            )}
+          </div>
+        ))}
       </div>
 
       {/* Filtreleme ve Arama Çubuğu */}
-      <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem', background: '#eef2f7', padding: '0.8rem', borderRadius: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+      <div
+        style={{
+          display: 'flex',
+          gap: '1rem',
+          marginBottom: '1rem',
+          background: '#eef2f7',
+          padding: '0.8rem',
+          borderRadius: '6px',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+        }}
+      >
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <FaFilter style={{ color: '#007bff' }} /> <strong>Filtrele:</strong>
         </div>
@@ -357,11 +374,12 @@ const Students = () => {
             style={{ padding: '0.4rem', borderRadius: '4px', border: '1px solid #ccc' }}
           >
             <option value="ALL">Tüm Sınıflar</option>
-            <option value="9">9. Sınıflar</option>
-            <option value="10">10. Sınıflar</option>
-            <option value="11">11. Sınıflar</option>
-            <option value="12">12. Sınıflar</option>
-            <option value="Mezun">Mezun</option>
+            {/* Veritabanındaki tüm sınıfları dinamik liste olarak basıyoruz */}
+            {availableGrades.map((grade) => (
+              <option key={grade} value={grade}>
+                {grade}. Sınıf
+              </option>
+            ))}
           </select>
         </div>
 
@@ -377,7 +395,9 @@ const Students = () => {
           >
             <option value="ALL">Tüm Şubeler</option>
             {['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'].map((c) => (
-              <option key={c} value={c}>{c} Şubesi</option>
+              <option key={c} value={c}>
+                {c} Şubesi
+              </option>
             ))}
           </select>
         </div>
@@ -389,7 +409,15 @@ const Students = () => {
               setSelectedClassFilter('ALL');
               setCurrentPage(1);
             }}
-            style={{ padding: '0.4rem 0.8rem', background: '#6c757d', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem' }}
+            style={{
+              padding: '0.4rem 0.8rem',
+              background: '#6c757d',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontSize: '0.85rem',
+            }}
           >
             Filtreleri Temizle
           </button>
@@ -403,7 +431,16 @@ const Students = () => {
         }}
       />
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+      <div
+        style={{
+          display: 'flex',
+          justify: 'space-between',
+          alignItems: 'center',
+          marginBottom: '1rem',
+          flexWrap: 'wrap',
+          gap: '0.5rem',
+        }}
+      >
         <div>
           <button
             onClick={() => setShowForm(!showForm)}
@@ -462,7 +499,7 @@ const Students = () => {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px,1fr))', gap: '0.5rem' }}>
             <input type="text" placeholder="Ad" value={newStudent.firstName} onChange={(e) => setNewStudent({ ...newStudent, firstName: e.target.value })} style={{ padding: '0.4rem' }} />
             <input type="text" placeholder="Soyad" value={newStudent.lastName} onChange={(e) => setNewStudent({ ...newStudent, lastName: e.target.value })} style={{ padding: '0.4rem' }} />
-            <input type="text" placeholder="Sınıf (örn: 10)" value={newStudent.grade} onChange={(e) => setNewStudent({ ...newStudent, grade: e.target.value })} style={{ padding: '0.4rem' }} />
+            <input type="text" placeholder="Sınıf (örn: 5, 10)" value={newStudent.grade} onChange={(e) => setNewStudent({ ...newStudent, grade: e.target.value })} style={{ padding: '0.4rem' }} />
             <input type="text" placeholder="Şube (örn: C)" value={newStudent.class} onChange={(e) => setNewStudent({ ...newStudent, class: e.target.value })} style={{ padding: '0.4rem' }} />
             <input type="text" placeholder="Öğrenci No" value={newStudent.studentNo} onChange={(e) => setNewStudent({ ...newStudent, studentNo: e.target.value })} style={{ padding: '0.4rem' }} />
             <input type="text" placeholder="TC Kimlik No" value={newStudent.tcNo} onChange={(e) => setNewStudent({ ...newStudent, tcNo: e.target.value })} style={{ padding: '0.4rem' }} />
