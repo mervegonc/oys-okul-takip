@@ -68,9 +68,7 @@ const AttendanceModule = () => {
         const totalStudents = assignments.length;
         const examAtt = (attData || []).filter(a => String(a.exam_id) === String(exam.id));
         
-        // Yalnızca 'katilmadi' seçilenler katılmadı sayılır
         const absentCount = examAtt.filter(a => a.status === 'katilmadi').length;
-        // Geri kalan tüm durumlar (katıldı, önce alındı, geç katıldı, sonra katılacak veya henüz girilmemiş) katıldı grubundadır
         const attendedCount = totalStudents > 0 ? (totalStudents - absentCount) : 0;
 
         return {
@@ -111,7 +109,6 @@ const AttendanceModule = () => {
 
       setSeatingPlan(plan);
 
-      // Veritabanından mevcut yoklama verisini çek
       const { data: attData, error: attErr } = await supabase
         .from('attendance')
         .select('*')
@@ -124,14 +121,12 @@ const AttendanceModule = () => {
       const statusMap = {};
       const reasonMap = {};
 
-      // 1. DB'den gelen kayıtları eşle
       (attData || []).forEach(att => {
         const stId = String(att.student_id);
         statusMap[stId] = att.status;
         reasonMap[stId] = att.reason || '';
       });
 
-      // 2. Henüz yoklama kaydı bulunmayan öğrencilere varsayılan 'katildi' ver
       (plan?.assignments || []).forEach(st => {
         const rawId = st.studentId ?? st.student_id ?? st.id;
         const stId = String(rawId);
@@ -219,30 +214,46 @@ const AttendanceModule = () => {
 
   const assignments = seatingPlan?.assignments || [];
   
-  // Alt kırılımlar
   const rawKatildi = assignments.filter(a => attendanceRecords[String(a.studentId ?? a.student_id ?? a.id)] === 'katildi').length;
   const onceAlindi = assignments.filter(a => attendanceRecords[String(a.studentId ?? a.student_id ?? a.id)] === 'once_alindi').length;
   const gecKatildi = assignments.filter(a => attendanceRecords[String(a.studentId ?? a.student_id ?? a.id)] === 'gec_katildi').length;
   const sonraKatilacak = assignments.filter(a => attendanceRecords[String(a.studentId ?? a.student_id ?? a.id)] === 'sonra_katilacak').length;
-  
   const rawKatilmadi = assignments.filter(a => attendanceRecords[String(a.studentId ?? a.student_id ?? a.id)] === 'katilmadi').length;
 
   const stats = {
     total: assignments.length,
-    // Toplam Katıldı = Katıldı + Önce Alındı + Geç Katıldı + Sonra Katılacak
     totalKatildi: rawKatildi + onceAlindi + gecKatildi + sonraKatilacak,
-    // Toplam Katılmadı = Sadece Katılmadı işaretlenenler
     totalKatilmadi: rawKatilmadi,
     onceAlindi,
     gecKatildi,
     sonraKatilacak
   };
 
-  // Sadece tam olarak "Katılmadı" seçilen öğrenciler mazeret ve mazeretsiz katılmayanlar sekmesinde gösterilir
+  // Sol liste: Yalnızca Katılmadı
   const absentStudents = assignments.filter(st => {
     const stId = String(st.studentId ?? st.student_id ?? st.id);
     return attendanceRecords[stId] === 'katilmadi';
   });
+
+  // Sağ liste: Önce Alındı, Geç Katıldı veya Sonra Katılacak
+  const specialStatusStudents = assignments.filter(st => {
+    const stId = String(st.studentId ?? st.student_id ?? st.id);
+    const status = attendanceRecords[stId];
+    return status === 'once_alindi' || status === 'gec_katildi' || status === 'sonra_katilacak';
+  });
+
+  const getStatusBadge = (status) => {
+    switch (status) {
+      case 'once_alindi':
+        return <span style={{ background: '#ffc107', color: '#000', padding: '0.2rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 'bold' }}>Önce Alındı</span>;
+      case 'gec_katildi':
+        return <span style={{ background: '#17a2b8', color: '#fff', padding: '0.2rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 'bold' }}>Geç Katıldı</span>;
+      case 'sonra_katilacak':
+        return <span style={{ background: '#6c757d', color: '#fff', padding: '0.2rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 'bold' }}>Sonra Katılacak</span>;
+      default:
+        return null;
+    }
+  };
 
   return (
     <div style={{ padding: '1.5rem', maxWidth: '1400px', margin: '0 auto', fontFamily: 'sans-serif' }}>
@@ -376,18 +387,18 @@ const AttendanceModule = () => {
               👥 Tüm Öğrenci Listesi ({assignments.length})
             </button>
             <button
-              onClick={() => setActiveTab('absent')}
+              onClick={() => setActiveTab('details')}
               style={{
                 padding: '0.6rem 1.2rem',
                 border: 'none',
                 background: 'none',
-                borderBottom: activeTab === 'absent' ? '3px solid #dc3545' : 'none',
-                fontWeight: activeTab === 'absent' ? 'bold' : 'normal',
-                color: activeTab === 'absent' ? '#dc3545' : '#333',
+                borderBottom: activeTab === 'details' ? '3px solid #dc3545' : 'none',
+                fontWeight: activeTab === 'details' ? 'bold' : 'normal',
+                color: activeTab === 'details' ? '#dc3545' : '#333',
                 cursor: 'pointer'
               }}
             >
-              ⚠️ Katılmayanlar & Nedenleri ({absentStudents.length})
+              ⚠️ Katılmayanlar & Özel Durumlar ({absentStudents.length + specialStatusStudents.length})
             </button>
           </div>
 
@@ -445,51 +456,104 @@ const AttendanceModule = () => {
             </table>
           )}
 
-          {activeTab === 'absent' && (
-            <div>
-              {absentStudents.length === 0 ? (
-                <p style={{ padding: '2rem', textAlign: 'center', background: '#f8f9fa', borderRadius: '8px' }}>
-                  🎉 Sınava katılmayan öğrenci bulunmuyor.
-                </p>
-              ) : (
-                <table style={{ width: '100%', borderCollapse: 'collapse', background: '#fff', borderRadius: '8px', overflow: 'hidden', border: '1px solid #ddd' }}>
-                  <thead style={{ background: '#fff5f5' }}>
-                    <tr>
-                      <th style={{ padding: '0.8rem', borderBottom: '1px solid #ddd' }}>Salon - Sıra</th>
-                      <th style={{ padding: '0.8rem', borderBottom: '1px solid #ddd', textAlign: 'left' }}>Öğrenci Adı</th>
-                      <th style={{ padding: '0.8rem', borderBottom: '1px solid #ddd' }}>Sınıf</th>
-                      <th style={{ padding: '0.8rem', borderBottom: '1px solid #ddd', textAlign: 'left' }}>Katılmama Nedeni / Mazeret Açıklaması</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {absentStudents.map((item, idx) => {
-                      const rawId = item.studentId ?? item.student_id ?? item.id;
-                      const stId = String(rawId);
-                      const stName = item.studentName || item.student_name || `${item.first_name || ''} ${item.last_name || ''}`.trim() || item.name;
-                      const roomName = getRoomName(item);
+          {activeTab === 'details' && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+              {/* SOL TARAF: KATILMAYANLAR & MAZERETLERİ */}
+              <div style={{ background: '#fff', border: '1px solid #f5c6cb', borderRadius: '8px', overflow: 'hidden' }}>
+                <div style={{ background: '#fff5f5', padding: '0.8rem 1rem', borderBottom: '1px solid #f5c6cb', fontWeight: 'bold', color: '#721c24' }}>
+                  ❌ Katılmayanlar ({absentStudents.length})
+                </div>
+                {absentStudents.length === 0 ? (
+                  <p style={{ padding: '1.5rem', textAlign: 'center', color: '#666', margin: 0 }}>
+                    🎉 Katılmayan öğrenci yok.
+                  </p>
+                ) : (
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead style={{ background: '#fafafa', fontSize: '0.85rem' }}>
+                      <tr>
+                        <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd' }}>Salon/Sıra</th>
+                        <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd', textAlign: 'left' }}>Öğrenci</th>
+                        <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd', textAlign: 'left' }}>Mazeret / Açıklama</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {absentStudents.map((item, idx) => {
+                        const rawId = item.studentId ?? item.student_id ?? item.id;
+                        const stId = String(rawId);
+                        const stName = item.studentName || item.student_name || `${item.first_name || ''} ${item.last_name || ''}`.trim() || item.name;
+                        const roomName = getRoomName(item);
 
-                      return (
-                        <tr key={stId || idx} style={{ borderBottom: '1px solid #eee' }}>
-                          <td style={{ padding: '0.6rem', textAlign: 'center' }}>
-                            {roomName} / Sıra: {item.seatNumber || item.seat_number || (idx + 1)}
-                          </td>
-                          <td style={{ padding: '0.6rem', fontWeight: '500' }}>{stName}</td>
-                          <td style={{ padding: '0.6rem', textAlign: 'center' }}>{item.grade || ''}-{item.class || item.className || ''}</td>
-                          <td style={{ padding: '0.6rem' }}>
-                            <input
-                              type="text"
-                              placeholder="Örn: İzinli, Raporlu, Sevkli..."
-                              value={reasons[stId] || ''}
-                              onChange={(e) => handleReasonChange(stId, e.target.value)}
-                              style={{ width: '95%', padding: '0.4rem', border: '1px solid #ccc', borderRadius: '4px' }}
-                            />
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              )}
+                        return (
+                          <tr key={stId || idx} style={{ borderBottom: '1px solid #eee' }}>
+                            <td style={{ padding: '0.5rem', textAlign: 'center', fontSize: '0.85rem' }}>
+                              {roomName} - S:{item.seatNumber || item.seat_number || (idx + 1)}
+                            </td>
+                            <td style={{ padding: '0.5rem', fontWeight: '500', fontSize: '0.9rem' }}>
+                              {stName}
+                              <div style={{ fontSize: '0.75rem', color: '#666' }}>{item.grade || ''}-{item.class || item.className || ''}</div>
+                            </td>
+                            <td style={{ padding: '0.5rem' }}>
+                              <input
+                                type="text"
+                                placeholder="Örn: İzinli, Raporlu..."
+                                value={reasons[stId] || ''}
+                                onChange={(e) => handleReasonChange(stId, e.target.value)}
+                                style={{ width: '90%', padding: '0.3rem', border: '1px solid #ccc', borderRadius: '4px', fontSize: '0.85rem' }}
+                              />
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+
+              {/* SAĞ TARAF: ÖNCE ALINDI / GEÇ KATILDI / SONRA KATILACAK */}
+              <div style={{ background: '#fff', border: '1px solid #bee5eb', borderRadius: '8px', overflow: 'hidden' }}>
+                <div style={{ background: '#e3f2fd', padding: '0.8rem 1rem', borderBottom: '1px solid #bee5eb', fontWeight: 'bold', color: '#0c5460' }}>
+                  ⏳ Özel Durumlu Katılımlar ({specialStatusStudents.length})
+                </div>
+                {specialStatusStudents.length === 0 ? (
+                  <p style={{ padding: '1.5rem', textAlign: 'center', color: '#666', margin: 0 }}>
+                    Özel durumda (önce, geç veya sonra) katılan öğrenci bulunmuyor.
+                  </p>
+                ) : (
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead style={{ background: '#fafafa', fontSize: '0.85rem' }}>
+                      <tr>
+                        <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd' }}>Salon/Sıra</th>
+                        <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd', textAlign: 'left' }}>Öğrenci</th>
+                        <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd' }}>Durumu</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {specialStatusStudents.map((item, idx) => {
+                        const rawId = item.studentId ?? item.student_id ?? item.id;
+                        const stId = String(rawId);
+                        const stName = item.studentName || item.student_name || `${item.first_name || ''} ${item.last_name || ''}`.trim() || item.name;
+                        const roomName = getRoomName(item);
+                        const status = attendanceRecords[stId];
+
+                        return (
+                          <tr key={stId || idx} style={{ borderBottom: '1px solid #eee' }}>
+                            <td style={{ padding: '0.5rem', textAlign: 'center', fontSize: '0.85rem' }}>
+                              {roomName} - S:{item.seatNumber || item.seat_number || (idx + 1)}
+                            </td>
+                            <td style={{ padding: '0.5rem', fontWeight: '500', fontSize: '0.9rem' }}>
+                              {stName}
+                              <div style={{ fontSize: '0.75rem', color: '#666' }}>{item.grade || ''}-{item.class || item.className || ''}</div>
+                            </td>
+                            <td style={{ padding: '0.5rem', textAlign: 'center' }}>
+                              {getStatusBadge(status)}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                )}
+              </div>
             </div>
           )}
         </div>
