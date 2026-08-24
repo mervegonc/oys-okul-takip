@@ -28,9 +28,6 @@ const Students = () => {
     class: '',
     studentNo: '',
     tcNo: '',
-    phone: '',
-    parentPhone: '',
-    parentPhone2: '',
     field: '',
     secondLang: 'None',
     gender: '',
@@ -116,9 +113,6 @@ const Students = () => {
           class: raw.class || '',
           studentNo: raw.student_no || '',
           tcNo: raw.tc_no || '',
-          phone: raw.phone || '',
-          parentPhone: raw.parent_phone || '',
-          parentPhone2: raw.parent_phone2 || '',
           field: raw.field || '',
           secondLang: raw.second_lang || '',
           gender: raw.gender || '',
@@ -127,27 +121,18 @@ const Students = () => {
         };
 
         let tcNo = student.tcNo || '';
-        let phone = student.phone || '';
-        let parentPhone = student.parentPhone || '';
-        let parentPhone2 = student.parentPhone2 || '';
 
         if (isAdmin) {
           try {
             if (tcNo && tcNo.length > 20) tcNo = decrypt(tcNo);
-            if (phone && phone.length > 20) phone = decrypt(phone);
-            if (parentPhone && parentPhone.length > 20) parentPhone = decrypt(parentPhone);
-            if (parentPhone2 && parentPhone2.length > 20) parentPhone2 = decrypt(parentPhone2);
           } catch (e) {
             console.warn('Çözümleme hatası:', e);
           }
         } else {
           if (tcNo) tcNo = '***';
-          if (phone) phone = '***';
-          if (parentPhone) parentPhone = '***';
-          if (parentPhone2) parentPhone2 = '***';
         }
 
-        return { ...student, tcNo, phone, parentPhone, parentPhone2 };
+        return { ...student, tcNo };
       });
 
       setStudents(processed);
@@ -194,9 +179,6 @@ const Students = () => {
         class: newStudent.class,
         student_no: newStudent.studentNo,
         tc_no: encrypt(newStudent.tcNo),
-        phone: encrypt(newStudent.phone),
-        parent_phone: encrypt(newStudent.parentPhone),
-        parent_phone2: encrypt(newStudent.parentPhone2),
         field: newStudent.field,
         second_lang: newStudent.secondLang,
         gender: newStudent.gender,
@@ -214,9 +196,6 @@ const Students = () => {
         class: '',
         studentNo: '',
         tcNo: '',
-        phone: '',
-        parentPhone: '',
-        parentPhone2: '',
         field: '',
         secondLang: 'None',
         gender: '',
@@ -291,7 +270,6 @@ const Students = () => {
     setSelectedIds([]);
   };
 
-  // Mevcut sınıfların listesini dinamik çıkarma (Sayısal sıralama ile)
   const availableGrades = useMemo(() => {
     const keys = Object.keys(classStats);
     return keys.sort((a, b) => {
@@ -346,7 +324,7 @@ const Students = () => {
         ))}
       </div>
 
-      {/* Filtreleme ve Arama Çubuğu */}
+      {/* Filtreleme Çubuğu */}
       <div
         style={{
           display: 'flex',
@@ -374,7 +352,6 @@ const Students = () => {
             style={{ padding: '0.4rem', borderRadius: '4px', border: '1px solid #ccc' }}
           >
             <option value="ALL">Tüm Sınıflar</option>
-            {/* Veritabanındaki tüm sınıfları dinamik liste olarak basıyoruz */}
             {availableGrades.map((grade) => (
               <option key={grade} value={grade}>
                 {grade}. Sınıf
@@ -434,7 +411,7 @@ const Students = () => {
       <div
         style={{
           display: 'flex',
-          justify: 'space-between',
+          justifyContent: 'space-between',
           alignItems: 'center',
           marginBottom: '1rem',
           flexWrap: 'wrap',
@@ -503,9 +480,6 @@ const Students = () => {
             <input type="text" placeholder="Şube (örn: C)" value={newStudent.class} onChange={(e) => setNewStudent({ ...newStudent, class: e.target.value })} style={{ padding: '0.4rem' }} />
             <input type="text" placeholder="Öğrenci No" value={newStudent.studentNo} onChange={(e) => setNewStudent({ ...newStudent, studentNo: e.target.value })} style={{ padding: '0.4rem' }} />
             <input type="text" placeholder="TC Kimlik No" value={newStudent.tcNo} onChange={(e) => setNewStudent({ ...newStudent, tcNo: e.target.value })} style={{ padding: '0.4rem' }} />
-            <input type="text" placeholder="Telefon" value={newStudent.phone} onChange={(e) => setNewStudent({ ...newStudent, phone: e.target.value })} style={{ padding: '0.4rem' }} />
-            <input type="text" placeholder="Veli Tel 1" value={newStudent.parentPhone} onChange={(e) => setNewStudent({ ...newStudent, parentPhone: e.target.value })} style={{ padding: '0.4rem' }} />
-            <input type="text" placeholder="Veli Tel 2" value={newStudent.parentPhone2} onChange={(e) => setNewStudent({ ...newStudent, parentPhone2: e.target.value })} style={{ padding: '0.4rem' }} />
             <input type="text" placeholder="Öğrenim Alanı" value={newStudent.field} onChange={(e) => setNewStudent({ ...newStudent, field: e.target.value })} style={{ padding: '0.4rem' }} />
             <input type="text" placeholder="Cinsiyet" value={newStudent.gender} onChange={(e) => setNewStudent({ ...newStudent, gender: e.target.value })} style={{ padding: '0.4rem' }} />
             <select value={newStudent.secondLang} onChange={(e) => setNewStudent({ ...newStudent, secondLang: e.target.value })} style={{ padding: '0.4rem' }}>
@@ -545,9 +519,6 @@ const Students = () => {
               <th onClick={() => handleSort('class')}>Şube {getSortIcon('class')}</th>
               <th onClick={() => handleSort('studentNo')}>No {getSortIcon('studentNo')}</th>
               <th>TC</th>
-              <th>Telefon</th>
-              <th>Veli1</th>
-              <th>Veli2</th>
               <th onClick={() => handleSort('field')}>Alan {getSortIcon('field')}</th>
               <th onClick={() => handleSort('secondLang')}>2.Dil {getSortIcon('secondLang')}</th>
               <th onClick={() => handleSort('gender')}>Cinsiyet {getSortIcon('gender')}</th>
@@ -558,7 +529,7 @@ const Students = () => {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan="16" style={{ textAlign: 'center', padding: '1.5rem' }}>Yükleniyor...</td>
+                <td colSpan="13" style={{ textAlign: 'center', padding: '1.5rem' }}>Yükleniyor...</td>
               </tr>
             ) : students.length > 0 ? (
               students.map((student, index) => (
@@ -573,9 +544,6 @@ const Students = () => {
                   <td style={{ padding: '0.5rem', textAlign: 'center' }}>{student.class}</td>
                   <td style={{ padding: '0.5rem', textAlign: 'center' }}>{student.studentNo}</td>
                   <td style={{ padding: '0.5rem' }}>{student.tcNo}</td>
-                  <td style={{ padding: '0.5rem' }}>{student.phone}</td>
-                  <td style={{ padding: '0.5rem' }}>{student.parentPhone}</td>
-                  <td style={{ padding: '0.5rem' }}>{student.parentPhone2}</td>
                   <td style={{ padding: '0.5rem' }}>{student.field}</td>
                   <td style={{ padding: '0.5rem' }}>{student.secondLang}</td>
                   <td style={{ padding: '0.5rem' }}>{student.gender}</td>
@@ -589,7 +557,7 @@ const Students = () => {
               ))
             ) : (
               <tr>
-                <td colSpan="16" style={{ textAlign: 'center', padding: '1rem' }}>
+                <td colSpan="13" style={{ textAlign: 'center', padding: '1rem' }}>
                   Filtrelere uygun öğrenci bulunamadı.
                 </td>
               </tr>
