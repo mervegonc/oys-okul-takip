@@ -65,9 +65,18 @@ const ManualEdit = () => {
         }
 
         const plan = data[0];
+        let parsedAssignments = plan.assignments;
+        if (typeof parsedAssignments === 'string') {
+          try {
+            parsedAssignments = JSON.parse(parsedAssignments);
+          } catch (e) {
+            console.error('Assignments JSON parse hatası:', e);
+          }
+        }
+
         setSeatingPlan(plan);
-        setAssignments(plan.assignments || []);
-        setMessage(`${plan.assignments?.length || 0} öğrenci listelendi.`);
+        setAssignments(parsedAssignments || []);
+        setMessage(`${parsedAssignments?.length || 0} öğrenci listelendi.`);
       } catch (error) {
         console.error('Oturma planı alınamadı:', error);
         setMessage('Oturma planı alınamadı: ' + error.message);
@@ -77,6 +86,10 @@ const ManualEdit = () => {
     };
     fetchSeatingPlan();
   }, [selectedExam]);
+
+  // Yardımcı Metin Temizleme Fonksiyonu
+  const cleanStr = (val) => String(val || '').trim().toLowerCase();
+  const extractNumbers = (val) => String(val || '').replace(/\D/g, '');
 
   // Excel İçe Aktarma İşlevi
   const handleFileUpload = (e) => {
@@ -92,37 +105,69 @@ const ManualEdit = () => {
         const ws = wb.Sheets[wsname];
         const excelData = XLSX.utils.sheet_to_json(ws);
 
+        if (!excelData || excelData.length === 0) {
+          setMessage('Excel dosyasında veri bulunamadı.');
+          return;
+        }
+
+        console.log('Okunan Excel Verisi:', excelData);
+        console.log('Mevcut Oturma Planı Verisi:', assignments);
+
         let matchCount = 0;
 
         const updatedAssignments = assignments.map((item) => {
-          const stNo = String(item.studentNumber || item.student_number || item.school_number || item.no || '').trim();
-          const stName = `${item.firstName || item.first_name || item.studentName || ''} ${item.lastName || item.last_name || ''}`.trim().toLowerCase();
+          // Mevcut sistemdeki öğrenci bilgileri
+          const itemNo = cleanStr(item.studentNumber || item.student_number || item.school_number || item.no);
+          const itemFirstName = cleanStr(item.firstName || item.first_name || item.ad);
+          const itemLastName = cleanStr(item.lastName || item.last_name || item.soyad);
+          const itemFullName = cleanStr(item.studentName || item.student_name || `${itemFirstName} ${itemLastName}`);
 
-          // Excel satırında eşleşen öğrenciyi bul (Önce okul numarasına, yoksa ad-soyada bakılır)
+          // Excel satırlarında arama yap
           const matchedRow = excelData.find((row) => {
-            const excelNo = String(row['Okul Numarası'] || row['Okul No'] || row['No'] || row['Student Number'] || '').trim();
-            if (stNo && excelNo && stNo === excelNo) return true;
+            // Excel Sütun Değerleri
+            const excelNo = cleanStr(row['Okul Numarası'] || row['Okul No'] || row['No'] || row['Student Number']);
+            const excelAd = cleanStr(row['Adı'] || row['Ad'] || row['First Name']);
+            const excelSoyad = cleanStr(row['Soyadı'] || row['Soyad'] || row['Last Name']);
+            const excelAdSoyad = cleanStr(row['Adı Soyadı'] || row['Ad Soyad'] || `${excelAd} ${excelSoyad}`);
 
-            const excelFirstName = String(row['Adı'] || row['Ad'] || '').trim().toLowerCase();
-            const excelLastName = String(row['Soyadı'] || row['Soyad'] || '').trim().toLowerCase();
-            const excelFullName = `${excelFirstName} ${excelLastName}`.trim();
+            // 1. Öncelik: Okul Numarası Eşleşmesi
+            if (itemNo && excelNo && itemNo === excelNo) {
+              return true;
+            }
 
-            return stName && excelFullName && stName === excelFullName;
+            // 2. Öncelik: Ad ve Soyad Tam Eşleşmesi
+            if (itemFirstName && itemLastName && excelAd && excelSoyad && itemFirstName === excelAd && itemLastName === excelSoyad) {
+              return true;
+            }
+
+            // 3. Öncelik: Tam İsim Eşleşmesi
+            if (itemFullName && excelAdSoyad && itemFullName === excelAdSoyad) {
+              return true;
+            }
+
+            return false;
           });
 
           if (matchedRow) {
             matchCount++;
-            // Excel'deki Salon adını veya numarasını ID ile eşleştir
-            const excelRoomValue = String(matchedRow['Salon'] || matchedRow['Salon Adı'] || '').trim();
-            const matchedRoom = rooms.find(
-              (r) =>
-                String(r.id) === excelRoomValue ||
-                String(r.name).trim().toLowerCase() === excelRoomValue.toLowerCase() ||
-                String(r.name).replace(/\D/g, '') === excelRoomValue // "Salon 20" -> "20" eşleşmesi için
-            );
 
-            const newRoomId = matchedRoom ? matchedRoom.id : item.roomId || item.room_id;
-            const newSeat = parseInt(matchedRow['Sıra'] || matchedRow['Sıra No'] || matchedRow['Sıra Numarası']) || item.seatNumber || item.seat_number || 1;
+            // Excel'deki Salon Değeri
+            const rawExcelRoom = String(matchedRow['Salon'] || matchedRow['Salon Adı'] || '').trim();
+            const excelRoomNums = extractNumbers(rawExcelRoom);
+
+            // Salon ID'sini sistemdeki rooms tablosundan bul
+            const matchedRoomObj = rooms.find((r) => {
+              const rName = String(r.name || '').trim();
+              const rId = String(r.id || '').trim();
+
+              // Birebir isim/ID eşitliği veya sayısal eşitlik ("Salon 20" -> "20")
+              if (cleanStr(rName) === cleanStr(rawExcelRoom) || rId === rawExcelRoom) return true;
+              if (excelRoomNums && extractNumbers(rName) === excelRoomNums) return true;
+              return false;
+            });
+
+            const newRoomId = matchedRoomObj ? matchedRoomObj.id : (item.roomId || item.room_id);
+            const newSeat = parseInt(matchedRow['Sıra'] || matchedRow['Sıra No'] || matchedRow['Sıra Numarası'] || matchedRow['Masa No']) || (item.seatNumber || item.seat_number || 1);
             const newGroup = matchedRow['Grup'] !== undefined ? matchedRow['Grup'] : item.group;
 
             return {
@@ -140,20 +185,32 @@ const ManualEdit = () => {
 
         setAssignments(updatedAssignments);
         setEditing(true);
-        setMessage(`Excel aktarımı tamamlandı! ${matchCount} öğrencinin salon/sıra bilgisi güncellendi. Kaydetmeyi unutmayın.`);
+
+        if (matchCount > 0) {
+          setMessage(`✅ Başarılı! Excel'den ${matchCount} öğrencinin salon ve sıra numarası güncellendi. Lütfen "Değişiklikleri Kaydet" butonuna basarak kaydedin.`);
+        } else {
+          setMessage(`⚠️ Excel dosyasındaki öğrenciler mevcut oturma planındaki öğrencilerle eşleşmedi. Lütfen Excel'deki "Okul Numarası" veya "Adı" - "Soyadı" sütun başlıklarını kontrol edin.`);
+        }
       } catch (err) {
         console.error('Excel okuma hatası:', err);
-        setMessage('Excel dosyası işlenirken hata oluştu.');
+        setMessage('❌ Excel dosyası okunurken bir hata oluştu: ' + err.message);
       }
     };
+
     reader.readAsBinaryString(file);
-    e.target.value = ''; // Input'u sıfırla
+    e.target.value = ''; // Aynı dosya tekrar seçilebilsin diye sıfırla
   };
 
-  // Öğrencinin salonunu değiştir
-  const handleRoomChange = (studentId, newRoomId) => {
+  // Öğrenci Kimliği Karşılaştırma Yardımcısı
+  const isSameStudent = (item, targetId) => {
+    const idList = [item.studentId, item.student_id, item.id, item.studentNumber, item.student_number].map(cleanStr);
+    return idList.includes(cleanStr(targetId));
+  };
+
+  // Öğrencinin salonunu elle değiştir
+  const handleRoomChange = (targetStudentId, newRoomId) => {
     const updated = assignments.map(a => 
-      (a.studentId === studentId || a.student_id === studentId) 
+      isSameStudent(a, targetStudentId)
         ? { ...a, roomId: newRoomId, room_id: newRoomId } 
         : a
     );
@@ -161,11 +218,11 @@ const ManualEdit = () => {
     setEditing(true);
   };
 
-  // Öğrencinin sıra numarasını değiştir
-  const handleSeatChange = (studentId, newSeat) => {
+  // Öğrencinin sıra numarasını elle değiştir
+  const handleSeatChange = (targetStudentId, newSeat) => {
     const seatNum = parseInt(newSeat) || 1;
     const updated = assignments.map(a => 
-      (a.studentId === studentId || a.student_id === studentId) 
+      isSameStudent(a, targetStudentId)
         ? { ...a, seatNumber: seatNum, seat_number: seatNum } 
         : a
     );
@@ -188,11 +245,11 @@ const ManualEdit = () => {
 
       if (error) throw error;
 
-      setMessage('Değişiklikler başarıyla kaydedildi.');
+      setMessage('✅ Değişiklikler veritabanına başarıyla kaydedildi.');
       setEditing(false);
     } catch (error) {
       console.error('Kaydetme hatası:', error);
-      setMessage('Kaydedilirken hata oluştu: ' + error.message);
+      setMessage('❌ Kaydedilirken hata oluştu: ' + error.message);
     } finally {
       setLoading(false);
     }
@@ -201,7 +258,11 @@ const ManualEdit = () => {
   // Değişiklikleri iptal et
   const handleCancel = () => {
     if (seatingPlan) {
-      setAssignments(seatingPlan.assignments || []);
+      let parsed = seatingPlan.assignments;
+      if (typeof parsed === 'string') {
+        try { parsed = JSON.parse(parsed); } catch (e) {}
+      }
+      setAssignments(parsed || []);
       setEditing(false);
       setMessage('Değişiklikler iptal edildi.');
     }
@@ -213,13 +274,13 @@ const ManualEdit = () => {
     assignments.forEach(item => {
       const rId = item.roomId || item.room_id;
       const roomObj = rooms.find(r => String(r.id) === String(rId));
-      const roomName = roomObj ? roomObj.name : (rId || 'Atanmamış Salon');
+      const roomName = roomObj ? roomObj.name : (rId ? `Salon (${rId})` : 'Atanmamış Salon');
       
       if (!groups[roomName]) groups[roomName] = [];
       groups[roomName].push(item);
     });
 
-    // Sıra numarasına göre sıralayalım
+    // Her salon içinde öğrencileri sıra numarasına göre diz
     Object.keys(groups).forEach(rName => {
       groups[rName].sort((a, b) => (a.seatNumber || a.seat_number || 0) - (b.seatNumber || b.seat_number || 0));
     });
@@ -260,12 +321,13 @@ const ManualEdit = () => {
               htmlFor="excel-upload"
               style={{
                 display: 'inline-block',
-                padding: '0.5rem 1rem',
+                padding: '0.55rem 1.2rem',
                 background: '#17a2b8',
                 color: 'white',
                 borderRadius: '4px',
                 cursor: 'pointer',
-                fontWeight: '500'
+                fontWeight: 'bold',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
               }}
             >
               📊 Excel'den Salon & Sıra No Aktar
@@ -283,15 +345,17 @@ const ManualEdit = () => {
 
       {loading && <p>Yükleniyor...</p>}
       {message && (
-        <p style={{ 
-          padding: '0.75rem', 
-          borderRadius: '4px', 
-          background: message.includes('hata') ? '#f8d7da' : '#d4edda',
-          color: message.includes('hata') ? '#721c24' : '#155724',
-          marginBottom: '1rem'
+        <div style={{ 
+          padding: '0.8rem 1rem', 
+          borderRadius: '6px', 
+          background: message.includes('❌') || message.includes('⚠️') ? '#fff3cd' : '#d4edda',
+          color: message.includes('❌') || message.includes('⚠️') ? '#856404' : '#155724',
+          marginBottom: '1.2rem',
+          border: '1px solid #ffeeba',
+          fontWeight: '500'
         }}>
           {message}
-        </p>
+        </div>
       )}
 
       {/* Salon Bazlı Tablo */}
@@ -305,13 +369,14 @@ const ManualEdit = () => {
                   onClick={handleSave}
                   disabled={loading}
                   style={{
-                    padding: '0.5rem 1rem',
+                    padding: '0.6rem 1.2rem',
                     background: '#28a745',
                     color: 'white',
                     border: 'none',
                     borderRadius: '4px',
                     cursor: 'pointer',
-                    fontWeight: 'bold'
+                    fontWeight: 'bold',
+                    boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
                   }}
                 >
                   💾 Değişiklikleri Kaydet
@@ -319,7 +384,7 @@ const ManualEdit = () => {
                 <button
                   onClick={handleCancel}
                   style={{
-                    padding: '0.5rem 1rem',
+                    padding: '0.6rem 1.2rem',
                     background: '#6c757d',
                     color: 'white',
                     border: 'none',
@@ -335,7 +400,7 @@ const ManualEdit = () => {
 
           {Object.keys(grouped).map(roomName => (
             <div key={roomName} style={{ marginBottom: '1.5rem', padding: '1rem', background: '#f8f9fa', borderRadius: '8px', border: '1px solid #ddd' }}>
-              <h4 style={{ marginTop: 0, color: '#333' }}>🏫 {roomName} ({grouped[roomName].length} Öğrenci)</h4>
+              <h4 style={{ marginTop: 0, color: '#2b6cb0' }}>🏫 {roomName} ({grouped[roomName].length} Öğrenci)</h4>
               <table style={{ width: '100%', borderCollapse: 'collapse', background: 'white', borderRadius: '8px', overflow: 'hidden' }}>
                 <thead style={{ background: '#e9ecef' }}>
                   <tr>
@@ -350,7 +415,7 @@ const ManualEdit = () => {
                 </thead>
                 <tbody>
                   {grouped[roomName].map((item, idx) => {
-                    const stId = item.studentId || item.student_id;
+                    const stId = item.studentId || item.student_id || item.id || item.studentNumber;
                     const stNo = item.studentNumber || item.student_number || item.school_number || item.no || '-';
                     const stName = item.studentName || item.student_name || `${item.first_name || item.firstName || ''} ${item.last_name || item.lastName || ''}`;
                     const currentRoomId = item.roomId || item.room_id;
@@ -365,10 +430,11 @@ const ManualEdit = () => {
                         <td style={{ padding: '0.5rem' }}>{item.group || '-'}</td>
                         <td style={{ padding: '0.5rem' }}>
                           <select
-                            value={currentRoomId}
+                            value={currentRoomId || ''}
                             onChange={(e) => handleRoomChange(stId, e.target.value)}
                             style={{ padding: '0.3rem', borderRadius: '4px', border: '1px solid #ccc' }}
                           >
+                            <option value="">-- Salon Seç --</option>
                             {rooms.map(room => (
                               <option key={room.id} value={room.id}>
                                 {room.name} ({room.capacity} kişilik)
