@@ -7,11 +7,12 @@ const ExamAttendanceLists = () => {
   const [selectedExam, setSelectedExam] = useState(null);
   const [seatingPlan, setSeatingPlan] = useState(null);
   const [rooms, setRooms] = useState([]);
+  const [studentMap, setStudentMap] = useState({}); // student_id -> student data mapping
   const [loading, setLoading] = useState(false);
 
   // Sekme & Filtre Durumları
   const [activeTab, setActiveTab] = useState('attendance'); // 'attendance' | 'surname' | 'excel'
-  const [showTc, setShowTc] = useState(false);
+  const [showTc, setShowTc] = useState(true);
   const [examCategory, setExamCategory] = useState('akademik'); // 'akademik' | 'yabanci_dil' | 'ortaokul_yazili'
   const [schoolType, setSchoolType] = useState('lise'); // 'lise' | 'ortaokul'
   const [sessionType, setSessionType] = useState('sozel'); // Ortaokul Akademik: 'sozel' | 'sayisal'
@@ -62,14 +63,75 @@ const ExamAttendanceLists = () => {
       if (error) throw error;
 
       const plan = data && data.length > 0 ? data[0] : null;
-      if (plan && typeof plan.assignments === 'string') {
-        plan.assignments = JSON.parse(plan.assignments);
+      let parsedAssignments = [];
+
+      if (plan) {
+        if (typeof plan.assignments === 'string') {
+          parsedAssignments = JSON.parse(plan.assignments);
+        } else if (Array.isArray(plan.assignments)) {
+          parsedAssignments = plan.assignments;
+        }
+        plan.assignments = parsedAssignments;
       }
       setSeatingPlan(plan);
+
+      // Öğrenci ID'lerini toplayıp 'students' tablosundan doğrudan çekelim
+      const studentIds = parsedAssignments
+        .map(a => a.studentId || a.student_id || a.id)
+        .filter(Boolean);
+
+      if (studentIds.length > 0) {
+        await fetchStudentsData(studentIds);
+      } else {
+        // Eğer ID yoksa tüm öğrencileri çekip isim/no bazlı eşleştirmek için hazırlayalım
+        await fetchAllStudentsData();
+      }
+
     } catch (err) {
       console.error('Oturma planı alınamadı:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Öğrencileri ID listesine göre 'students' tablosundan çeken fonksiyon
+  const fetchStudentsData = async (ids) => {
+    try {
+      const { data, error } = await supabase
+        .from('students')
+        .select('*')
+        .in('id', ids);
+
+      if (!error && data) {
+        const map = {};
+        data.forEach(st => {
+          map[st.id] = st;
+        });
+        setStudentMap(map);
+      }
+    } catch (err) {
+      console.error('Öğrenciler tablosundan veri çekilemedi:', err);
+    }
+  };
+
+  // Yedek: ID yoksa tüm öğrenciler tablosunu alıp eşleştirme
+  const fetchAllStudentsData = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('students')
+        .select('*');
+
+      if (!error && data) {
+        const map = {};
+        data.forEach(st => {
+          map[st.id] = st;
+          if (st.tc_no || st.tc) map[st.tc_no || st.tc] = st;
+          if (st.student_no || st.no) map[st.student_no || st.no] = st;
+        });
+        setStudentMap(map);
+      }
+    } catch (err) {
+      console.error('Tüm öğrenciler çekilemedi:', err);
     }
   };
 
@@ -92,17 +154,28 @@ const ExamAttendanceLists = () => {
     return String(track).toUpperCase();
   };
 
-  // Esnek Öğrenci Detayları Çözücü
+  // Birleştirilmiş Öğrenci Verisi Çözücü (Oturma Planı + Students Tablosu)
   const getStudentDetails = (st) => {
-    const rawTc = st.tc || st.tc_no || st.tcNo || st.identity_number || st.tc_kimlik_no || '-';
-    
-    // Öğrenci Numarası Alımı
-    const rawStudentNo = st.no || st.student_no || st.studentNo || st.school_number || st.ogr_no || st.number || '-';
-    
-    // İsim Ayrıştırma
-    let fullName = st.studentName || st.student_name || st.name || `${st.first_name || st.ad || ''} ${st.last_name || st.soyad || ''}`.trim() || 'İsimsiz Öğrenci';
-    let surname = st.last_name || st.surname || st.soyad || '';
-    let firstName = st.first_name || st.name || st.ad || '';
+    const stId = st.studentId || st.student_id || st.id;
+    // Öğrenciler tablosundaki güncel kayıt
+    const dbSt = studentMap[stId] || studentMap[st.tc] || studentMap[st.studentNo] || {};
+
+    // 1. TC No Çözümleme
+    const rawTc = dbSt.tc_no || dbSt.tc || dbSt.tcNo || dbSt.identity_number || 
+                  st.tc || st.tc_no || st.tcNo || '-';
+
+    // 2. Okul No Çözümleme
+    const rawStudentNo = dbSt.student_no || dbSt.no || dbSt.studentNo || dbSt.school_number || dbSt.number ||
+                         st.no || st.student_no || st.studentNo || st.school_number || st.number || '-';
+
+    // 3. İsim Soyisim
+    let firstName = dbSt.first_name || dbSt.ad || dbSt.name || st.first_name || st.ad || '';
+    let surname = dbSt.last_name || dbSt.soyad || dbSt.surname || st.last_name || st.soyad || '';
+    let fullName = dbSt.fullName || dbSt.full_name || st.studentName || st.student_name || st.fullName || '';
+
+    if (!fullName) {
+      fullName = `${firstName} ${surname}`.trim() || 'İsimsiz Öğrenci';
+    }
 
     if (!surname && fullName) {
       const parts = fullName.trim().split(' ');
@@ -115,9 +188,11 @@ const ExamAttendanceLists = () => {
     }
 
     const surnameFirstFormat = surname ? `${surname.toUpperCase()}, ${firstName}` : fullName;
-    const rawGrade = st.grade || st.sinif || st.grade_level || '';
-    const rawClass = st.class || st.className || st.sube || st.class_name || '';
-    const rawTrack = st.alan || st.track || st.field || st.department || '';
+
+    // 4. Sınıf, Şube, Alan
+    const rawGrade = dbSt.grade || dbSt.sinif || dbSt.grade_level || st.grade || st.sinif || '';
+    const rawClass = dbSt.className || dbSt.class || dbSt.sube || dbSt.class_name || st.className || st.class || st.sube || '';
+    const rawTrack = dbSt.alan || dbSt.track || dbSt.field || dbSt.department || st.alan || st.track || st.field || st.department || '';
 
     return {
       tc: rawTc,
@@ -139,7 +214,6 @@ const ExamAttendanceLists = () => {
     return rawRoomId || 'Tanımsız Salon';
   };
 
-  // Liste İçindeki Sınıf Seviyelerini Çıkarma (Örn: "12. Sınıf" veya "11 ve 12. Sınıf")
   const getGradeSummary = (studentList) => {
     const grades = new Set();
     studentList.forEach(st => {
@@ -155,7 +229,6 @@ const ExamAttendanceLists = () => {
 
   const assignments = seatingPlan?.assignments || [];
 
-  // Salon Gruplaması
   const groupedByRoom = assignments.reduce((acc, curr) => {
     const roomName = getRoomName(curr);
     if (!acc[roomName]) acc[roomName] = [];
@@ -163,7 +236,6 @@ const ExamAttendanceLists = () => {
     return acc;
   }, {});
 
-  // Soyada Göre A-Z Sıralama
   const getSortedBySurname = () => {
     return [...assignments].sort((a, b) => {
       const detA = getStudentDetails(a);
@@ -172,7 +244,6 @@ const ExamAttendanceLists = () => {
     });
   };
 
-  // Excel Aktarımı
   const exportToExcel = () => {
     if (!selectedExam || assignments.length === 0) return;
 
@@ -441,7 +512,6 @@ const ExamAttendanceLists = () => {
                 const langStats = calculateLangStats(students);
                 const gradeSummary = getGradeSummary(students);
 
-                // 11 veya 12. sınıf öğrencisi var mı kontrolü
                 const hasUpperGrades = students.some(st => {
                   const g = String(getStudentDetails(st).grade);
                   return g.includes('11') || g.includes('12');
@@ -450,7 +520,7 @@ const ExamAttendanceLists = () => {
                 return (
                   <div key={roomName} className="print-card page-break" style={{ background: '#fff', border: '1px solid #cbd5e1', padding: '1.5rem', marginBottom: '2rem', borderRadius: '6px' }}>
                     
-                    {/* YENİ BAŞLIK YAPISI: Sınav ismi + Sınıf Seviyesi + Salon İsmi + Yoklama Listesi */}
+                    {/* BAŞLIK */}
                     <div style={{ border: '2px solid #000', padding: '0.8rem', textAlign: 'center', marginBottom: '1rem', background: '#fafafa' }}>
                       <h1 style={{ margin: '0 0 0.3rem 0', fontSize: '15pt', fontWeight: 'bold', letterSpacing: '0.5px', textTransform: 'uppercase' }}>
                         {selectedExam.title} - {gradeSummary} - {roomName.toUpperCase()} YOKLAMA LİSTESİ
