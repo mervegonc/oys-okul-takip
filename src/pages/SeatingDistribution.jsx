@@ -372,7 +372,7 @@ const SeatingDistribution = () => {
         </button>
       </div>
 
-      {/* Sınav Seçimi */}
+      {/* Sınav Seçimi (Sınıf Seviyeleri Eklendi) */}
       <div style={{ marginBottom: '1.5rem' }}>
         <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '0.5rem' }}>Sınavı Seçin</label>
         <select
@@ -381,11 +381,15 @@ const SeatingDistribution = () => {
           style={{ width: '100%', padding: '0.7rem', border: '1px solid #ccc', borderRadius: '4px' }}
         >
           <option value="">-- Sınav Seçin --</option>
-          {exams.map(exam => (
-            <option key={exam.id} value={exam.id}>
-              {exam.title} ({exam.date})
-            </option>
-          ))}
+          {exams.map(exam => {
+            const grades = exam.grade_levels || exam.gradeLevels || [];
+            const gradeStr = grades.length > 0 ? ` [Sınıflar: ${grades.join(', ')}]` : '';
+            return (
+              <option key={exam.id} value={exam.id}>
+                {exam.title} ({exam.date}){gradeStr}
+              </option>
+            );
+          })}
         </select>
       </div>
 
