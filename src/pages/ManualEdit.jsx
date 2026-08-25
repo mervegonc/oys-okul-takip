@@ -36,6 +36,9 @@ const ManualEdit = () => {
     fetchData();
   }, []);
 
+  // Seçilen sınav nesnesini bulma
+  const currentExamObj = exams.find(e => String(e.id) === String(selectedExam));
+
   // Sınav seçilince en son oluşturulan oturma planını getir
   useEffect(() => {
     if (!selectedExam) {
@@ -262,6 +265,12 @@ const ManualEdit = () => {
 
   const grouped = groupByRoom();
 
+  // Sınav tipini ve özelliklerini belirle
+  const examType = cleanStr(currentExamObj?.exam_type || currentExamObj?.type || '');
+  const isMiddleSchool = examType.includes('ortaokul') || (currentExamObj?.grade_levels || []).some(g => [5, 6, 7, 8].includes(Number(g)));
+  const isLanguageExam = examType.includes('dil') || examType.includes('yabancı');
+  const isAcademicHighSchool = examType.includes('akademik') || examType.includes('lise');
+
   return (
     <div style={{ padding: '1rem', maxWidth: '1400px', margin: '0 auto' }}>
       <h2>🖊️ Manuel Sıra / Salon Düzenleme</h2>
@@ -378,7 +387,12 @@ const ManualEdit = () => {
                     <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd' }}>Okul No</th>
                     <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd', textAlign: 'left' }}>Öğrenci</th>
                     <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd' }}>Sınıf / Şube</th>
-                    <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd' }}>Dil / Seviye</th>
+                    
+                    {/* Sınav türüne göre dinamik başlık */}
+                    {isLanguageExam && <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd' }}>İngilizce / 2. Yabancı Dil</th>}
+                    {isAcademicHighSchool && !isLanguageExam && <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd' }}>Alan / Branş</th>}
+                    {isMiddleSchool && <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd' }}>2. Yabancı Dil</th>}
+
                     <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd' }}>Grup</th>
                     <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd' }}>Salon</th>
                     <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd' }}>Sıra No</th>
@@ -392,13 +406,10 @@ const ManualEdit = () => {
                     const currentRoomId = item.roomId || item.room_id;
                     const currentSeat = item.seatNumber || item.seat_number || 1;
 
-                    // Dil ve Seviye Verilerini Hazırla
+                    // Dil ve Alan verilerini hazırla
                     const engLevel = item.english_level || item.englishLevel;
                     const secLang = item.second_language || item.secondLanguage;
-                    const langInfo = [
-                      engLevel ? `[${String(engLevel).toUpperCase()}]` : null,
-                      secLang ? String(secLang) : null
-                    ].filter(Boolean).join(' - ') || '-';
+                    const fieldVal = item.field || item.branch || item.alan;
 
                     return (
                       <tr key={stId || idx} style={{ borderBottom: '1px solid #eee', textAlign: 'center' }}>
@@ -406,7 +417,24 @@ const ManualEdit = () => {
                         <td style={{ padding: '0.5rem', fontWeight: 'bold' }}>{stNo}</td>
                         <td style={{ padding: '0.5rem', textAlign: 'left', fontWeight: '500' }}>{stName}</td>
                         <td style={{ padding: '0.5rem' }}>{item.grade}-{item.class || item.className}</td>
-                        <td style={{ padding: '0.5rem', fontSize: '0.85rem', color: '#4a5568' }}>{langInfo}</td>
+                        
+                        {/* Sınav türüne göre dinamik hücre verisi */}
+                        {isLanguageExam && (
+                          <td style={{ padding: '0.5rem', fontSize: '0.85rem', color: '#4a5568' }}>
+                            {[engLevel ? `İng: ${String(engLevel).toUpperCase()}` : null, secLang ? `2.Dil: ${String(secLang)}` : null].filter(Boolean).join(' - ') || '-'}
+                          </td>
+                        )}
+                        {isAcademicHighSchool && !isLanguageExam && (
+                          <td style={{ padding: '0.5rem', fontSize: '0.85rem', color: '#4a5568' }}>
+                            {fieldVal || '-'}
+                          </td>
+                        )}
+                        {isMiddleSchool && (
+                          <td style={{ padding: '0.5rem', fontSize: '0.85rem', color: '#4a5568' }}>
+                            {secLang ? String(secLang) : '-'}
+                          </td>
+                        )}
+
                         <td style={{ padding: '0.5rem' }}>{item.group || '-'}</td>
                         <td style={{ padding: '0.5rem' }}>
                           <select
