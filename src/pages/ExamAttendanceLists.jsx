@@ -422,7 +422,7 @@ const ExamAttendanceLists = () => {
             print-color-adjust: exact;
           }
           .highlight-lang-cell {
-            background-color: #fef3c7 !important;
+            background-color: #fef08a !important;
             -webkit-print-color-adjust: exact;
             print-color-adjust: exact;
           }
@@ -595,28 +595,25 @@ const ExamAttendanceLists = () => {
                 const students = groupedByRoom[roomName];
                 const gradeSummary = getGradeSummary(students);
 
-                // Bilgilendirme için toplam seviye ve dil sayıları
                 let totalCore = 0;
                 let totalExt = 0;
                 let langTotals = {};
 
                 students.forEach(st => {
                   const det = getStudentDetails(st);
-                  const engLevelUpper = String(det.englishLevel || '').trim().toUpperCase();
+                  const engLevelUpper = String(det.englishLevel || '').trim().toLocaleUpperCase('tr-TR');
                   if (engLevelUpper.includes('CORE')) totalCore++;
                   if (engLevelUpper.includes('EXT')) totalExt++;
 
-                  const sLang = String(det.secondLanguage || '').trim();
-                  if (sLang && sLang !== '-' && sLang !== 'Yok') {
-                    const cleanLang = sLang.toUpperCase();
-                    langTotals[cleanLang] = (langTotals[cleanLang] || 0) + 1;
+                  const sLang = String(det.secondLanguage || '').trim().toLocaleUpperCase('tr-TR');
+                  if (sLang && sLang !== '-' && sLang !== 'YOK' && sLang !== 'BOŞ') {
+                    langTotals[sLang] = (langTotals[sLang] || 0) + 1;
                   }
                 });
 
-                // Birden fazla seviye veya dil var mı kontrolü (Renklendirme tetikleyicisi)
                 const hasMultipleEnglishLevels = (totalCore > 0 && totalExt > 0);
-                const uniqueLangKeys = Object.keys(langTotals);
-                const hasMultipleLanguages = uniqueLangKeys.length > 1;
+                const uniqueLangs = Object.keys(langTotals);
+                const hasMultipleLanguages = uniqueLangs.length > 1;
 
                 return (
                   <div key={roomName} className="print-card page-break" style={{ background: '#fff', border: '1px solid #cbd5e1', padding: '1.2rem', marginBottom: '2rem', borderRadius: '6px' }}>
@@ -673,9 +670,9 @@ const ExamAttendanceLists = () => {
                       <tbody>
                         {students.map((st, sIdx) => {
                           const det = getStudentDetails(st);
-                          const engLevelUpper = String(det.englishLevel || '').trim().toUpperCase();
+                          const engLevelUpper = String(det.englishLevel || '').trim().toLocaleUpperCase('tr-TR');
                           const isExt = engLevelUpper.includes('EXT');
-                          const rowLang = String(det.secondLanguage || '').trim().toUpperCase();
+                          const rowLang = String(det.secondLanguage || '').trim().toLocaleUpperCase('tr-TR');
 
                           return (
                             <tr key={st.studentId || st.id || sIdx}>
@@ -694,7 +691,9 @@ const ExamAttendanceLists = () => {
                                     style={{ 
                                       textAlign: 'center', 
                                       fontSize: '8.5pt', 
-                                      backgroundColor: (hasMultipleEnglishLevels && isExt) ? '#fee2e2' : 'transparent' 
+                                      backgroundColor: (hasMultipleEnglishLevels && isExt) ? '#fee2e2' : 'transparent',
+                                      WebkitPrintColorAdjust: 'exact',
+                                      printColorAdjust: 'exact'
                                     }}
                                   >
                                     {det.englishLevel}
@@ -703,7 +702,9 @@ const ExamAttendanceLists = () => {
                                     style={{ 
                                       textAlign: 'center', 
                                       fontSize: '8.5pt',
-                                      backgroundColor: (hasMultipleLanguages && rowLang !== '-' && rowLang !== '') ? '#fef3c7' : 'transparent'
+                                      backgroundColor: (hasMultipleLanguages && rowLang !== '-' && rowLang !== '' && rowLang !== 'YOK' && rowLang !== 'BOŞ') ? '#fef08a' : 'transparent',
+                                      WebkitPrintColorAdjust: 'exact',
+                                      printColorAdjust: 'exact'
                                     }}
                                   >
                                     {det.secondLanguage}
@@ -715,7 +716,9 @@ const ExamAttendanceLists = () => {
                                   style={{ 
                                     textAlign: 'center', 
                                     fontSize: '8.5pt',
-                                    backgroundColor: (hasMultipleLanguages && rowLang !== '-' && rowLang !== '') ? '#fef3c7' : 'transparent'
+                                    backgroundColor: (hasMultipleLanguages && rowLang !== '-' && rowLang !== '' && rowLang !== 'YOK' && rowLang !== 'BOŞ') ? '#fef08a' : 'transparent',
+                                    WebkitPrintColorAdjust: 'exact',
+                                    printColorAdjust: 'exact'
                                   }}
                                 >
                                   {det.secondLanguage}
@@ -730,7 +733,7 @@ const ExamAttendanceLists = () => {
                     </table>
 
                     <div style={{ marginTop: '0.8rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                      {/* Bilgilendirme Amaçlı Üst Alan (Sınıfta toplam kaç kişi var) */}
+                      {/* Bilgilendirme Amaçlı Üst Alan */}
                       {examCategory === 'dil' && (
                         <div style={{ border: '1px dashed #666', padding: '0.4rem 0.8rem', fontSize: '8pt', borderRadius: '4px', background: '#f8fafc', display: 'flex', flexWrap: 'wrap', gap: '1.2rem', alignItems: 'center' }}>
                           <span style={{ color: '#555', fontWeight: 'bold' }}>SINIF MEVCUT BİLGİSİ:</span>
@@ -836,7 +839,7 @@ const ExamAttendanceLists = () => {
                     <th style={{ width: '6%', textAlign: 'center' }}>SIRA</th>
                     <th>ÖĞRENCİ SOYADI, ADI</th>
                     <th style={{ width: '15%', textAlign: 'center' }}>SINIF / ŞUBE</th>
-                    <th style={{ width: '25%', textAlign: 'center' }}>SINAV SALONU</th>
+                    <th style={{ width: '25%', textAlign: 'center' }, { color: '#000' }}>SINAV SALONU</th>
                     <th style={{ width: '12%', textAlign: 'center' }}>SIRA NO</th>
                   </tr>
                 </thead>
