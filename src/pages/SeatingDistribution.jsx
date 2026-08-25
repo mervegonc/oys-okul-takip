@@ -130,141 +130,123 @@ const SeatingDistribution = () => {
   };
 
   // HOMOJEN SALON DAĞITIM ALGORİTMASI
-  const runDistribution = async () => {
-    if (!selectedExam || groups.length === 0) return;
+// 2. YABANCI DİL VE İNGİLİZCE SEVİYE ODAKLI DAĞITIM ALGORİTMASI
+const runDistribution = async () => {
+  if (!selectedExam || groups.length === 0) return;
 
-    setLoading(true);
-    setMessage('Salon odaklı dil homojenliği ile karma yapılıyor...');
+  setLoading(true);
+  setMessage('Dil homojenliği öncelikli karma yapılıyor...');
 
-    try {
-      const exam = exams.find(e => e.id === selectedExam);
-      // Sınavın dil odaklı olup olmadığını anlama
-      const isSecondLangExam = exam?.category === '2_yabanci_dil' || exam?.type === 'second_language';
-      
-      const assignments = [];
+  try {
+    const exam = exams.find(e => e.id === selectedExam);
+    const isSecondLangExam = exam?.category === '2_yabanci_dil' || exam?.type === 'second_language';
 
-      for (const group of groups) {
-        // 1. Gruba ait öğrencileri filtrele
-        const groupStudents = students.filter(s => group.classes.includes(`${s.grade}-${s.class}`));
-        if (groupStudents.length === 0) continue;
+    const assignments = [];
 
-        // 2. Gruba atanan salonları kapasiteleriyle al
-        const groupRooms = rooms
-          .filter(r => group.roomIds.includes(r.id))
-          .map(r => ({
-            ...r,
-            totalCap: Number(r.capacity || 0) + Number(r.extra_seats_added || r.extraSeatsAdded || 0),
-            assigned: []
-          }))
-          .sort((a, b) => b.totalCap - a.totalCap); // En büyük salonları öne al
+    for (const group of groups) {
+      // 1. Seçili şubelerdeki tüm öğrencileri al
+      const groupStudents = students.filter(s => group.classes.includes(`${s.grade}-${s.class}`));
+      if (groupStudents.length === 0) continue;
 
-        if (groupRooms.length === 0) throw new Error(`"${group.name}" için salon seçilmemiş.`);
+      // 2. Gruba ait salonları kapasitelerine göre büyükten küçüğe sırala
+      const groupRooms = rooms
+        .filter(r => group.roomIds.includes(r.id))
+        .map(r => ({
+          ...r,
+          totalCap: Number(r.capacity || 0) + Number(r.extra_seats_added || r.extraSeatsAdded || 0),
+          seats: []
+        }))
+        .sort((a, b) => b.totalCap - a.totalCap);
 
-        // 3. Öğrencileri Dil Gruplarına Göre Kümele (Homojenlik anahtarı)
-        const langClusters = {};
-        groupStudents.forEach(st => {
-          let key = 'Genel';
-          if (isSecondLangExam) {
-            key = st.second_lang || st.second_language || 'Diğer';
-          } else {
-            key = st.english_level ? st.english_level.toUpperCase() : 'Diğer';
-          }
-          if (!langClusters[key]) langClusters[key] = [];
-          langClusters[key].push(st);
-        });
+      if (groupRooms.length === 0) throw new Error(`"${group.name}" için salon seçilmedi.`);
 
-        // Küme büyüklüğüne göre sırala (Örn: Önce en kalabalık dil grubu olan Almanca'yı yerleştir)
-        const sortedLangKeys = Object.keys(langClusters).sort(
-          (a, b) => langClusters[b].length - langClusters[a].length
-        );
-
-        // 4. Salonları Mümkün Olduğunca Tek Bir Dil Grubu ile Doldur
-        let currentRoomIdx = 0;
-
-        for (const langKey of sortedLangKeys) {
-          let pool = shuffleArray(langClusters[langKey]); // Kendi içinde karıştır
-
-          while (pool.length > 0) {
-            if (currentRoomIdx >= groupRooms.length) {
-              throw new Error(`Kapasite yetersiz! "${group.name}" grubundaki öğrenciler salonlara sığmıyor.`);
-            }
-
-            const currentRoom = groupRooms[currentRoomIdx];
-            const availableSpace = currentRoom.totalCap - currentRoom.assigned.length;
-
-            if (availableSpace > 0) {
-              const toPlace = pool.slice(0, availableSpace);
-              pool = pool.slice(availableSpace);
-              currentRoom.assigned.push(...toPlace);
-            }
-
-            if (currentRoom.assigned.length >= currentRoom.totalCap) {
-              currentRoomIdx++; // Salon doldu, sonraki salona geç
-            }
-          }
+      // 3. Öğrencileri SADECE DİL / SEVİYE'ye göre grupla (Şube ayrımı yapılmaz)
+      const langClusters = {};
+      groupStudents.forEach(st => {
+        let langKey = 'Diğer';
+        if (isSecondLangExam) {
+          langKey = st.second_lang || st.second_language || 'Belirtilmedi';
+        } else {
+          langKey = st.english_level ? st.english_level.toUpperCase() : 'Belirtilmedi';
         }
 
-        // 5. Her Salon İçinde Şube Karması Yaparak Sıra/Koltuk Ataması Gerçekleştir
-        groupRooms.forEach(room => {
-          if (room.assigned.length === 0) return;
-
-          // Salon içindeki öğrencileri şubelerine göre grupla ve sırayla tek tek ekleyerek kar
-          const byClass = {};
-          room.assigned.forEach(st => {
-            const cls = `${st.grade}-${st.class}`;
-            if (!byClass[cls]) byClass[cls] = [];
-            byClass[cls].push(st);
-          });
-
-          const classKeys = Object.keys(byClass);
-          const finalSeated = [];
-          let added = true;
-
-          while (added) {
-            added = false;
-            for (const cKey of classKeys) {
-              if (byClass[cKey].length > 0) {
-                finalSeated.push(byClass[cKey].shift());
-                added = true;
-              }
-            }
-          }
-
-          // Koltuk Numaralarını Ver
-          finalSeated.forEach((st, idx) => {
-            assignments.push({
-              student_id: st.id,
-              room_id: room.id,
-              seat_number: idx + 1,
-              student_name: `${st.first_name || st.firstName || ''} ${st.last_name || st.lastName || ''}`.trim(),
-              class: st.class,
-              grade: st.grade,
-              second_language: st.second_lang || st.second_language || null,
-              english_level: st.english_level || null,
-            });
-          });
-        });
-      }
-
-      // Supabase Veritabanına Kaydet
-      await supabase.from('seating_plans').delete().eq('exam_id', selectedExam);
-      const { error: insertError } = await supabase.from('seating_plans').insert({
-        exam_id: selectedExam,
-        created_at: new Date().toISOString(),
-        assignments: assignments,
+        if (!langClusters[langKey]) langClusters[langKey] = [];
+        langClusters[langKey].push(st);
       });
 
-      if (insertError) throw insertError;
+      // Öğrenci sayısı en çok olan dil grubundan başla (Örn: 1. Almanca, 2. İspanyolca...)
+      const sortedLangs = Object.keys(langClusters).sort(
+        (a, b) => langClusters[b].length - langClusters[a].length
+      );
 
-      setDistributions(assignments);
-      setMessage(`İşlem başarılı! Öğrenciler salon bazında dil homojenliği korunarak karıldı.`);
-    } catch (err) {
-      console.error(err);
-      setMessage(`Hata: ${err.message}`);
-    } finally {
-      setLoading(false);
+      let currentRoomIdx = 0;
+
+      // 4. Salonları Blok Halinde Tek Dil Grubu İle Doldur
+      for (const lang of sortedLangs) {
+        // Dil grubu içindeki öğrencileri kendi arasında karıştır (Koltuk sırası rastgele olsun)
+        let pool = shuffleArray(langClusters[lang]);
+
+        while (pool.length > 0) {
+          if (currentRoomIdx >= groupRooms.length) {
+            throw new Error(`Kapasite yetersiz! "${group.name}" grubundaki öğrenciler salonlara sığmıyor.`);
+          }
+
+          const room = groupRooms[currentRoomIdx];
+          const emptySeats = room.totalCap - room.seats.length;
+
+          if (emptySeats > 0) {
+            const studentsToSeat = pool.slice(0, emptySeats);
+            pool = pool.slice(emptySeats);
+
+            // Salon koltuklarına sırayla oturt (Şube kontrolü yapılmaz, tek dil olması yeterli)
+            studentsToSeat.forEach(student => {
+              room.seats.push(student);
+            });
+          }
+
+          // Salon dolduysa bir sonraki salona geç
+          if (room.seats.length >= room.totalCap) {
+            currentRoomIdx++;
+          }
+        }
+      }
+
+      // 5. Atamaları Veritabanı Formatına Dönüştür
+      groupRooms.forEach(room => {
+        room.seats.forEach((st, idx) => {
+          assignments.push({
+            student_id: st.id,
+            room_id: room.id,
+            seat_number: idx + 1,
+            student_name: `${st.first_name || st.firstName || ''} ${st.last_name || st.lastName || ''}`.trim(),
+            class: st.class,
+            grade: st.grade,
+            second_language: st.second_lang || st.second_language || null,
+            english_level: st.english_level || null,
+          });
+        });
+      });
     }
-  };
+
+    // Supabase Kayıt
+    await supabase.from('seating_plans').delete().eq('exam_id', selectedExam);
+    const { error: insertError } = await supabase.from('seating_plans').insert({
+      exam_id: selectedExam,
+      created_at: new Date().toISOString(),
+      assignments: assignments,
+    });
+
+    if (insertError) throw insertError;
+
+    setDistributions(assignments);
+    setMessage(`Dağıtım tamamlandı! Salonlar olabildiğince tek dil grubu olacak şekilde blok dolduruldu.`);
+  } catch (err) {
+    console.error(err);
+    setMessage(`Hata: ${err.message}`);
+  } finally {
+    setLoading(false);
+  }
+};
 
   return (
     <div style={{ padding: '1rem', maxWidth: '1400px', margin: '0 auto' }}>
