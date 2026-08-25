@@ -13,6 +13,16 @@ const SeatingDistribution = () => {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
 
+  // Helper: Etiket Oluşturucu
+  const getStudentGroupKey = (student) => {
+    const langInfo = [
+      student.english_level ? student.english_level.toUpperCase() : null,
+      student.second_lang || student.second_language || null
+    ].filter(Boolean).join(' - ');
+
+    return `${student.grade}-${student.class}${langInfo ? ` (${langInfo})` : ''}`;
+  };
+
   // Tüm sınav ve salonları getir
   useEffect(() => {
     const fetchData = async () => {
@@ -64,16 +74,15 @@ const SeatingDistribution = () => {
           .select('*')
           .in('grade', gradeLevels.map(String));
 
-        // Eğer sınav Yabancı Dil sınavı ise ve ikinci yabancı dil filtresi varsa ekle
         const isForeignLanguageExam = 
           exam.type === 'foreign_language' || 
           exam.exam_type === 'foreign_language' || 
           exam.category === 'yabanci_dil' ||
           exam.is_second_language;
 
-        if (isForeignLanguageExam && (exam.second_language || exam.language)) {
-          const targetLang = exam.second_language || exam.language;
-          query = query.eq('second_language', targetLang);
+        if (isForeignLanguageExam && (exam.second_language || exam.second_lang || exam.language)) {
+          const targetLang = exam.second_language || exam.second_lang || exam.language;
+          query = query.eq('second_lang', targetLang);
         }
 
         const { data, error } = await query;
@@ -81,13 +90,11 @@ const SeatingDistribution = () => {
 
         setStudents(data || []);
 
-        // Şube ve Yabancı Dil kombinasyonlarını/listesini çıkar
+        // Şube, İngilizce Seviyesi ve 2. Yabancı Dil kombinasyonlarını çıkar
         const classSet = new Set();
         (data || []).forEach(s => {
           if (s.grade && s.class) {
-            // İkinci yabancı dil varsa etikete ekleyelim
-            const langSuffix = s.second_language ? ` (${s.second_language})` : '';
-            classSet.add(`${s.grade}-${s.class}${langSuffix}`);
+            classSet.add(getStudentGroupKey(s));
           }
         });
         const sortedClasses = Array.from(classSet).sort();
@@ -95,7 +102,7 @@ const SeatingDistribution = () => {
 
         setGroups([]);
         setDistributions([]);
-        setMessage(`${data?.length || 0} öğrenci, ${sortedClasses.length} farklı şube/dil grubu bulundu.`);
+        setMessage(`${data?.length || 0} öğrenci, ${sortedClasses.length} farklı grup seçeneği bulundu.`);
       } catch (error) {
         console.error('Öğrenciler alınamadı:', error);
         setMessage('Öğrenciler alınırken hata oluştu.');
@@ -104,7 +111,6 @@ const SeatingDistribution = () => {
     fetchStudentsForExam();
   }, [selectedExam, exams]);
 
-  // Grup ekle
   const addGroup = () => {
     const newGroup = {
       id: Date.now(),
@@ -115,7 +121,6 @@ const SeatingDistribution = () => {
     setGroups([...groups, newGroup]);
   };
 
-  // Grup sil
   const removeGroup = (groupId) => {
     if (groups.length <= 1) {
       setMessage('En az bir grup olmalıdır.');
@@ -125,7 +130,6 @@ const SeatingDistribution = () => {
     setGroups(groups.filter(g => g.id !== groupId));
   };
 
-  // Gruba şube ekle/çıkar (toggle)
   const toggleClassForGroup = (groupId, className) => {
     setGroups(groups.map(g => {
       if (g.id === groupId) {
@@ -138,7 +142,6 @@ const SeatingDistribution = () => {
     }));
   };
 
-  // Gruba salon ekle/çıkar (toggle)
   const toggleRoomForGroup = (groupId, roomId) => {
     setGroups(groups.map(g => {
       if (g.id === groupId) {
@@ -151,7 +154,6 @@ const SeatingDistribution = () => {
     }));
   };
 
-  // Fisher-Yates Shuffle
   const shuffleArray = (array) => {
     const arr = [...array];
     for (let i = arr.length - 1; i > 0; i--) {
@@ -161,7 +163,6 @@ const SeatingDistribution = () => {
     return arr;
   };
 
-  // Şubeler arası dönel (Interleaved) karma algoritması
   const interleaveStudentsByClass = (classList, studentMap) => {
     const classQueues = {};
     classList.forEach(cls => {
@@ -176,9 +177,9 @@ const SeatingDistribution = () => {
       let consecutiveCount = 0;
 
       if (result.length >= 3) {
-        const c1 = `${result[result.length - 1].grade}-${result[result.length - 1].class}${result[result.length - 1].second_language ? ` (${result[result.length - 1].second_language})` : ''}`;
-        const c2 = `${result[result.length - 2].grade}-${result[result.length - 2].class}${result[result.length - 2].second_language ? ` (${result[result.length - 2].second_language})` : ''}`;
-        const c3 = `${result[result.length - 3].grade}-${result[result.length - 3].class}${result[result.length - 3].second_language ? ` (${result[result.length - 3].second_language})` : ''}`;
+        const c1 = getStudentGroupKey(result[result.length - 1]);
+        const c2 = getStudentGroupKey(result[result.length - 2]);
+        const c3 = getStudentGroupKey(result[result.length - 3]);
 
         if (c1 === c2 && c2 === c3) {
           lastClass = c1;
@@ -205,7 +206,6 @@ const SeatingDistribution = () => {
     return result;
   };
 
-  // Karma dağıtım
   const runDistribution = async () => {
     if (!selectedExam) {
       setMessage('Lütfen bir sınav seçin.');
@@ -231,7 +231,6 @@ const SeatingDistribution = () => {
     setMessage('Karma dağıtım yapılıyor...');
 
     try {
-      // GEÇMİŞ SINAV YERLEŞİMLERİ
       const { data: previousPlans, error: prevPlanError } = await supabase
         .from('seating_plans')
         .select('exam_id, assignments')
@@ -257,7 +256,6 @@ const SeatingDistribution = () => {
         });
       }
 
-      // ÇAKIŞMA GRUPLARI
       const { data: conflictGroups, error: conflictError } = await supabase
         .from('conflict_groups')
         .select('*');
@@ -265,11 +263,9 @@ const SeatingDistribution = () => {
         console.warn('Çakışma grupları okunamadı:', conflictError);
       }
 
-      // Öğrencileri şubelerine ve yabancı dillerine göre haritala
       const studentMap = {};
       students.forEach(s => {
-        const langSuffix = s.second_language ? ` (${s.second_language})` : '';
-        const key = `${s.grade}-${s.class}${langSuffix}`;
+        const key = getStudentGroupKey(s);
         if (!studentMap[key]) studentMap[key] = [];
         studentMap[key].push(s);
       });
@@ -335,7 +331,6 @@ const SeatingDistribution = () => {
         }
       }
 
-      // Çakışma grupları düzenlemesi
       if (conflictGroups && conflictGroups.length > 0) {
         for (const conflictGroup of conflictGroups) {
           const conflictStudentIds = (conflictGroup.student_ids || conflictGroup.studentIds || []).map(String);
@@ -384,7 +379,6 @@ const SeatingDistribution = () => {
         }
       }
 
-      // Atamaları düzenleme
       const assignments = [];
       roomUsage.forEach(ra => {
         ra.seats.forEach((seatObj) => {
@@ -395,7 +389,8 @@ const SeatingDistribution = () => {
             student_name: `${seatObj.student.first_name || seatObj.student.firstName || ''} ${seatObj.student.last_name || seatObj.student.lastName || ''}`.trim(),
             class: seatObj.student.class,
             grade: seatObj.student.grade,
-            second_language: seatObj.student.second_language || null,
+            second_language: seatObj.student.second_lang || seatObj.student.second_language || null,
+            english_level: seatObj.student.english_level || null,
           });
         });
       });
@@ -426,7 +421,6 @@ const SeatingDistribution = () => {
     <div style={{ padding: '1rem', maxWidth: '1400px', margin: '0 auto' }}>
       <h2>🪑 Sınav Karma Dağıtım</h2>
 
-      {/* Sınav Seçimi */}
       <div style={{ marginBottom: '1.5rem' }}>
         <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '0.5rem' }}>Sınav Seçin</label>
         <select
@@ -437,7 +431,7 @@ const SeatingDistribution = () => {
           <option value="">-- Sınav Seçin --</option>
           {exams.map(exam => {
             const grades = exam.grade_levels || exam.gradeLevels || [];
-            const langInfo = exam.second_language ? ` [Dil: ${exam.second_language}]` : '';
+            const langInfo = (exam.second_lang || exam.second_language) ? ` [Dil: ${exam.second_lang || exam.second_language}]` : '';
             return (
               <option key={exam.id} value={exam.id}>
                 {exam.title} ({exam.date}) - {grades.join(', ')}. Sınıflar{langInfo}
@@ -447,7 +441,6 @@ const SeatingDistribution = () => {
         </select>
       </div>
 
-      {/* Tüm Şubeler ve Dil Grupları */}
       {selectedExam && allClasses.length > 0 && (
         <div style={{ marginBottom: '1.5rem', padding: '1rem', background: '#f8f9fa', borderRadius: '8px' }}>
           <h4>Tüm Şubeler / Dil Grupları</h4>
@@ -461,7 +454,6 @@ const SeatingDistribution = () => {
         </div>
       )}
 
-      {/* Salon Listesi */}
       {selectedExam && rooms.length > 0 && (
         <div style={{ marginBottom: '1.5rem', padding: '1rem', background: '#f8f9fa', borderRadius: '8px' }}>
           <h4>Mevcut Salonlar</h4>
@@ -479,7 +471,6 @@ const SeatingDistribution = () => {
         </div>
       )}
 
-      {/* Grup Oluşturma */}
       <div style={{ marginBottom: '2rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
           <h4>Şube/Dil Grupları ve Salon Atamaları</h4>
@@ -513,7 +504,6 @@ const SeatingDistribution = () => {
               </button>
             </div>
 
-            {/* Şube / Dil Seçimi */}
             <div style={{ marginBottom: '0.8rem' }}>
               <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '0.3rem' }}>Şubeler / Diller:</label>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
@@ -539,7 +529,6 @@ const SeatingDistribution = () => {
               </div>
             </div>
 
-            {/* Salon Seçimi */}
             <div>
               <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '0.3rem' }}>Salonlar:</label>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
@@ -578,7 +567,6 @@ const SeatingDistribution = () => {
         )}
       </div>
 
-      {/* Karma Butonları */}
       <div style={{ display: 'flex', gap: '0.8rem', marginBottom: '1rem' }}>
         <button
           onClick={runDistribution}
@@ -621,7 +609,6 @@ const SeatingDistribution = () => {
 
       {message && <p style={{ margin: '0.5rem 0', color: message.includes('hata') ? 'red' : 'green' }}>{message}</p>}
 
-      {/* Dağıtım Sonucu */}
       {distributions.length > 0 && (
         <div style={{ marginTop: '2rem' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
@@ -652,7 +639,8 @@ const SeatingDistribution = () => {
                   <th style={{ padding: '0.5rem' }}>#</th>
                   <th style={{ padding: '0.5rem' }}>Öğrenci</th>
                   <th style={{ padding: '0.5rem' }}>Sınıf</th>
-                  <th style={{ padding: '0.5rem' }}>Yabancı Dil</th>
+                  <th style={{ padding: '0.5rem' }}>İngilizce Seviyesi</th>
+                  <th style={{ padding: '0.5rem' }}>2. Yabancı Dil</th>
                   <th style={{ padding: '0.5rem' }}>Salon</th>
                   <th style={{ padding: '0.5rem' }}>Sıra No</th>
                 </tr>
@@ -665,6 +653,7 @@ const SeatingDistribution = () => {
                       <td style={{ padding: '0.5rem', textAlign: 'center' }}>{index + 1}</td>
                       <td style={{ padding: '0.5rem' }}>{item.student_name}</td>
                       <td style={{ padding: '0.5rem' }}>{item.grade}-{item.class}</td>
+                      <td style={{ padding: '0.5rem' }}>{item.english_level ? item.english_level.toUpperCase() : '-'}</td>
                       <td style={{ padding: '0.5rem' }}>{item.second_language || '-'}</td>
                       <td style={{ padding: '0.5rem' }}>{room?.name || item.room_id}</td>
                       <td style={{ padding: '0.5rem' }}>{item.seat_number}</td>

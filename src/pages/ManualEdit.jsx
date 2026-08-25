@@ -110,57 +110,36 @@ const ManualEdit = () => {
           return;
         }
 
-        console.log('Okunan Excel Verisi:', excelData);
-        console.log('Mevcut Oturma Planı Verisi:', assignments);
-
         let matchCount = 0;
 
         const updatedAssignments = assignments.map((item) => {
-          // Mevcut sistemdeki öğrenci bilgileri
           const itemNo = cleanStr(item.studentNumber || item.student_number || item.school_number || item.no);
           const itemFirstName = cleanStr(item.firstName || item.first_name || item.ad);
           const itemLastName = cleanStr(item.lastName || item.last_name || item.soyad);
           const itemFullName = cleanStr(item.studentName || item.student_name || `${itemFirstName} ${itemLastName}`);
 
-          // Excel satırlarında arama yap
           const matchedRow = excelData.find((row) => {
-            // Excel Sütun Değerleri
             const excelNo = cleanStr(row['Okul Numarası'] || row['Okul No'] || row['No'] || row['Student Number']);
             const excelAd = cleanStr(row['Adı'] || row['Ad'] || row['First Name']);
             const excelSoyad = cleanStr(row['Soyadı'] || row['Soyad'] || row['Last Name']);
             const excelAdSoyad = cleanStr(row['Adı Soyadı'] || row['Ad Soyad'] || `${excelAd} ${excelSoyad}`);
 
-            // 1. Öncelik: Okul Numarası Eşleşmesi
-            if (itemNo && excelNo && itemNo === excelNo) {
-              return true;
-            }
-
-            // 2. Öncelik: Ad ve Soyad Tam Eşleşmesi
-            if (itemFirstName && itemLastName && excelAd && excelSoyad && itemFirstName === excelAd && itemLastName === excelSoyad) {
-              return true;
-            }
-
-            // 3. Öncelik: Tam İsim Eşleşmesi
-            if (itemFullName && excelAdSoyad && itemFullName === excelAdSoyad) {
-              return true;
-            }
+            if (itemNo && excelNo && itemNo === excelNo) return true;
+            if (itemFirstName && itemLastName && excelAd && excelSoyad && itemFirstName === excelAd && itemLastName === excelSoyad) return true;
+            if (itemFullName && excelAdSoyad && itemFullName === excelAdSoyad) return true;
 
             return false;
           });
 
           if (matchedRow) {
             matchCount++;
-
-            // Excel'deki Salon Değeri
             const rawExcelRoom = String(matchedRow['Salon'] || matchedRow['Salon Adı'] || '').trim();
             const excelRoomNums = extractNumbers(rawExcelRoom);
 
-            // Salon ID'sini sistemdeki rooms tablosundan bul
             const matchedRoomObj = rooms.find((r) => {
               const rName = String(r.name || '').trim();
               const rId = String(r.id || '').trim();
 
-              // Birebir isim/ID eşitliği veya sayısal eşitlik ("Salon 20" -> "20")
               if (cleanStr(rName) === cleanStr(rawExcelRoom) || rId === rawExcelRoom) return true;
               if (excelRoomNums && extractNumbers(rName) === excelRoomNums) return true;
               return false;
@@ -189,7 +168,7 @@ const ManualEdit = () => {
         if (matchCount > 0) {
           setMessage(`✅ Başarılı! Excel'den ${matchCount} öğrencinin salon ve sıra numarası güncellendi. Lütfen "Değişiklikleri Kaydet" butonuna basarak kaydedin.`);
         } else {
-          setMessage(`⚠️ Excel dosyasındaki öğrenciler mevcut oturma planındaki öğrencilerle eşleşmedi. Lütfen Excel'deki "Okul Numarası" veya "Adı" - "Soyadı" sütun başlıklarını kontrol edin.`);
+          setMessage(`⚠️ Excel dosyasındaki öğrenciler mevcut oturma planındaki öğrencilerle eşleşmedi.`);
         }
       } catch (err) {
         console.error('Excel okuma hatası:', err);
@@ -198,16 +177,14 @@ const ManualEdit = () => {
     };
 
     reader.readAsBinaryString(file);
-    e.target.value = ''; // Aynı dosya tekrar seçilebilsin diye sıfırla
+    e.target.value = '';
   };
 
-  // Öğrenci Kimliği Karşılaştırma Yardımcısı
   const isSameStudent = (item, targetId) => {
     const idList = [item.studentId, item.student_id, item.id, item.studentNumber, item.student_number].map(cleanStr);
     return idList.includes(cleanStr(targetId));
   };
 
-  // Öğrencinin salonunu elle değiştir
   const handleRoomChange = (targetStudentId, newRoomId) => {
     const updated = assignments.map(a => 
       isSameStudent(a, targetStudentId)
@@ -218,7 +195,6 @@ const ManualEdit = () => {
     setEditing(true);
   };
 
-  // Öğrencinin sıra numarasını elle değiştir
   const handleSeatChange = (targetStudentId, newSeat) => {
     const seatNum = parseInt(newSeat) || 1;
     const updated = assignments.map(a => 
@@ -230,7 +206,6 @@ const ManualEdit = () => {
     setEditing(true);
   };
 
-  // Değişiklikleri kaydet
   const handleSave = async () => {
     if (!seatingPlan) return;
     setLoading(true);
@@ -255,7 +230,6 @@ const ManualEdit = () => {
     }
   };
 
-  // Değişiklikleri iptal et
   const handleCancel = () => {
     if (seatingPlan) {
       let parsed = seatingPlan.assignments;
@@ -268,7 +242,6 @@ const ManualEdit = () => {
     }
   };
 
-  // Salon bazlı gruplama
   const groupByRoom = () => {
     const groups = {};
     assignments.forEach(item => {
@@ -280,7 +253,6 @@ const ManualEdit = () => {
       groups[roomName].push(item);
     });
 
-    // Her salon içinde öğrencileri sıra numarasına göre diz
     Object.keys(groups).forEach(rName => {
       groups[rName].sort((a, b) => (a.seatNumber || a.seat_number || 0) - (b.seatNumber || b.seat_number || 0));
     });
@@ -294,7 +266,6 @@ const ManualEdit = () => {
     <div style={{ padding: '1rem', maxWidth: '1400px', margin: '0 auto' }}>
       <h2>🖊️ Manuel Sıra / Salon Düzenleme</h2>
 
-      {/* Sınav Seçimi ve Excel Aktarım */}
       <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-end', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
         <div style={{ flex: 1, minWidth: '250px' }}>
           <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '0.5rem' }}>Sınav Seçin</label>
@@ -358,7 +329,6 @@ const ManualEdit = () => {
         </div>
       )}
 
-      {/* Salon Bazlı Tablo */}
       {assignments.length > 0 && (
         <div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
@@ -408,6 +378,7 @@ const ManualEdit = () => {
                     <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd' }}>Okul No</th>
                     <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd', textAlign: 'left' }}>Öğrenci</th>
                     <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd' }}>Sınıf / Şube</th>
+                    <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd' }}>Dil / Seviye</th>
                     <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd' }}>Grup</th>
                     <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd' }}>Salon</th>
                     <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd' }}>Sıra No</th>
@@ -421,12 +392,21 @@ const ManualEdit = () => {
                     const currentRoomId = item.roomId || item.room_id;
                     const currentSeat = item.seatNumber || item.seat_number || 1;
 
+                    // Dil ve Seviye Verilerini Hazırla
+                    const engLevel = item.english_level || item.englishLevel;
+                    const secLang = item.second_language || item.secondLanguage;
+                    const langInfo = [
+                      engLevel ? `[${String(engLevel).toUpperCase()}]` : null,
+                      secLang ? String(secLang) : null
+                    ].filter(Boolean).join(' - ') || '-';
+
                     return (
                       <tr key={stId || idx} style={{ borderBottom: '1px solid #eee', textAlign: 'center' }}>
                         <td style={{ padding: '0.5rem' }}>{idx + 1}</td>
                         <td style={{ padding: '0.5rem', fontWeight: 'bold' }}>{stNo}</td>
                         <td style={{ padding: '0.5rem', textAlign: 'left', fontWeight: '500' }}>{stName}</td>
                         <td style={{ padding: '0.5rem' }}>{item.grade}-{item.class || item.className}</td>
+                        <td style={{ padding: '0.5rem', fontSize: '0.85rem', color: '#4a5568' }}>{langInfo}</td>
                         <td style={{ padding: '0.5rem' }}>{item.group || '-'}</td>
                         <td style={{ padding: '0.5rem' }}>
                           <select
