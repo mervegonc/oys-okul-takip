@@ -1,33 +1,28 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabase';
-import { FaSync, FaPlus, FaTrash } from 'react-icons/fa';
+import { FaSync, FaPlus, FaTrash, FaCheckSquare, FaSquare } from 'react-icons/fa';
 
 const SeatingDistribution = () => {
   const [exams, setExams] = useState([]);
   const [rooms, setRooms] = useState([]);
   const [selectedExamId, setSelectedExamId] = useState('');
-  const [currentExam, setCurrentExam] = useState(null);
   const [students, setStudents] = useState([]);
   const [allClasses, setAllClasses] = useState([]);
   const [groups, setGroups] = useState([]);
   const [distributions, setDistributions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
-  const [langStats, setLangStats] = useState({});
 
-  // Seçili sınavın Yabancı Dil veya Seviye sınavı olup olmadığını kontrol et
-  const isForeignLanguageExam = Boolean(
-    currentExam && (
-      currentExam.type === 'foreign_language' ||
-      currentExam.exam_type === 'foreign_language' ||
-      currentExam.category === '2_yabanci_dil' ||
-      currentExam.category === 'yabanci_dil' ||
-      currentExam.category === 'ingilizce_seviye' ||
-      currentExam.is_second_language
-    )
-  );
+  // 3 EKRAN / MOD SEÇİMİ
+  // 'lise_akademik' | 'lise_yabanci_dil' | 'ortaokul_akademik'
+  const [examMode, setExamMode] = useState('lise_akademik');
 
-  // Tum sınav ve salonları çek
+  // Lise Yabancı Dil Modu Filtre ve Sıralama Ayarı (Excel Mantığı)
+  const [langPrimaryFilter, setLangPrimaryFilter] = useState('second_lang'); // 'second_lang' | 'english_level'
+
+  // Ortaokul Modu Özel Seçenek
+  const [keepInOwnClassroom, setKeepInOwnClassroom] = useState(false);
+
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -37,26 +32,22 @@ const SeatingDistribution = () => {
         const { data: roomData } = await supabase.from('rooms').select('*').order('name', { ascending: true });
         setRooms(roomData || []);
       } catch (error) {
-        console.error('Veri hatası:', error);
+        console.error('Veri yükleme hatası:', error);
       }
     };
     fetchData();
   }, []);
 
-  // Sınav seçildiğinde verileri ve Modu ayarla
   useEffect(() => {
     if (!selectedExamId) {
-      setCurrentExam(null);
       setStudents([]);
       setAllClasses([]);
       setGroups([]);
       setDistributions([]);
-      setLangStats({});
       return;
     }
 
     const exam = exams.find(e => e.id === selectedExamId);
-    setCurrentExam(exam || null);
 
     const fetchStudents = async () => {
       if (!exam) return;
@@ -72,36 +63,11 @@ const SeatingDistribution = () => {
         if (error) throw error;
         setStudents(data || []);
 
-        // 1. Şubeleri ayarla
         const classSet = new Set((data || []).map(s => `${s.grade}-${s.class}`));
         setAllClasses(Array.from(classSet).sort());
-
-        // 2. Yalnızca Yabancı Dil/Seviye Sınavı ise Dil İstatistiklerini Hesapla
-        const isLang = 
-          exam.type === 'foreign_language' ||
-          exam.exam_type === 'foreign_language' ||
-          exam.category === '2_yabanci_dil' ||
-          exam.category === 'yabanci_dil' ||
-          exam.category === 'ingilizce_seviye' ||
-          exam.is_second_language;
-
-        if (isLang) {
-          const stats = { secondLang: {}, englishLevel: {} };
-          (data || []).forEach(s => {
-            const sec = s.second_lang || s.second_language || 'Belirtilmedi';
-            const eng = s.english_level ? s.english_level.toUpperCase() : 'Belirtilmedi';
-
-            stats.secondLang[sec] = (stats.secondLang[sec] || 0) + 1;
-            stats.englishLevel[eng] = (stats.englishLevel[eng] || 0) + 1;
-          });
-          setLangStats(stats);
-        } else {
-          setLangStats({}); // Akademik sınavsa dil istatistiklerini temizle
-        }
-
         setGroups([]);
         setDistributions([]);
-        setMessage(`${data?.length || 0} öğrenci getirildi. Mod: ${isLang ? 'Yabancı Dil / Seviye (Tam İzolasyon)' : 'Akademik (Şube Karması)'}`);
+        setMessage(`${data?.length || 0} öğrenci listelendi.`);
       } catch (err) {
         console.error('Öğrenci çekme hatası:', err);
       }
@@ -118,7 +84,7 @@ const SeatingDistribution = () => {
   };
 
   const removeGroup = (groupId) => {
-    if (groups.length <= 1) return setMessage('En az 1 grup olmalı.');
+    if (groups.length <= 1) return setMessage('En az 1 grup tanımlamalısınız.');
     setGroups(groups.filter(g => g.id !== groupId));
   };
 
@@ -155,151 +121,183 @@ const SeatingDistribution = () => {
     return list;
   };
 
-  // İKİLİ ALGORİTMA ÇALIŞTIRICI
+  // DAĞITIM MOTORU
   const runDistribution = async () => {
-    if (!selectedExamId || groups.length === 0) return;
+    if (!selectedExamId) return setMessage('Lütfen bir sınav seçin.');
+
+    if (!(examMode === 'ortaokul_akademik' && keepInOwnClassroom) && groups.length === 0) {
+      return setMessage('Dağıtım için en az bir grup oluşturmalısınız.');
+    }
 
     setLoading(true);
-    setMessage(isForeignLanguageExam ? 'Dil Odaklı İzolasyon Dağıtımı Yapılıyor...' : 'Akademik Şube Karması Yapılıyor...');
+    setMessage('Dağıtım hesaplanıyor...');
 
     try {
       const assignments = [];
 
-      for (const group of groups) {
-        const groupStudents = students.filter(s => group.classes.includes(`${s.grade}-${s.class}`));
-        if (groupStudents.length === 0) continue;
+      // =========================================================================
+      // MOD 1 & MOD 3 (Grup Karma Yapı): LİSE AKADEMİK VE ORTAOKUL AKADEMİK
+      // =========================================================================
+      if (examMode === 'lise_akademik' || examMode === 'ortaokul_akademik') {
 
-        const groupRooms = rooms
-          .filter(r => group.roomIds.includes(r.id))
-          .map(r => ({
-            ...r,
-            totalCap: Number(r.capacity || 0) + Number(r.extra_seats_added || r.extraSeatsAdded || 0),
-            seats: [],
-            assignedKey: null // Salona hangi dil/seviye grubunun atandığını takip eder
-          }))
-          .sort((a, b) => b.totalCap - a.totalCap);
-
-        if (groupRooms.length === 0) throw new Error(`"${group.name}" için salon seçilmedi.`);
-
-        // =========================================================
-        // MOD 1: YABANCI DİL / SEVİYE ALGORİTMASI (TAM İZOLASYON)
-        // =========================================================
-        if (isForeignLanguageExam) {
-          const langClusters = {};
-
-          // Öğrencileri Dil ve Seviye bilgisine göre birleşik anahtarla grupla
-          groupStudents.forEach(st => {
-            const secLang = st.second_lang || st.second_language || 'Belirtilmedi';
-            const engLvl = st.english_level ? st.english_level.toUpperCase() : 'Belirtilmedi';
-
-            let groupKey = 'Belirtilmedi';
-            if (currentExam?.category === '2_yabanci_dil') {
-              groupKey = secLang;
-            } else if (currentExam?.category === 'ingilizce_seviye') {
-              groupKey = engLvl;
-            } else {
-              // Karma dil/seviye sınavları için ikili anahtar (Örn: Almanca - CORE)
-              groupKey = `${secLang} - ${engLvl}`;
-            }
-
-            if (!langClusters[groupKey]) langClusters[groupKey] = [];
-            langClusters[groupKey].push(st);
+        // ORTAOKUL SEÇENEĞİ: HERKES KENDİ ŞUBESİNDE SINAVA GİRSİN
+        if (examMode === 'ortaokul_akademik' && keepInOwnClassroom) {
+          const classGrouped = {};
+          students.forEach(st => {
+            const clsKey = `${st.grade}-${st.class}`;
+            if (!classGrouped[clsKey]) classGrouped[clsKey] = [];
+            classGrouped[clsKey].push(st);
           });
 
-          const sortedKeys = Object.keys(langClusters).sort(
-            (a, b) => langClusters[b].length - langClusters[a].length
-          );
+          let roomIdx = 0;
+          for (const clsKey of Object.keys(classGrouped)) {
+            const clsStudents = classGrouped[clsKey];
+            const targetRoom = rooms[roomIdx % rooms.length];
 
-          let currentRoomIdx = 0;
-
-          for (const key of sortedKeys) {
-            let pool = shuffleArray(langClusters[key]);
-
-            while (pool.length > 0) {
-              if (currentRoomIdx >= groupRooms.length) {
-                throw new Error(`Kapasite yetersiz! "${key}" grubundaki öğrenciler için boş salon kalmadı.`);
-              }
-
-              const room = groupRooms[currentRoomIdx];
-
-              // Eğer salonda başka bir grup varsa bu salonu atla
-              if (room.seats.length > 0 && room.assignedKey !== key) {
-                currentRoomIdx++;
-                continue;
-              }
-
-              const emptySeats = room.totalCap - room.seats.length;
-
-              if (emptySeats > 0) {
-                const studentsToSeat = pool.slice(0, emptySeats);
-                pool = pool.slice(emptySeats);
-
-                room.assignedKey = key;
-                studentsToSeat.forEach(student => room.seats.push(student));
-              }
-
-              // Salon dolduysa bir sonrakine geç
-              if (room.seats.length >= room.totalCap) {
-                currentRoomIdx++;
-              }
-            }
-
-            // DİL/SEVİYE GRUBU BİTTİĞİNDE YENİ GRUP İÇİN KESİNLİKLE SONRAKİ SALONA GEÇ
-            // Bu sayede salonda boş yer kalsa dahi farklı bir dil dahil edilmez.
-            currentRoomIdx++;
+            clsStudents.forEach((st, idx) => {
+              assignments.push({
+                student_id: st.id,
+                room_id: targetRoom.id,
+                seat_number: idx + 1,
+                student_name: `${st.first_name || st.firstName || ''} ${st.last_name || st.lastName || ''}`.trim(),
+                class: st.class,
+                grade: st.grade,
+              });
+            });
+            roomIdx++;
           }
         } 
-        // =========================================================
-        // MOD 2: AKADEMİK SINAV ALGORİTMASI (ŞUBE KARMASI)
-        // =========================================================
+        // STANDART ŞUBE KARMASI
         else {
-          const classQueues = {};
-          group.classes.forEach(cls => {
-            classQueues[cls] = shuffleArray(groupStudents.filter(s => `${s.grade}-${s.class}` === cls));
-          });
+          for (const group of groups) {
+            const groupStudents = students.filter(s => group.classes.includes(`${s.grade}-${s.class}`));
+            if (groupStudents.length === 0) continue;
 
-          const interleavedList = [];
-          const totalGroupStudents = groupStudents.length;
+            const groupRooms = rooms
+              .filter(r => group.roomIds.includes(r.id))
+              .map(r => ({
+                ...r,
+                totalCap: Number(r.capacity || 0) + Number(r.extra_seats_added || r.extraSeatsAdded || 0),
+                seats: []
+              }))
+              .sort((a, b) => b.totalCap - a.totalCap);
 
-          while (interleavedList.length < totalGroupStudents) {
-            const availClasses = group.classes.filter(cls => classQueues[cls] && classQueues[cls].length > 0);
-            if (availClasses.length === 0) break;
+            if (groupRooms.length === 0) throw new Error(`"${group.name}" için salon seçilmedi.`);
 
-            const lastClass = interleavedList.length > 0 ? `${interleavedList[interleavedList.length - 1].grade}-${interleavedList[interleavedList.length - 1].class}` : null;
-            let candidateClasses = availClasses.filter(c => c !== lastClass);
-            if (candidateClasses.length === 0) candidateClasses = availClasses;
+            const classQueues = {};
+            group.classes.forEach(cls => {
+              classQueues[cls] = shuffleArray(groupStudents.filter(s => `${s.grade}-${s.class}` === cls));
+            });
 
-            const chosenClass = candidateClasses[Math.floor(Math.random() * candidateClasses.length)];
-            interleavedList.push(classQueues[chosenClass].shift());
-          }
+            const interleavedList = [];
+            const totalGroupStudents = groupStudents.length;
 
-          let studentIdx = 0;
-          for (const room of groupRooms) {
-            while (room.seats.length < room.totalCap && studentIdx < interleavedList.length) {
-              room.seats.push(interleavedList[studentIdx]);
-              studentIdx++;
+            // Ardışık olarak aynı şubenin denk gelmesini engelleyen döngü
+            while (interleavedList.length < totalGroupStudents) {
+              const availClasses = group.classes.filter(cls => classQueues[cls] && classQueues[cls].length > 0);
+              if (availClasses.length === 0) break;
+
+              const lastClass = interleavedList.length > 0 
+                ? `${interleavedList[interleavedList.length - 1].grade}-${interleavedList[interleavedList.length - 1].class}` 
+                : null;
+
+              let candidateClasses = availClasses.filter(c => c !== lastClass);
+              if (candidateClasses.length === 0) candidateClasses = availClasses;
+
+              const chosenClass = candidateClasses[Math.floor(Math.random() * candidateClasses.length)];
+              interleavedList.push(classQueues[chosenClass].shift());
             }
+
+            let studentIdx = 0;
+            for (const room of groupRooms) {
+              while (room.seats.length < room.totalCap && studentIdx < interleavedList.length) {
+                room.seats.push(interleavedList[studentIdx]);
+                studentIdx++;
+              }
+            }
+
+            groupRooms.forEach(room => {
+              room.seats.forEach((st, idx) => {
+                assignments.push({
+                  student_id: st.id,
+                  room_id: room.id,
+                  seat_number: idx + 1,
+                  student_name: `${st.first_name || st.firstName || ''} ${st.last_name || st.lastName || ''}`.trim(),
+                  class: st.class,
+                  grade: st.grade,
+                });
+              });
+            });
           }
         }
-
-        // Atamaları Hazırla
-        groupRooms.forEach(room => {
-          room.seats.forEach((st, idx) => {
-            assignments.push({
-              student_id: st.id,
-              room_id: room.id,
-              seat_number: idx + 1,
-              student_name: `${st.first_name || st.firstName || ''} ${st.last_name || st.lastName || ''}`.trim(),
-              class: st.class,
-              grade: st.grade,
-              second_language: isForeignLanguageExam ? (st.second_lang || st.second_language || null) : null,
-              english_level: isForeignLanguageExam ? (st.english_level || null) : null,
-            });
-          });
-        });
       }
 
-      // Supabase Veritabanı Güncelleme
+      // =========================================================================
+      // MOD 2: LİSE YABANCI DİL SINAVI (EXCEL TARZI BLOK SIRALAMA)
+      // =========================================================================
+      else if (examMode === 'lise_yabanci_dil') {
+        for (const group of groups) {
+          const groupStudents = students.filter(s => group.classes.includes(`${s.grade}-${s.class}`));
+          if (groupStudents.length === 0) continue;
+
+          const groupRooms = rooms
+            .filter(r => group.roomIds.includes(r.id))
+            .map(r => ({
+              ...r,
+              totalCap: Number(r.capacity || 0) + Number(r.extra_seats_added || r.extraSeatsAdded || 0),
+              seats: []
+            }))
+            .sort((a, b) => b.totalCap - a.totalCap);
+
+          if (groupRooms.length === 0) throw new Error(`"${group.name}" için salon seçilmedi.`);
+
+          // Karıştırma yapılmaz! Diller ve Seviyeler alt alta sıralanır.
+          const sortedStudents = [...groupStudents].sort((a, b) => {
+            if (langPrimaryFilter === 'second_lang') {
+              const langA = a.second_lang || a.second_language || 'Z_Belirtilmedi';
+              const langB = b.second_lang || b.second_language || 'Z_Belirtilmedi';
+              if (langA !== langB) return langA.localeCompare(langB);
+
+              const engA = a.english_level || 'Z_Belirtilmedi';
+              const engB = b.english_level || 'Z_Belirtilmedi';
+              return engA.localeCompare(engB);
+            } else {
+              const engA = a.english_level || 'Z_Belirtilmedi';
+              const engB = b.english_level || 'Z_Belirtilmedi';
+              if (engA !== engB) return engA.localeCompare(engB);
+
+              const langA = a.second_lang || a.second_language || 'Z_Belirtilmedi';
+              const langB = b.second_lang || b.second_language || 'Z_Belirtilmedi';
+              return langA.localeCompare(langB);
+            }
+          });
+
+          let stIdx = 0;
+          for (const room of groupRooms) {
+            while (room.seats.length < room.totalCap && stIdx < sortedStudents.length) {
+              room.seats.push(sortedStudents[stIdx]);
+              stIdx++;
+            }
+          }
+
+          groupRooms.forEach(room => {
+            room.seats.forEach((st, idx) => {
+              assignments.push({
+                student_id: st.id,
+                room_id: room.id,
+                seat_number: idx + 1,
+                student_name: `${st.first_name || st.firstName || ''} ${st.last_name || st.lastName || ''}`.trim(),
+                class: st.class,
+                grade: st.grade,
+                second_language: st.second_lang || st.second_language || null,
+                english_level: st.english_level || null,
+              });
+            });
+          });
+        }
+      }
+
+      // Supabase Veritabanına Yaz
       await supabase.from('seating_plans').delete().eq('exam_id', selectedExamId);
       const { error: insertError } = await supabase.from('seating_plans').insert({
         exam_id: selectedExamId,
@@ -310,7 +308,7 @@ const SeatingDistribution = () => {
       if (insertError) throw insertError;
 
       setDistributions(assignments);
-      setMessage(`Başarılı! ${isForeignLanguageExam ? 'Yabancı Dil Tek Tip Salon Dağıtımı' : 'Akademik Şube Karması'} tamamlandı.`);
+      setMessage('Dağıtım işlemi tamamlandı ve veritabanına kaydedildi.');
     } catch (err) {
       console.error(err);
       setMessage(`Hata: ${err.message}`);
@@ -321,57 +319,124 @@ const SeatingDistribution = () => {
 
   return (
     <div style={{ padding: '1rem', maxWidth: '1400px', margin: '0 auto' }}>
-      <h2>🪑 Sınav Oturma Düzeni Dağıtımı</h2>
+      <h2>🪑 Sınav Oturma Düzeni Paneli</h2>
+
+      {/* MOD SEÇİM EKRANI */}
+      <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem' }}>
+        <button
+          onClick={() => setExamMode('lise_akademik')}
+          style={{
+            flex: 1,
+            padding: '1rem',
+            borderRadius: '8px',
+            border: '2px solid #007bff',
+            background: examMode === 'lise_akademik' ? '#007bff' : '#fff',
+            color: examMode === 'lise_akademik' ? '#fff' : '#007bff',
+            fontWeight: 'bold',
+            cursor: 'pointer'
+          }}
+        >
+          📘 1. Lise Akademik Deneme
+        </button>
+
+        <button
+          onClick={() => setExamMode('lise_yabanci_dil')}
+          style={{
+            flex: 1,
+            padding: '1rem',
+            borderRadius: '8px',
+            border: '2px solid #28a745',
+            background: examMode === 'lise_yabanci_dil' ? '#28a745' : '#fff',
+            color: examMode === 'lise_yabanci_dil' ? '#fff' : '#28a745',
+            fontWeight: 'bold',
+            cursor: 'pointer'
+          }}
+        >
+          🌍 2. Lise Yabancı Dil Deneme
+        </button>
+
+        <button
+          onClick={() => setExamMode('ortaokul_akademik')}
+          style={{
+            flex: 1,
+            padding: '1rem',
+            borderRadius: '8px',
+            border: '2px solid #fd7e14',
+            background: examMode === 'ortaokul_akademik' ? '#fd7e14' : '#fff',
+            color: examMode === 'ortaokul_akademik' ? '#fff' : '#fd7e14',
+            fontWeight: 'bold',
+            cursor: 'pointer'
+          }}
+        >
+          📙 3. Ortaokul Akademik Deneme
+        </button>
+      </div>
 
       {/* Sınav Seçimi */}
       <div style={{ marginBottom: '1.5rem' }}>
-        <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '0.5rem' }}>Sınav Seçin</label>
+        <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '0.5rem' }}>Sınavı Seçin</label>
         <select
           value={selectedExamId}
           onChange={(e) => setSelectedExamId(e.target.value)}
-          style={{ width: '100%', padding: '0.6rem', border: '1px solid #ccc', borderRadius: '4px' }}
+          style={{ width: '100%', padding: '0.7rem', border: '1px solid #ccc', borderRadius: '4px' }}
         >
           <option value="">-- Sınav Seçin --</option>
           {exams.map(exam => (
             <option key={exam.id} value={exam.id}>
-              {exam.title} ({exam.date}) - [{exam.category === '2_yabanci_dil' || exam.category === 'ingilizce_seviye' || exam.type === 'foreign_language' ? 'Yabancı Dil Sınavı' : 'Akademik Sınav'}]
+              {exam.title} ({exam.date})
             </option>
           ))}
         </select>
       </div>
 
-      {/* SADECE YABANCI DİL / SEVİYE SINAVINDA GÖRÜNEN BİLGİ PANELİ */}
-      {selectedExamId && isForeignLanguageExam && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.5rem' }}>
-          <div style={{ background: '#eef6ff', padding: '1rem', borderRadius: '8px', border: '1px solid #b6d4fe' }}>
-            <h4 style={{ margin: '0 0 0.5rem 0', color: '#055160' }}>🌍 2. Yabancı Dil Toplamları</h4>
-            <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-              {Object.entries(langStats.secondLang || {}).map(([lang, count]) => (
-                <span key={lang} style={{ background: '#fff', padding: '0.3rem 0.7rem', borderRadius: '4px', fontWeight: 'bold' }}>
-                  {lang}: {count} Kişi
-                </span>
-              ))}
-            </div>
-          </div>
-
-          <div style={{ background: '#f0fff4', padding: '1rem', borderRadius: '8px', border: '1px solid #b7eb8f' }}>
-            <h4 style={{ margin: '0 0 0.5rem 0', color: '#135200' }}>📚 İngilizce Seviye Toplamları</h4>
-            <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-              {Object.entries(langStats.englishLevel || {}).map(([lvl, count]) => (
-                <span key={lvl} style={{ background: '#fff', padding: '0.3rem 0.7rem', borderRadius: '4px', fontWeight: 'bold' }}>
-                  {lvl}: {count} Kişi
-                </span>
-              ))}
-            </div>
+      {/* MOD 2: YABANCI DİL SINAVI İÇİN SIRALAMA AYARI (EXCEL MODU) */}
+      {selectedExamId && examMode === 'lise_yabanci_dil' && (
+        <div style={{ background: '#eef6ff', padding: '1rem', borderRadius: '8px', border: '1px solid #b6d4fe', marginBottom: '1.5rem' }}>
+          <h4 style={{ margin: '0 0 0.5rem 0', color: '#055160' }}>📊 Excel Tipi Sıralama Düzeni</h4>
+          <p style={{ margin: '0 0 0.8rem 0', fontSize: '0.85rem', color: '#555' }}>
+            Öğrenciler karma yapılmadan sırayla dizilir (Almanca biter, Fransızca başlar).
+          </p>
+          <div style={{ display: 'flex', gap: '1.5rem' }}>
+            <label style={{ cursor: 'pointer', fontWeight: 'bold' }}>
+              <input
+                type="radio"
+                name="langFilter"
+                value="second_lang"
+                checked={langPrimaryFilter === 'second_lang'}
+                onChange={() => setLangPrimaryFilter('second_lang')}
+              /> 1. 2. Yabancı Dil (Almanca, Fransızca vb.) ➔ 2. Seviye
+            </label>
+            <label style={{ cursor: 'pointer', fontWeight: 'bold' }}>
+              <input
+                type="radio"
+                name="langFilter"
+                value="english_level"
+                checked={langPrimaryFilter === 'english_level'}
+                onChange={() => setLangPrimaryFilter('english_level')}
+              /> 1. İngilizce Seviye (Core, Extended vb.) ➔ 2. 2. Yabancı Dil
+            </label>
           </div>
         </div>
       )}
 
-      {/* Grup Yapılandırma Panel */}
-      {selectedExamId && (
+      {/* MOD 3: ORTAOKUL ÖZEL SEÇENEĞİ */}
+      {selectedExamId && examMode === 'ortaokul_akademik' && (
+        <div style={{ background: '#fff3cd', padding: '1rem', borderRadius: '8px', border: '1px solid #ffeeba', marginBottom: '1.5rem' }}>
+          <label
+            onClick={() => setKeepInOwnClassroom(!keepInOwnClassroom)}
+            style={{ cursor: 'pointer', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#856404' }}
+          >
+            {keepInOwnClassroom ? <FaCheckSquare size={20} color="#fd7e14" /> : <FaSquare size={20} color="#ccc" />}
+            Herkes Kendi Şubesinde Sınava Girsin (Karma Yapma)
+          </label>
+        </div>
+      )}
+
+      {/* GRUP VE SALON YAPILANDIRMASI */}
+      {selectedExamId && !(examMode === 'ortaokul_akademik' && keepInOwnClassroom) && (
         <div style={{ marginBottom: '2rem' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-            <h4>Grup & Salon Atamaları</h4>
+            <h4>Grup & Salon Yapılandırması</h4>
             <button onClick={addGroup} style={{ padding: '0.4rem 1rem', background: '#28a745', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
               <FaPlus /> Grup Ekle
             </button>
@@ -382,7 +447,7 @@ const SeatingDistribution = () => {
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
                 <strong>{group.name}</strong>
                 <button onClick={() => removeGroup(group.id)} style={{ color: '#dc3545', border: 'none', background: 'none', cursor: 'pointer' }}>
-                  <FaTrash /> Grubu Sil
+                  <FaTrash /> Sil
                 </button>
               </div>
 
@@ -428,7 +493,7 @@ const SeatingDistribution = () => {
                           cursor: 'pointer'
                         }}
                       >
-                        {room.name} ({totalCap} Kişilik)
+                        {room.name} ({totalCap} Kişi)
                       </button>
                     );
                   })}
@@ -439,32 +504,32 @@ const SeatingDistribution = () => {
         </div>
       )}
 
-      {/* Tetikleme Butonu */}
+      {/* ÇALIŞTIR BUTONU */}
       {selectedExamId && (
         <button
           onClick={runDistribution}
           disabled={loading}
-          style={{ padding: '0.7rem 1.8rem', background: '#007bff', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '1rem' }}
+          style={{ padding: '0.8rem 2rem', background: '#007bff', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '1rem', fontWeight: 'bold' }}
         >
-          <FaSync /> {loading ? 'Hesaplanıyor...' : isForeignLanguageExam ? 'Dil Odaklı Dağıtımı Başlat' : 'Akademik Karmayı Başlat'}
+          <FaSync /> {loading ? 'Dağıtılıyor...' : 'Dağıtımı Başlat'}
         </button>
       )}
 
       {message && <p style={{ marginTop: '1rem', fontWeight: 'bold', color: message.includes('Hata') ? 'red' : 'green' }}>{message}</p>}
 
-      {/* Sonuç Tablosu */}
+      {/* SONUÇ TABLOSU */}
       {distributions.length > 0 && (
         <div style={{ marginTop: '2rem' }}>
-          <h3>Dağıtım Sonuçları ({distributions.length} Öğrenci)</h3>
+          <h3>Dağıtım Listesi ({distributions.length} Öğrenci)</h3>
           <table style={{ width: '100%', borderCollapse: 'collapse', background: '#fff', marginTop: '1rem' }}>
             <thead>
               <tr style={{ background: '#f8f9fa', borderBottom: '2px solid #ddd', textAlign: 'left' }}>
                 <th style={{ padding: '0.6rem' }}>Salon</th>
-                <th style={{ padding: '0.6rem' }}>Sıra No</th>
+                <th style={{ padding: '0.6rem' }}>Sıra</th>
                 <th style={{ padding: '0.6rem' }}>Öğrenci Adı</th>
                 <th style={{ padding: '0.6rem' }}>Sınıf</th>
-                {isForeignLanguageExam && <th style={{ padding: '0.6rem' }}>2. Yabancı Dil</th>}
-                {isForeignLanguageExam && <th style={{ padding: '0.6rem' }}>İngilizce Seviyesi</th>}
+                {examMode === 'lise_yabanci_dil' && <th style={{ padding: '0.6rem' }}>2. Yabancı Dil</th>}
+                {examMode === 'lise_yabanci_dil' && <th style={{ padding: '0.6rem' }}>İngilizce Seviyesi</th>}
               </tr>
             </thead>
             <tbody>
@@ -476,10 +541,10 @@ const SeatingDistribution = () => {
                     <td style={{ padding: '0.6rem' }}>{item.seat_number}</td>
                     <td style={{ padding: '0.6rem' }}>{item.student_name}</td>
                     <td style={{ padding: '0.6rem' }}>{item.grade}-{item.class}</td>
-                    {isForeignLanguageExam && (
+                    {examMode === 'lise_yabanci_dil' && (
                       <td style={{ padding: '0.6rem', color: '#28a745', fontWeight: 'bold' }}>{item.second_language || '-'}</td>
                     )}
-                    {isForeignLanguageExam && (
+                    {examMode === 'lise_yabanci_dil' && (
                       <td style={{ padding: '0.6rem', color: '#007bff', fontWeight: 'bold' }}>{item.english_level ? item.english_level.toUpperCase() : '-'}</td>
                     )}
                   </tr>
