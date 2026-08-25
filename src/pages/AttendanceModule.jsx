@@ -65,6 +65,17 @@ const AttendanceModule = () => {
             : plan.assignments;
         }
 
+        // Sınıf/Kademe bilgisini dinamik olarak ayıkla
+        const targetGrades = Array.from(
+          new Set(
+            assignments
+              .map(a => a.grade || a.target_grade || a.class_level)
+              .filter(Boolean)
+          )
+        ).sort((a, b) => a - b);
+
+        const displayGrades = exam.target_grade || exam.grade || (targetGrades.length > 0 ? targetGrades.join(', ') + '. Sınıf' : '');
+
         const totalStudents = assignments.length;
         const examAtt = (attData || []).filter(a => String(a.exam_id) === String(exam.id));
         
@@ -76,7 +87,8 @@ const AttendanceModule = () => {
           totalStudents,
           attendedCount,
           absentCount,
-          hasPlan: totalStudents > 0
+          hasPlan: totalStudents > 0,
+          displayGrades
         };
       });
 
@@ -290,10 +302,24 @@ const AttendanceModule = () => {
                       boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
                     }}
                   >
-                    <div>
-                      <h3 style={{ margin: '0 0 0.4rem 0', color: '#1a202c' }}>
-                        {exam.title} {!exam.hasPlan && <span style={{ fontSize: '0.75rem', color: '#e53e3e' }}>(Oturma Planı Yok)</span>}
-                      </h3>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                        <h3 style={{ margin: 0, color: '#1a202c' }}>
+                          {exam.title} {!exam.hasPlan && <span style={{ fontSize: '0.75rem', color: '#e53e3e' }}>(Oturma Planı Yok)</span>}
+                        </h3>
+                        {exam.displayGrades && (
+                          <span style={{
+                            background: '#e2e8f0',
+                            color: '#4a5568',
+                            padding: '0.15rem 0.5rem',
+                            borderRadius: '4px',
+                            fontSize: '0.75rem',
+                            fontWeight: 'bold'
+                          }}>
+                            {exam.displayGrades}
+                          </span>
+                        )}
+                      </div>
                       <span style={{ fontSize: '0.85rem', color: '#718096' }}>Tarih: {exam.date}</span>
                     </div>
                     
