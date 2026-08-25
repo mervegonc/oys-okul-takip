@@ -13,14 +13,16 @@ const SeatingDistribution = () => {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
 
-  // Helper: Etiket Oluşturucu
-  const getStudentGroupKey = (student) => {
-    const langInfo = [
-      student.english_level ? student.english_level.toUpperCase() : null,
-      student.second_lang || student.second_language || null
-    ].filter(Boolean).join(' - ');
+  // Helper: Öğrencinin Karma Grubu Anahtarını Oluşturur (Örn: "9-A (A2 - Almanca)" veya "9-A")
+  const getStudentGroupKey = (student, isForeignLanguageExam) => {
+    const baseClass = `${student.grade}-${student.class}`;
+    if (!isForeignLanguageExam) return baseClass;
 
-    return `${student.grade}-${student.class}${langInfo ? ` (${langInfo})` : ''}`;
+    const eng = student.english_level ? student.english_level.toUpperCase() : null;
+    const secLang = student.second_lang || student.second_language || null;
+
+    const langDetails = [eng, secLang].filter(Boolean).join(' / ');
+    return langDetails ? `${baseClass} (${langDetails})` : `${baseClass} (Dil Belirtilmemiş)`;
   };
 
   // Tüm sınav ve salonları getir
@@ -69,32 +71,29 @@ const SeatingDistribution = () => {
       }
 
       try {
-        let query = supabase
-          .from('students')
-          .select('*')
-          .in('grade', gradeLevels.map(String));
-
+        // Sınavın yabancı dil sınavı olup olmadığını kontrol et
         const isForeignLanguageExam = 
           exam.type === 'foreign_language' || 
           exam.exam_type === 'foreign_language' || 
           exam.category === 'yabanci_dil' ||
-          exam.is_second_language;
+          exam.is_second_language ||
+          Boolean(exam.second_language || exam.second_lang || exam.language);
 
-        if (isForeignLanguageExam && (exam.second_language || exam.second_lang || exam.language)) {
-          const targetLang = exam.second_language || exam.second_lang || exam.language;
-          query = query.eq('second_lang', targetLang);
-        }
+        // Tüm ilgili seviyedeki öğrencileri getir (Filtrelemeden, dil gruplarını ayırmak üzere)
+        const { data, error } = await supabase
+          .from('students')
+          .select('*')
+          .in('grade', gradeLevels.map(String));
 
-        const { data, error } = await query;
         if (error) throw error;
 
         setStudents(data || []);
 
-        // Şube, İngilizce Seviyesi ve 2. Yabancı Dil kombinasyonlarını çıkar
+        // Şube + Dil Kombinasyonlarını Oluştur
         const classSet = new Set();
         (data || []).forEach(s => {
           if (s.grade && s.class) {
-            classSet.add(getStudentGroupKey(s));
+            classSet.add(getStudentGroupKey(s, isForeignLanguageExam));
           }
         });
         const sortedClasses = Array.from(classSet).sort();
@@ -102,7 +101,7 @@ const SeatingDistribution = () => {
 
         setGroups([]);
         setDistributions([]);
-        setMessage(`${data?.length || 0} öğrenci, ${sortedClasses.length} farklı grup seçeneği bulundu.`);
+        setMessage(`${data?.length || 0} öğrenci getirildi. ${sortedClasses.length} farklı karma grubu (Sınıf/Dil) tespit edildi.`);
       } catch (error) {
         console.error('Öğrenciler alınamadı:', error);
         setMessage('Öğrenciler alınırken hata oluştu.');
@@ -163,7 +162,7 @@ const SeatingDistribution = () => {
     return arr;
   };
 
-  const interleaveStudentsByClass = (classList, studentMap) => {
+  const interleaveStudentsByClass = (classList, studentMap, isForeignLanguageExam) => {
     const classQueues = {};
     classList.forEach(cls => {
       classQueues[cls] = shuffleArray([...(studentMap[cls] || [])]);
@@ -177,9 +176,9 @@ const SeatingDistribution = () => {
       let consecutiveCount = 0;
 
       if (result.length >= 3) {
-        const c1 = getStudentGroupKey(result[result.length - 1]);
-        const c2 = getStudentGroupKey(result[result.length - 2]);
-        const c3 = getStudentGroupKey(result[result.length - 3]);
+        const c1 = getStudentGroupKey(result[result.length - 1], isForeignLanguageExam);
+        const c2 = getStudentGroupKey(result[result.length - 2], isForeignLanguageExam);
+        const c3 = getStudentGroupKey(result[result.length - 3], isForeignLanguageExam);
 
         if (c1 === c2 && c2 === c3) {
           lastClass = c1;
@@ -218,7 +217,7 @@ const SeatingDistribution = () => {
 
     for (const group of groups) {
       if (group.classes.length === 0) {
-        setMessage(`"${group.name}" için şube seçilmemiş.`);
+        setMessage(`"${group.name}" için şube/dil grubu seçilmemiş.`);
         return;
       }
       if (group.roomIds.length === 0) {
@@ -231,41 +230,17 @@ const SeatingDistribution = () => {
     setMessage('Karma dağıtım yapılıyor...');
 
     try {
-      const { data: previousPlans, error: prevPlanError } = await supabase
-        .from('seating_plans')
-        .select('exam_id, assignments')
-        .neq('exam_id', selectedExam);
-
-      if (prevPlanError) {
-        console.warn('Geçmiş oturum planları okunamadı:', prevPlanError);
-      }
-
-      const studentHistoryMap = {};
-      if (previousPlans && previousPlans.length > 0) {
-        previousPlans.forEach(plan => {
-          const assignmentsList = plan.assignments || [];
-          assignmentsList.forEach(asgn => {
-            if (asgn.student_id && asgn.room_id && asgn.seat_number) {
-              const sId = String(asgn.student_id);
-              if (!studentHistoryMap[sId]) {
-                studentHistoryMap[sId] = new Set();
-              }
-              studentHistoryMap[sId].add(`${asgn.room_id}_${asgn.seat_number}`);
-            }
-          });
-        });
-      }
-
-      const { data: conflictGroups, error: conflictError } = await supabase
-        .from('conflict_groups')
-        .select('*');
-      if (conflictError && conflictError.code !== 'PGRST116') {
-        console.warn('Çakışma grupları okunamadı:', conflictError);
-      }
+      const exam = exams.find(e => e.id === selectedExam);
+      const isForeignLanguageExam = 
+        exam?.type === 'foreign_language' || 
+        exam?.exam_type === 'foreign_language' || 
+        exam?.category === 'yabanci_dil' ||
+        exam?.is_second_language ||
+        Boolean(exam?.second_language || exam?.second_lang || exam?.language);
 
       const studentMap = {};
       students.forEach(s => {
-        const key = getStudentGroupKey(s);
+        const key = getStudentGroupKey(s, isForeignLanguageExam);
         if (!studentMap[key]) studentMap[key] = [];
         studentMap[key].push(s);
       });
@@ -279,7 +254,7 @@ const SeatingDistribution = () => {
       }));
 
       for (const group of groups) {
-        const groupStudents = interleaveStudentsByClass(group.classes, studentMap);
+        const groupStudents = interleaveStudentsByClass(group.classes, studentMap, isForeignLanguageExam);
         if (groupStudents.length === 0) continue;
 
         const groupRooms = shuffleArray(roomUsage.filter(r => group.roomIds.includes(r.roomId)));
@@ -292,89 +267,21 @@ const SeatingDistribution = () => {
         let roomIndex = Math.floor(Math.random() * groupRooms.length);
         for (const student of groupStudents) {
           let placed = false;
-          const studentHistory = studentHistoryMap[String(student.id)] || new Set();
-
           for (let i = 0; i < groupRooms.length; i++) {
             const idx = (roomIndex + i) % groupRooms.length;
             const ra = groupRooms[idx];
 
             if (ra.seats.length < ra.capacity) {
               const candidateSeatNo = ra.seats.length + 1;
-              const seatKey = `${ra.roomId}_${candidateSeatNo}`;
-
-              if (!studentHistory.has(seatKey)) {
-                ra.seats.push({ student, seatNumber: candidateSeatNo });
-                placed = true;
-                roomIndex = idx + 1;
-                break;
-              }
-            }
-          }
-
-          if (!placed) {
-            for (let i = 0; i < groupRooms.length; i++) {
-              const idx = (roomIndex + i) % groupRooms.length;
-              const ra = groupRooms[idx];
-              if (ra.seats.length < ra.capacity) {
-                const seatNo = ra.seats.length + 1;
-                ra.seats.push({ student, seatNumber: seatNo });
-                placed = true;
-                roomIndex = idx + 1;
-                break;
-              }
+              ra.seats.push({ student, seatNumber: candidateSeatNo });
+              placed = true;
+              roomIndex = idx + 1;
+              break;
             }
           }
 
           if (!placed) {
             throw new Error(`"${group.name}" için yeterli salon kapasitesi yok.`);
-          }
-        }
-      }
-
-      if (conflictGroups && conflictGroups.length > 0) {
-        for (const conflictGroup of conflictGroups) {
-          const conflictStudentIds = (conflictGroup.student_ids || conflictGroup.studentIds || []).map(String);
-          if (conflictStudentIds.length < 2) continue;
-
-          const currentConflictAssignments = [];
-          for (const ra of roomUsage) {
-            for (const seatObj of ra.seats) {
-              if (conflictStudentIds.includes(String(seatObj.student.id))) {
-                currentConflictAssignments.push({ student: seatObj.student, roomId: ra.roomId, seatNumber: seatObj.seatNumber });
-              }
-            }
-          }
-
-          const roomMap = {};
-          currentConflictAssignments.forEach(item => {
-            if (!roomMap[item.roomId]) roomMap[item.roomId] = [];
-            roomMap[item.roomId].push(item);
-          });
-
-          for (const roomId of Object.keys(roomMap)) {
-            const conflictItems = roomMap[roomId];
-            if (conflictItems.length > 1) {
-              for (let c = 1; c < conflictItems.length; c++) {
-                const itemToMove = conflictItems[c];
-                const targetRoom = roomUsage.find(r =>
-                  r.roomId !== roomId &&
-                  r.seats.length < r.capacity
-                );
-
-                if (targetRoom) {
-                  const sourceRoom = roomUsage.find(r => r.roomId === roomId);
-                  sourceRoom.seats = sourceRoom.seats.filter(s => String(s.student.id) !== String(itemToMove.student.id));
-                  sourceRoom.seats.forEach((s, idx) => { s.seatNumber = idx + 1; });
-
-                  const newSeatNo = targetRoom.seats.length + 1;
-                  targetRoom.seats.push({ student: itemToMove.student, seatNumber: newSeatNo });
-                } else {
-                  setMessage('Çakışma grubu düzeltilemedi: yeterli alternatif salon yok.');
-                  setLoading(false);
-                  return;
-                }
-              }
-            }
           }
         }
       }
@@ -408,7 +315,7 @@ const SeatingDistribution = () => {
       if (insertError) throw insertError;
 
       setDistributions(assignments);
-      setMessage(`${assignments.length} öğrenci başarıyla yeniden karılarak dağıtıldı.`);
+      setMessage(`${assignments.length} öğrenci dil seviyeleri ve sınıflarına göre başarıyla karıldı.`);
     } catch (error) {
       console.error('Karma hatası:', error);
       setMessage('Karma sırasında hata oluştu: ' + error.message);
@@ -431,10 +338,10 @@ const SeatingDistribution = () => {
           <option value="">-- Sınav Seçin --</option>
           {exams.map(exam => {
             const grades = exam.grade_levels || exam.gradeLevels || [];
-            const langInfo = (exam.second_lang || exam.second_language) ? ` [Dil: ${exam.second_lang || exam.second_language}]` : '';
+            const isLang = exam.type === 'foreign_language' || exam.category === 'yabanci_dil' || exam.second_language;
             return (
               <option key={exam.id} value={exam.id}>
-                {exam.title} ({exam.date}) - {grades.join(', ')}. Sınıflar{langInfo}
+                {exam.title} ({exam.date}) - {grades.join(', ')}. Sınıflar {isLang ? '[Yabancı Dil Sınavı]' : ''}
               </option>
             );
           })}
@@ -446,7 +353,7 @@ const SeatingDistribution = () => {
           <h4>Tüm Şubeler / Dil Grupları</h4>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
             {allClasses.map(cls => (
-              <span key={cls} style={{ padding: '0.3rem 0.8rem', background: '#e9ecef', borderRadius: '4px', fontSize: '0.9rem' }}>
+              <span key={cls} style={{ padding: '0.3rem 0.8rem', background: '#e9ecef', borderRadius: '4px', fontSize: '0.9rem', fontWeight: '500' }}>
                 {cls}
               </span>
             ))}
@@ -463,7 +370,6 @@ const SeatingDistribution = () => {
               return (
                 <span key={room.id} style={{ padding: '0.3rem 0.8rem', background: '#e9ecef', borderRadius: '4px', fontSize: '0.9rem' }}>
                   {room.name} ({totalCap})
-                  {room.class && ` - ${room.class}`}
                 </span>
               );
             })}
@@ -473,7 +379,7 @@ const SeatingDistribution = () => {
 
       <div style={{ marginBottom: '2rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-          <h4>Şube/Dil Grupları ve Salon Atamaları</h4>
+          <h4>Grup Yapılandırma ve Salon Atamaları</h4>
           <button
             onClick={addGroup}
             style={{
@@ -505,7 +411,7 @@ const SeatingDistribution = () => {
             </div>
 
             <div style={{ marginBottom: '0.8rem' }}>
-              <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '0.3rem' }}>Şubeler / Diller:</label>
+              <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '0.3rem' }}>Şube ve Dil Grupları:</label>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
                 {allClasses.map(cls => (
                   <button
@@ -524,13 +430,10 @@ const SeatingDistribution = () => {
                   </button>
                 ))}
               </div>
-              <div style={{ fontSize: '0.8rem', color: '#666', marginTop: '0.3rem' }}>
-                Seçili: {group.classes.length} şube/dil grubu
-              </div>
             </div>
 
             <div>
-              <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '0.3rem' }}>Salonlar:</label>
+              <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '0.3rem' }}>Atanacak Salonlar:</label>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
                 {rooms.map(room => {
                   const totalCap = Number(room.capacity || 0) + Number(room.extra_seats_added || room.extraSeatsAdded || 0);
@@ -548,23 +451,13 @@ const SeatingDistribution = () => {
                       }}
                     >
                       {room.name} ({totalCap})
-                      {room.class && ` - ${room.class}`}
                     </button>
                   );
                 })}
               </div>
-              <div style={{ fontSize: '0.8rem', color: '#666', marginTop: '0.3rem' }}>
-                Seçili: {group.roomIds.length} salon
-              </div>
             </div>
           </div>
         ))}
-
-        {groups.length === 0 && selectedExam && (
-          <p style={{ textAlign: 'center', color: '#666' }}>
-            Henüz grup oluşturulmamış. "Grup Ekle" butonuna tıklayarak başlayın.
-          </p>
-        )}
       </div>
 
       <div style={{ display: 'flex', gap: '0.8rem', marginBottom: '1rem' }}>
@@ -583,55 +476,15 @@ const SeatingDistribution = () => {
             gap: '0.5rem',
           }}
         >
-          <FaSync /> {loading ? 'Dağıtılıyor...' : distributions.length > 0 ? 'Tekrar Kar (Yeniden Dağıt)' : 'Karma Dağıtımı Başlat'}
+          <FaSync /> {loading ? 'Dağıtılıyor...' : 'Karma Dağıtımı Başlat'}
         </button>
-
-        {distributions.length > 0 && (
-          <button
-            onClick={runDistribution}
-            disabled={loading}
-            style={{
-              padding: '0.6rem 1.2rem',
-              background: '#17a2b8',
-              color: 'white',
-              border: 'none',
-              borderRadius: '6px',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.5rem',
-            }}
-          >
-            <FaRedo /> Yeniden Kar
-          </button>
-        )}
       </div>
 
-      {message && <p style={{ margin: '0.5rem 0', color: message.includes('hata') ? 'red' : 'green' }}>{message}</p>}
+      {message && <p style={{ margin: '0.5rem 0', color: message.includes('hata') ? 'red' : 'green', fontWeight: 'bold' }}>{message}</p>}
 
       {distributions.length > 0 && (
         <div style={{ marginTop: '2rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-            <h4>Dağıtım Sonucu ({distributions.length} öğrenci)</h4>
-            <button
-              onClick={runDistribution}
-              disabled={loading}
-              style={{
-                padding: '0.3rem 0.8rem',
-                background: '#6c757d',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                fontSize: '0.85rem',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.3rem',
-              }}
-            >
-              <FaRedo /> Beğenmedim, Tekrar Kar
-            </button>
-          </div>
+          <h4>Dağıtım Sonucu ({distributions.length} Öğrenci)</h4>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', background: 'white', borderRadius: '8px', overflow: 'hidden', boxShadow: '0 0 10px rgba(0,0,0,0.05)' }}>
               <thead style={{ background: '#f1f1f1' }}>
@@ -653,10 +506,10 @@ const SeatingDistribution = () => {
                       <td style={{ padding: '0.5rem', textAlign: 'center' }}>{index + 1}</td>
                       <td style={{ padding: '0.5rem' }}>{item.student_name}</td>
                       <td style={{ padding: '0.5rem' }}>{item.grade}-{item.class}</td>
-                      <td style={{ padding: '0.5rem' }}>{item.english_level ? item.english_level.toUpperCase() : '-'}</td>
-                      <td style={{ padding: '0.5rem' }}>{item.second_language || '-'}</td>
+                      <td style={{ padding: '0.5rem', fontWeight: 'bold', color: '#007bff' }}>{item.english_level ? item.english_level.toUpperCase() : '-'}</td>
+                      <td style={{ padding: '0.5rem', fontWeight: 'bold', color: '#28a745' }}>{item.second_language || '-'}</td>
                       <td style={{ padding: '0.5rem' }}>{room?.name || item.room_id}</td>
-                      <td style={{ padding: '0.5rem' }}>{item.seat_number}</td>
+                      <td style={{ padding: '0.5rem', textAlign: 'center' }}>{item.seat_number}</td>
                     </tr>
                   );
                 })}
