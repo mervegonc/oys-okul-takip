@@ -40,6 +40,7 @@ const ExamAttendanceLists = () => {
   const [seatingPlan, setSeatingPlan] = useState(null);
   const [rooms, setRooms] = useState([]);
   const [studentMap, setStudentMap] = useState({});
+  const [examGrades, setExamGrades] = useState({});
   const [loading, setLoading] = useState(false);
 
   // Sekme & Filtre Durumları
@@ -65,23 +66,6 @@ const ExamAttendanceLists = () => {
     }
   };
 
-  const fetchExams = async () => {
-    setLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from('exams')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      setExams(data || []);
-    } catch (err) {
-      console.error('Sınavlar yüklenirken hata:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const fetchAllStudentsData = async () => {
     try {
       const { data, error } = await supabase.from('students').select('*');
@@ -94,9 +78,68 @@ const ExamAttendanceLists = () => {
           if (st.student_no) map[String(st.student_no).trim()] = st;
         });
         setStudentMap(map);
+        return map;
       }
     } catch (err) {
       console.error('Öğrenciler tablosundan veri çekilemedi:', err);
+    }
+    return {};
+  };
+
+  const fetchExams = async () => {
+    setLoading(true);
+    try {
+      const currentStudentMap = await fetchAllStudentsData();
+
+      const { data: examData, error: examError } = await supabase
+        .from('exams')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (examError) throw examError;
+      setExams(examData || []);
+
+      if (examData && examData.length > 0) {
+        const examIds = examData.map(e => e.id);
+        const { data: plansData } = await supabase
+          .from('seating_plans')
+          .select('exam_id, assignments')
+          .in('exam_id', examIds);
+
+        if (plansData) {
+          const gradesMap = {};
+          plansData.forEach(plan => {
+            let assignmentsArr = [];
+            if (typeof plan.assignments === 'string') {
+              try { assignmentsArr = JSON.parse(plan.assignments); } catch (e) {}
+            } else if (Array.isArray(plan.assignments)) {
+              assignmentsArr = plan.assignments;
+            }
+
+            const grades = new Set();
+            assignmentsArr.forEach(st => {
+              const rawId = String(st.studentId || st.student_id || st.id || '').trim();
+              const rawTc = String(st.tc || st.tc_no || st.tcNo || '').trim();
+              const rawNo = String(st.no || st.student_no || st.studentNo || st.school_number || '').trim();
+              const dbSt = currentStudentMap[rawId] || currentStudentMap[rawTc] || currentStudentMap[rawNo] || {};
+              const grade = dbSt.grade || st.grade || st.sinif;
+              if (grade) grades.add(String(grade).replace('.', ''));
+            });
+
+            const sortedGrades = Array.from(grades).sort((a, b) => a - b);
+            if (sortedGrades.length > 0) {
+              gradesMap[plan.exam_id] = sortedGrades.length === 1 
+                ? `${sortedGrades[0]}. Sınıf` 
+                : `${sortedGrades.join('-')}. Sınıflar`;
+            }
+          });
+          setExamGrades(gradesMap);
+        }
+      }
+    } catch (err) {
+      console.error('Sınavlar yüklenirken hata:', err);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -374,13 +417,20 @@ const ExamAttendanceLists = () => {
                       background: '#fff',
                       cursor: 'pointer',
                       display: 'flex',
-                      justifyContent: 'space-between',
+                      justify: 'space-between',
                       alignItems: 'center'
                     }}
                   >
                     <div>
                       <h4 style={{ margin: 0, color: '#2b6cb0', fontSize: '1.1rem' }}>{exam.title}</h4>
-                      <span style={{ fontSize: '0.85rem', color: '#718096' }}>Tarih: {exam.date}</span>
+                      <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', marginTop: '0.3rem' }}>
+                        <span style={{ fontSize: '0.85rem', color: '#718096' }}>Tarih: {exam.date}</span>
+                        {examGrades[exam.id] && (
+                          <span style={{ fontSize: '0.85rem', color: '#2b6cb0', fontWeight: 'bold', background: '#ebf8ff', padding: '0.1rem 0.5rem', borderRadius: '4px' }}>
+                            {examGrades[exam.id]}
+                          </span>
+                        )}
+                      </div>
                     </div>
                     <button style={{ padding: '0.5rem 1rem', background: '#3182ce', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
                       Listeleri Aç →
