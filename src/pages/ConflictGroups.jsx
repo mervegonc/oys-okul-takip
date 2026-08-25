@@ -84,7 +84,6 @@ const ConflictGroups = () => {
       return;
     }
     try {
-      // 🛠️ created_at ISO string'e dönüştürüldü, insert payload sadeleştirildi
       const { error } = await supabase
         .from('conflict_groups')
         .insert([
@@ -99,7 +98,7 @@ const ConflictGroups = () => {
       if (error) throw error;
 
       setNewGroupName('');
-      await fetchGroups(); // Listeyi güncel veritabanından yenile
+      await fetchGroups();
     } catch (error) {
       console.error('Grup eklenirken hata:', error);
       alert('Grup eklenirken hata oluştu: ' + (error.message || 'Bilinmeyen hata'));
@@ -185,11 +184,15 @@ const ConflictGroups = () => {
           style={{ width: '100%', padding: '0.5rem', border: '1px solid #ddd', borderRadius: '4px' }}
         >
           <option value="">-- Sınav Seçin --</option>
-          {exams.map(exam => (
-            <option key={exam.id} value={exam.id}>
-              {exam.title} ({exam.date})
-            </option>
-          ))}
+          {exams.map(exam => {
+            const grades = exam.grade_levels || exam.gradeLevels || [];
+            const gradeStr = grades.length > 0 ? ` [Sınıflar: ${grades.join(', ')}]` : '';
+            return (
+              <option key={exam.id} value={exam.id}>
+                {exam.title} ({exam.date}){gradeStr}
+              </option>
+            );
+          })}
         </select>
       </div>
 
