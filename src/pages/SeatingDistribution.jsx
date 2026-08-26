@@ -167,7 +167,7 @@ const SeatingDistribution = () => {
             roomIdx++;
           }
         } 
-        // STANDART ŞUBE KARMASI
+        // STANDART ŞUBE KARMASI (HOMOJEN DAĞITIM İLE GÜNCELLENDİ)
         else {
           for (const group of groups) {
             const groupStudents = students.filter(s => group.classes.includes(`${s.grade}-${s.class}`));
@@ -179,8 +179,7 @@ const SeatingDistribution = () => {
                 ...r,
                 totalCap: Number(r.capacity || 0) + Number(r.extra_seats_added || r.extraSeatsAdded || 0),
                 seats: []
-              }))
-              .sort((a, b) => b.totalCap - a.totalCap);
+              }));
 
             if (groupRooms.length === 0) throw new Error(`"${group.name}" için salon seçilmedi.`);
 
@@ -208,11 +207,40 @@ const SeatingDistribution = () => {
               interleavedList.push(classQueues[chosenClass].shift());
             }
 
+            // HOMOJEN DAĞITIM MANTIĞI: 
+            // Seçilen salonlar arasında kapasiteleri oranında veya eşit olarak dengeli paylaştırma
+            const totalCapacity = groupRooms.reduce((sum, r) => sum + r.totalCap, 0);
+            if (totalCapacity < totalGroupStudents) {
+              throw new Error(`"${group.name}" grubundaki toplam öğrenci sayısı (${totalGroupStudents}) seçilen salonların toplam kapasitesini (${totalCapacity}) aşıyor!`);
+            }
+
             let studentIdx = 0;
-            for (const room of groupRooms) {
-              while (room.seats.length < room.totalCap && studentIdx < interleavedList.length) {
-                room.seats.push(interleavedList[studentIdx]);
+            for (let i = 0; i < groupRooms.length; i++) {
+              const room = groupRooms[i];
+              // Son salonda kalan tüm öğrenciler alınır, diğerlerinde orantılı/homojen pay düşülür
+              let targetCount = i === groupRooms.length - 1 
+                ? interleavedList.length - studentIdx 
+                : Math.round((room.totalCap / totalCapacity) * interleavedList.length);
+
+              // Salon kapasitesini ve kalan öğrenci sınırını gözet
+              targetCount = Math.min(targetCount, room.totalCap, interleavedList.length - studentIdx);
+
+              for (let c = 0; c < targetCount; c++) {
+                if (studentIdx < interleavedList.length) {
+                  room.seats.push(interleavedList[studentIdx]);
+                  studentIdx++;
+                }
+              }
+            }
+
+            // Küsurat hesaplamalarından dolayı artan öğrenciler olursa boş yeri olan salonlara dağıt
+            while (studentIdx < interleavedList.length) {
+              const availableRoom = groupRooms.find(r => r.seats.length < r.totalCap);
+              if (availableRoom) {
+                availableRoom.seats.push(interleavedList[studentIdx]);
                 studentIdx++;
+              } else {
+                break;
               }
             }
 
@@ -250,7 +278,6 @@ const SeatingDistribution = () => {
 
           if (groupRooms.length === 0) throw new Error(`"${group.name}" için salon seçilmedi.`);
 
-          // Karıştırma yapılmaz! Diller ve Seviyeler alt alta sıralanır (Tek salona en az çeşit girmesi için).
           const sortedStudents = [...groupStudents].sort((a, b) => {
             if (langPrimaryFilter === 'second_lang') {
               const langA = a.second_lang || a.second_language || 'Z_Belirtilmedi';
@@ -271,19 +298,15 @@ const SeatingDistribution = () => {
             }
           });
 
-          // ORANTILI DAĞITIM MANTIĞI: Seçilen tüm salonların boş kalmaması ve dillerin bölünmemesi için 
-          // toplam öğrenci seçilen salonlara kapasiteleri oranında paylaştırılır.
           const totalCapacity = groupRooms.reduce((sum, r) => sum + r.totalCap, 0);
           let stIdx = 0;
 
           for (let i = 0; i < groupRooms.length; i++) {
             const room = groupRooms[i];
-            // Bu salona düşecek pay (Son salonda kalan tüm öğrenciler alınır ki açık kalmasın)
             let targetCount = i === groupRooms.length - 1 
               ? sortedStudents.length - stIdx 
               : Math.round((room.totalCap / totalCapacity) * sortedStudents.length);
 
-            // Salon kapasitesini aşmayacak ve kalan öğrenci sınırında kalacak şekilde ayarla
             targetCount = Math.min(targetCount, room.totalCap, sortedStudents.length - stIdx);
 
             for (let c = 0; c < targetCount; c++) {
@@ -294,8 +317,6 @@ const SeatingDistribution = () => {
             }
           }
 
-          // Eğer yukarıdaki orantılı paylaşımdan sonra artan öğrenci kalırsa (küsurat hesaplarından dolayı), 
-          // boş yeri olan son salonlara dağıt
           while (stIdx < sortedStudents.length) {
             const availableRoom = groupRooms.find(r => r.seats.length < r.totalCap);
             if (availableRoom) {
