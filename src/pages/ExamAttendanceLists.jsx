@@ -753,17 +753,17 @@ const ExamAttendanceLists = () => {
                         </div>
                       )}
 
-                      <div style={{ border: '1px solid #000', padding: '0.5rem 0.8rem', fontSize: '8.5pt', borderRadius: '4px', background: '#fafafa', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <span><strong>Sınava Katılan:</strong> ....................</span>
-                          <span><strong>Sınava Katılmayan:</strong> ....................</span>
+                      <div style={{ border: '1px solid #000', padding: '0.5rem 0.8rem', fontSize: '8.5pt', borderRadius: '4px', background: '#fafafa', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                          <div><strong>Sınava Katılan:</strong> ....................................................................................................</div>
+                          <div><strong>Sınava Katılmayan:</strong> .................................................................................................</div>
                         </div>
                         {examCategory === 'dil' && (
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1.5rem', paddingTop: '0.2rem', borderTop: '1px dotted #ccc' }}>
-                            {totalCore > 0 && <span><strong>Core Katılan:</strong> ....................</span>}
-                            {totalExt > 0 && <span><strong>Ext Katılan:</strong> ....................</span>}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', paddingTop: '0.4rem', borderTop: '1px dotted #ccc' }}>
+                            {totalCore > 0 && <div><strong>Core Katılan:</strong> .................................................................................................</div>}
+                            {totalExt > 0 && <div><strong>Ext Katılan:</strong> .................................................................................................</div>}
                             {Object.keys(langTotals).map((langName) => (
-                              <span key={langName}><strong>{langName} Katılan:</strong> ....................</span>
+                              <div key={langName}><strong>{langName} Katılan:</strong> .................................................................................................</div>
                             ))}
                           </div>
                         )}
