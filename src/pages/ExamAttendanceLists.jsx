@@ -284,12 +284,22 @@ const ExamAttendanceLists = () => {
 
   const assignments = seatingPlan?.assignments || [];
 
+  // Salon bazlı gruplama ve Masa Sıra Numarasına göre küçükten büyüğe sıralama
   const groupedByRoom = assignments.reduce((acc, curr) => {
     const roomName = getRoomName(curr);
     if (!acc[roomName]) acc[roomName] = [];
     acc[roomName].push(curr);
     return acc;
   }, {});
+
+  // DÜZELTME: Her salon içerisindeki öğrencileri seatNumber (sıra numarasına) göre sıralıyoruz
+  Object.keys(groupedByRoom).forEach(room => {
+    groupedByRoom[room].sort((a, b) => {
+      const seatA = parseInt(a.seatNumber || a.seat_number || 9999, 10);
+      const seatB = parseInt(b.seatNumber || b.seat_number || 9999, 10);
+      return seatA - seatB;
+    });
+  });
 
   const groupedByClassroom = assignments.reduce((acc, curr) => {
     const det = getStudentDetails(curr);
@@ -333,7 +343,13 @@ const ExamAttendanceLists = () => {
         return item;
       });
     } else {
-      dataToExport = assignments.map((st, index) => {
+      // Excel çıktısında da salon içindeki öğrencilerin sıra numarasına göre sıralı çıkmasını sağlıyoruz
+      const allSortedAssignments = [];
+      Object.keys(groupedByRoom).forEach(room => {
+        allSortedAssignments.push(...groupedByRoom[room]);
+      });
+
+      dataToExport = allSortedAssignments.map((st, index) => {
         const det = getStudentDetails(st);
         const item = {
           'Sıra No': index + 1,
