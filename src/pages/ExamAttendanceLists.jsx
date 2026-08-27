@@ -292,7 +292,6 @@ const ExamAttendanceLists = () => {
     return acc;
   }, {});
 
-  // DÜZELTME: Her salon içerisindeki öğrencileri seatNumber (sıra numarasına) göre sıralıyoruz
   Object.keys(groupedByRoom).forEach(room => {
     groupedByRoom[room].sort((a, b) => {
       const seatA = parseInt(a.seatNumber || a.seat_number || 9999, 10);
@@ -343,7 +342,6 @@ const ExamAttendanceLists = () => {
         return item;
       });
     } else {
-      // Excel çıktısında da salon içindeki öğrencilerin sıra numarasına göre sıralı çıkmasını sağlıyoruz
       const allSortedAssignments = [];
       Object.keys(groupedByRoom).forEach(room => {
         allSortedAssignments.push(...groupedByRoom[room]);
@@ -401,7 +399,7 @@ const ExamAttendanceLists = () => {
           }
           @page {
             size: A4 portrait;
-            margin: 8mm;
+            margin: 5mm; /* Sayfa kenar boşlukları daraltıldı ki taşma olmasın */
           }
           .no-print {
             display: none !important;
@@ -411,7 +409,9 @@ const ExamAttendanceLists = () => {
             break-after: page !important;
             display: block !important;
             margin-bottom: 0 !important;
-            padding-bottom: 10px !important;
+            padding-bottom: 0 !important;
+            height: 100vh !important; /* Her salonun tam 1 sayfaya sığması zorlandı */
+            box-sizing: border-box !important;
           }
           table {
             width: 100% !important;
@@ -419,9 +419,10 @@ const ExamAttendanceLists = () => {
           }
           th, td {
             border: 1px solid #000 !important;
-            padding: 5px 6px !important;
-            font-size: 8.5pt !important;
+            padding: 3px 5px !important; /* Sıkışmayı önlemek için satır içi boşluklar küçültüldü */
+            font-size: 8pt !important;
             color: #000 !important;
+            line-height: 1.15 !important;
           }
           th {
             background-color: #eee !important;
@@ -432,21 +433,20 @@ const ExamAttendanceLists = () => {
             border: none !important;
             background: transparent !important;
           }
-          /* Siyah-Beyaz Fotokopi Uyumlu Gri Tonları, Kalınlık ve Beyaz Yazı Ayarları */
           .gray-level-1 {
             background-color: transparent !important;
             font-weight: normal !important;
           }
           .gray-level-2 {
-            background-color: #cbd5e1 !important; /* Orta Gri */
+            background-color: #cbd5e1 !important;
             color: #000 !important;
             font-weight: normal !important;
             -webkit-print-color-adjust: exact;
             print-color-adjust: exact;
           }
           .gray-level-3 {
-            background-color: #334155 !important; /* Çok Koyu Gri / Kömür Rengi */
-            color: #ffffff !important; /* Beyaz Yazı */
+            background-color: #334155 !important;
+            color: #ffffff !important;
             font-weight: bold !important;
             -webkit-print-color-adjust: exact;
             print-color-adjust: exact;
@@ -663,19 +663,19 @@ const ExamAttendanceLists = () => {
                 };
 
                 return (
-                  <div key={roomName} className="print-card page-break" style={{ background: '#fff', border: '1px solid #cbd5e1', padding: '1.2rem', marginBottom: '2rem', borderRadius: '6px' }}>
+                  <div key={roomName} className="print-card page-break" style={{ background: '#fff', border: '1px solid #cbd5e1', padding: '0.8rem', marginBottom: '1rem', borderRadius: '6px' }}>
                     
-                    <div style={{ border: '2px solid #000', padding: '0.6rem', textAlign: 'center', marginBottom: '0.8rem', background: '#fafafa' }}>
-                      <h1 style={{ margin: '0 0 0.3rem 0', fontSize: '14pt', fontWeight: 'bold', textTransform: 'uppercase' }}>
+                    <div style={{ border: '2px solid #000', padding: '0.4rem', textAlign: 'center', marginBottom: '0.5rem', background: '#fafafa' }}>
+                      <h1 style={{ margin: '0 0 0.2rem 0', fontSize: '12pt', fontWeight: 'bold', textTransform: 'uppercase' }}>
                         {getHeaderTitle(roomName, gradeSummary)}
                       </h1>
-                      <div style={{ fontSize: '10pt', fontWeight: 'bold', display: 'flex', justifyContent: 'space-around', borderTop: '1px solid #000', paddingTop: '0.3rem', marginTop: '0.3rem' }}>
+                      <div style={{ fontSize: '9pt', fontWeight: 'bold', display: 'flex', justifyContent: 'space-around', borderTop: '1px solid #000', paddingTop: '0.2rem', marginTop: '0.2rem' }}>
                         <span>TARİH: {selectedExam.date}</span>
                         <span>SALON: {roomName.toUpperCase()}</span>
                       </div>
                     </div>
 
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem', fontSize: '9.5pt', fontWeight: 'bold' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem', fontSize: '9pt', fontWeight: 'bold' }}>
                       <div>
                         <span>GÖZETMEN ADI SOYADI: </span>
                         <input
@@ -683,7 +683,7 @@ const ExamAttendanceLists = () => {
                           placeholder="......................................................"
                           value={invigilators[roomName] || ''}
                           onChange={(e) => handleInvigilatorChange(roomName, e.target.value)}
-                          style={{ border: 'none', borderBottom: '1px solid #000', outline: 'none', fontWeight: 'bold', fontSize: '9.5pt' }}
+                          style={{ border: 'none', borderBottom: '1px solid #000', outline: 'none', fontWeight: 'bold', fontSize: '9pt' }}
                         />
                       </div>
                       <div>SALON KAPASİTESİ: {students.length} ÖĞRENCİ</div>
@@ -730,20 +730,20 @@ const ExamAttendanceLists = () => {
                               <td style={{ textAlign: 'center' }}>{det.grade}-{det.className}</td>
 
                               {schoolType === 'lise' && examCategory === 'akademik' && (
-                                <td style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '8.5pt' }}>{det.track}</td>
+                                <td style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '8pt' }}>{det.track}</td>
                               )}
                               {schoolType === 'lise' && examCategory === 'dil' && (
                                 <>
-                                  <td className={engStyle.className} style={{ textAlign: 'center', fontSize: '8.5pt', ...engStyle.style }}>
+                                  <td className={engStyle.className} style={{ textAlign: 'center', fontSize: '8pt', ...engStyle.style }}>
                                     {det.englishLevel}
                                   </td>
-                                  <td className={langStyle.className} style={{ textAlign: 'center', fontSize: '8.5pt', ...langStyle.style }}>
+                                  <td className={langStyle.className} style={{ textAlign: 'center', fontSize: '8pt', ...langStyle.style }}>
                                     {det.secondLanguage}
                                   </td>
                                 </>
                               )}
                               {schoolType === 'ortaokul' && examCategory === 'dil' && (
-                                <td className={langStyle.className} style={{ textAlign: 'center', fontSize: '8.5pt', ...langStyle.style }}>
+                                <td className={langStyle.className} style={{ textAlign: 'center', fontSize: '8pt', ...langStyle.style }}>
                                   {det.secondLanguage}
                                 </td>
                               )}
@@ -755,11 +755,11 @@ const ExamAttendanceLists = () => {
                       </tbody>
                     </table>
 
-                    <div style={{ marginTop: '0.8rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                    <div style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
                       {examCategory === 'dil' && (
-                        <div style={{ border: '1px dashed #666', padding: '0.4rem 0.8rem', fontSize: '8pt', borderRadius: '4px', background: '#f8fafc', display: 'flex', flexWrap: 'wrap', gap: '1.2rem', alignItems: 'center' }}>
+                        <div style={{ border: '1px dashed #666', padding: '0.3rem 0.6rem', fontSize: '7.5pt', borderRadius: '4px', background: '#f8fafc', display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'center' }}>
                           <span style={{ color: '#555', fontWeight: 'bold' }}>SINIF MEVCUT BİLGİSİ:</span>
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1.2rem' }}>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem' }}>
                             {totalCore > 0 && <span>Core = {totalCore}</span>}
                             {totalExt > 0 && <span>Ext = {totalExt}</span>}
                             {Object.entries(langTotals).map(([langName, count]) => (
@@ -769,28 +769,19 @@ const ExamAttendanceLists = () => {
                         </div>
                       )}
 
-                      <div style={{ border: '1px solid #000', padding: '0.5rem 0.8rem', fontSize: '8.5pt', borderRadius: '4px', background: '#fafafa', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                      <div style={{ border: '1px solid #000', padding: '0.4rem 0.6rem', fontSize: '8pt', borderRadius: '4px', background: '#fafafa', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
                           <div><strong>Sınava Katılan:</strong> ....................................................................................................</div>
                           <div><strong>Sınava Katılmayan:</strong> .................................................................................................</div>
                         </div>
-                        {examCategory === 'dil' && (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', paddingTop: '0.4rem', borderTop: '1px dotted #ccc' }}>
-                            {totalCore > 0 && <div><strong>Core Katılan:</strong> .................................................................................................</div>}
-                            {totalExt > 0 && <div><strong>Ext Katılan:</strong> .................................................................................................</div>}
-                            {Object.keys(langTotals).map((langName) => (
-                              <div key={langName}><strong>{langName} Katılan:</strong> .................................................................................................</div>
-                            ))}
-                          </div>
-                        )}
                       </div>
                     </div>
 
-                    <div style={{ marginTop: '0.8rem', display: 'flex', justifyContent: 'flex-end' }}>
-                      <div style={{ border: '1px solid #000', padding: '0.4rem', textAlign: 'center', width: '200px', borderRadius: '4px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-                        <div style={{ fontSize: '8.5pt', fontWeight: 'bold' }}>GÖZETMEN İMZA</div>
-                        <div style={{ height: '20px' }}></div>
-                        <div style={{ fontSize: '7.5pt', color: '#444' }}>Teslim Eden / Teslim Alan</div>
+                    <div style={{ marginTop: '0.5rem', display: 'flex', justifyContent: 'flex-end' }}>
+                      <div style={{ border: '1px solid #000', padding: '0.3rem', textAlign: 'center', width: '180px', borderRadius: '4px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                        <div style={{ fontSize: '8pt', fontWeight: 'bold' }}>GÖZETMEN İMZA</div>
+                        <div style={{ height: '15px' }}></div>
+                        <div style={{ fontSize: '7pt', color: '#444' }}>Teslim Eden / Teslim Alan</div>
                       </div>
                     </div>
                   </div>
