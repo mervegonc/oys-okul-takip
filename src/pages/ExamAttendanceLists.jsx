@@ -711,7 +711,7 @@ const ExamAttendanceLists = () => {
                             <th style={{ width: '12%', textAlign: 'center' }}>2. Yab. Dil</th>
                           )}
 
-                          <th style={{ width: '18%', textAlign: 'center' }}>İMZA / YOKLAMA</th>
+                          <th style={{ width: '18%', textAlign: 'center' }}>YOKLAMA +/-</th>
                         </tr>
                       </thead>
                       <tbody>
