@@ -2,15 +2,13 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../supabase';
 import ExcelUpload from '../components/ExcelUpload';
 import { encrypt, decrypt } from '../utils/encryption';
-import { FaTrash, FaUserPlus, FaSort, FaSortUp, FaSortDown, FaFilter, FaFileDownload, FaSyncAlt } from 'react-icons/fa';
+import { FaTrash, FaUserPlus, FaSort, FaSortUp, FaSortDown, FaFilter } from 'react-icons/fa';
 
 const Students = () => {
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedIds, setSelectedIds] = useState([]);
   const [showForm, setShowForm] = useState(false);
-  const [showBulkUpdateModal, setShowBulkUpdateModal] = useState(false);
-  const [bulkText, setBulkText] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
   const [pageSize] = useState(20);
@@ -180,7 +178,7 @@ const Students = () => {
         grade: newStudent.grade,
         class: newStudent.class,
         student_no: newStudent.studentNo,
-        tc_no: newStudent.tcNo ? encrypt(newStudent.tcNo) : null,
+        tc_no: encrypt(newStudent.tcNo),
         field: newStudent.field,
         second_lang: newStudent.secondLang,
         gender: newStudent.gender,
@@ -210,126 +208,6 @@ const Students = () => {
     } catch (error) {
       console.error('Öğrenci eklenirken hata:', error);
       alert('Bir hata oluştu: ' + error.message);
-    }
-  };
-
-  // Tüm öğrencileri Excel'e uyumlu dışa aktar
-  const handleExportExcel = async () => {
-    try {
-      setLoading(true);
-      const { data, error } = await supabase.from('students').select('*').order('last_name', { ascending: true });
-      if (error) throw error;
-
-      if (!data || data.length === 0) {
-        alert('İndirilecek öğrenci bulunamadı.');
-        return;
-      }
-
-      const headers = ['ID', 'Ad', 'Soyad', 'Sınıf', 'Şube', 'Öğrenci No', 'TC No', 'Alan', '2. Dil', 'Cinsiyet', 'İngilizce Seviyesi'];
-      let content = '\uFEFF' + headers.join('\t') + '\n';
-
-      data.forEach((row) => {
-        let rawTc = row.tc_no || '';
-        let decryptedTc = rawTc;
-        try {
-          if (rawTc && rawTc.length > 20) decryptedTc = decrypt(rawTc);
-        } catch (e) {
-          decryptedTc = rawTc;
-        }
-
-        const values = [
-          row.id,
-          row.first_name || '',
-          row.last_name || '',
-          row.grade || '',
-          row.class || '',
-          row.student_no || '',
-          decryptedTc,
-          row.field || '',
-          row.second_lang || '',
-          row.gender || '',
-          row.english_level || '',
-        ];
-        content += values.join('\t') + '\n';
-      });
-
-      const blob = new Blob([content], { type: 'text/tab-separated-values;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.setAttribute('href', url);
-      link.setAttribute('download', `ogrenci_listesi_${new Date().toISOString().slice(0, 10)}.xls`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    } catch (error) {
-      console.error('Excel dışa aktarma hatası:', error);
-      alert('Öğrenciler dışa aktarılırken hata oluştu.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Toplu Güncelleme / Ekleme (Tek ve Doğru Fonksiyon)
-  const handleBulkUpsert = async () => {
-    if (!bulkText.trim()) {
-      alert('Lütfen güncellenecek/eklenecek verileri yapıştırın.');
-      return;
-    }
-
-    try {
-      const lines = bulkText.trim().split('\n');
-      if (lines.length === 0) return;
-
-      const recordsToUpsert = [];
-      
-      let startIndex = 0;
-      const firstLineLower = lines[0].toLowerCase();
-      if (firstLineLower.includes('id') || firstLineLower.includes('ad') || firstLineLower.includes('tc') || firstLineLower.includes('no')) {
-        startIndex = 1;
-      }
-
-      for (let i = startIndex; i < lines.length; i++) {
-        const line = lines[i].trim();
-        if (!line) continue;
-
-        const cols = line.split(/[\t;]/).map(c => c.trim().replace(/^["']|["']$/g, ''));
-        
-        if (cols.length >= 6) {
-          recordsToUpsert.push({
-            ...(cols[0] && cols[0].length > 15 ? { id: cols[0] } : {}),
-            first_name: cols[1] || '',
-            last_name: cols[2] || '',
-            grade: cols[3] || '',
-            class: cols[4] || '',
-            student_no: cols[5] || null,
-            tc_no: cols[6] ? encrypt(cols[6]) : null,
-            field: cols[7] || '',
-            second_lang: cols[8] || 'None',
-            gender: cols[9] || '',
-            english_level: cols[10] || 'Core',
-          });
-        }
-      }
-
-      if (recordsToUpsert.length === 0) {
-        alert('İşlenecek geçerli veri bulunamadı.');
-        return;
-      }
-
-      const { error } = await supabase
-        .from('students')
-        .upsert(recordsToUpsert, { onConflict: 'student_no' });
-
-      if (error) throw error;
-
-      alert(`${recordsToUpsert.length} öğrenci başarıyla güncellendi / eklendi.`);
-      setBulkText('');
-      setShowBulkUpdateModal(false);
-      fetchStats();
-      fetchStudents(currentPage);
-    } catch (error) {
-      console.error('Toplu güncelleme hatası:', error);
-      alert('Toplu işlem sırasında hata oluştu: ' + error.message);
     }
   };
 
@@ -446,7 +324,7 @@ const Students = () => {
         ))}
       </div>
 
-      {/* Filtreleme ve Dışa Aktarma Çubuğu */}
+      {/* Filtreleme Çubuğu */}
       <div
         style={{
           display: 'flex',
@@ -456,92 +334,71 @@ const Students = () => {
           padding: '0.8rem',
           borderRadius: '6px',
           alignItems: 'center',
-          justifyContent: 'space-between',
           flexWrap: 'wrap',
         }}
       >
-        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <FaFilter style={{ color: '#007bff' }} /> <strong>Filtrele:</strong>
-          </div>
-
-          <div>
-            <label style={{ fontSize: '0.85rem', marginRight: '0.3rem' }}>Sınıf / Seviye:</label>
-            <select
-              value={selectedGradeFilter}
-              onChange={(e) => {
-                setSelectedGradeFilter(e.target.value);
-                setCurrentPage(1);
-              }}
-              style={{ padding: '0.4rem', borderRadius: '4px', border: '1px solid #ccc' }}
-            >
-              <option value="ALL">Tüm Sınıflar</option>
-              {availableGrades.map((grade) => (
-                <option key={grade} value={grade}>
-                  {grade}. Sınıf
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label style={{ fontSize: '0.85rem', marginRight: '0.3rem' }}>Şube:</label>
-            <select
-              value={selectedClassFilter}
-              onChange={(e) => {
-                setSelectedClassFilter(e.target.value);
-                setCurrentPage(1);
-              }}
-              style={{ padding: '0.4rem', borderRadius: '4px', border: '1px solid #ccc' }}
-            >
-              <option value="ALL">Tüm Şubeler</option>
-              {['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'].map((c) => (
-                <option key={c} value={c}>
-                  {c} Şubesi
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {(selectedGradeFilter !== 'ALL' || selectedClassFilter !== 'ALL') && (
-            <button
-              onClick={() => {
-                setSelectedGradeFilter('ALL');
-                setSelectedClassFilter('ALL');
-                setCurrentPage(1);
-              }}
-              style={{
-                padding: '0.4rem 0.8rem',
-                background: '#6c757d',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                fontSize: '0.85rem',
-              }}
-            >
-              Filtreleri Temizle
-            </button>
-          )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <FaFilter style={{ color: '#007bff' }} /> <strong>Filtrele:</strong>
         </div>
 
-        <button
-          onClick={handleExportExcel}
-          style={{
-            padding: '0.4rem 1rem',
-            background: '#28a745',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer',
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '0.5rem',
-            fontWeight: '500',
-          }}
-        >
-          <FaFileDownload /> Tüm Listeyi İndir (Excel/CSV)
-        </button>
+        <div>
+          <label style={{ fontSize: '0.85rem', marginRight: '0.3rem' }}>Sınıf / Seviye:</label>
+          <select
+            value={selectedGradeFilter}
+            onChange={(e) => {
+              setSelectedGradeFilter(e.target.value);
+              setCurrentPage(1);
+            }}
+            style={{ padding: '0.4rem', borderRadius: '4px', border: '1px solid #ccc' }}
+          >
+            <option value="ALL">Tüm Sınıflar</option>
+            {availableGrades.map((grade) => (
+              <option key={grade} value={grade}>
+                {grade}. Sınıf
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label style={{ fontSize: '0.85rem', marginRight: '0.3rem' }}>Şube:</label>
+          <select
+            value={selectedClassFilter}
+            onChange={(e) => {
+              setSelectedClassFilter(e.target.value);
+              setCurrentPage(1);
+            }}
+            style={{ padding: '0.4rem', borderRadius: '4px', border: '1px solid #ccc' }}
+          >
+            <option value="ALL">Tüm Şubeler</option>
+            {['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'].map((c) => (
+              <option key={c} value={c}>
+                {c} Şubesi
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {(selectedGradeFilter !== 'ALL' || selectedClassFilter !== 'ALL') && (
+          <button
+            onClick={() => {
+              setSelectedGradeFilter('ALL');
+              setSelectedClassFilter('ALL');
+              setCurrentPage(1);
+            }}
+            style={{
+              padding: '0.4rem 0.8rem',
+              background: '#6c757d',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontSize: '0.85rem',
+            }}
+          >
+            Filtreleri Temizle
+          </button>
+        )}
       </div>
 
       <ExcelUpload
@@ -578,25 +435,6 @@ const Students = () => {
           >
             <FaUserPlus /> Yeni Öğrenci
           </button>
-
-          <button
-            onClick={() => setShowBulkUpdateModal(!showBulkUpdateModal)}
-            style={{
-              padding: '0.4rem 1rem',
-              background: '#17a2b8',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '0.5rem',
-              marginLeft: '0.5rem',
-            }}
-          >
-            <FaSyncAlt /> Toplu Güncelle / Ekle
-          </button>
-
           {selectedIds.length > 0 && (
             <button
               onClick={handleBulkDelete}
@@ -622,47 +460,7 @@ const Students = () => {
         </div>
       </div>
 
-      {showBulkUpdateModal && (
-        <div
-          style={{
-            background: '#e9ecef',
-            padding: '1rem',
-            borderRadius: '8px',
-            marginBottom: '1.5rem',
-            border: '1px solid #ced4da',
-          }}
-        >
-          <h4>🔄 Toplu Öğrenci Güncelleme ve Ekleme (Upsert)</h4>
-          <p style={{ fontSize: '0.85rem', color: '#555', marginBottom: '0.5rem' }}>
-            Excel'den kopyaladığınız verileri aşağıya yapıştırın. Sistem, öğrenci numarasına göre eşleşenlerin 
-            bilgilerini güncelleyecek, sistemde olmayanları ise yeni olarak ekleyecektir.
-            <br />
-            <em>Sıralama: ID | Ad | Soyad | Sınıf | Şube | Öğrenci No | TC No | Alan | 2. Dil | Cinsiyet | İng. Seviyesi</em>
-          </p>
-          <textarea
-            rows="6"
-            value={bulkText}
-            onChange={(e) => setBulkText(e.target.value)}
-            placeholder="Verileri buraya yapıştırın..."
-            style={{ width: '100%', padding: '0.5rem', fontFamily: 'monospace', fontSize: '0.85rem', borderRadius: '4px', border: '1px solid #ccc' }}
-          />
-          <div style={{ marginTop: '0.5rem' }}>
-            <button
-              onClick={handleBulkUpsert}
-              style={{ padding: '0.4rem 1rem', background: '#28a745', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
-            >
-              Değişiklikleri Uygula / Ekle
-            </button>
-            <button
-              onClick={() => setShowBulkUpdateModal(false)}
-              style={{ padding: '0.4rem 1rem', background: '#6c757d', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', marginLeft: '0.5rem' }}
-            >
-              Kapat
-            </button>
-          </div>
-        </div>
-      )}
-
+      {/* Yeni Öğrenci Formu */}
       {showForm && (
         <form
           onSubmit={handleAddStudent}
@@ -748,7 +546,7 @@ const Students = () => {
                   <td style={{ padding: '0.5rem' }}>{student.tcNo}</td>
                   <td style={{ padding: '0.5rem' }}>{student.field}</td>
                   <td style={{ padding: '0.5rem' }}>{student.secondLang}</td>
-                  <td style={{ padding: '0.5rem' }}>{systemGender(student.gender)}</td>
+                  <td style={{ padding: '0.5rem' }}>{student.gender}</td>
                   <td style={{ padding: '0.5rem' }}>{student.englishLevel}</td>
                   <td style={{ padding: '0.5rem', textAlign: 'center' }}>
                     <button onClick={() => handleDelete(student.id)} style={{ background: 'transparent', border: 'none', color: '#dc3545', cursor: 'pointer' }}>
@@ -793,7 +591,5 @@ const Students = () => {
     </div>
   );
 };
-
-const systemGender = (g) => g;
 
 export default Students;
