@@ -13,15 +13,14 @@ const SeatingDistribution = () => {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
 
-  // 3 EKRAN / MOD SEÇİMİ
-  // 'lise_akademik' | 'lise_yabanci_dil' | 'ortaokul_akademik'
   const [examMode, setExamMode] = useState('lise_akademik');
-
-  // Lise Yabancı Dil Modu Filtre ve Sıralama Ayarı (Excel Mantığı)
-  const [langPrimaryFilter, setLangPrimaryFilter] = useState('second_lang'); // 'second_lang' | 'english_level'
-
-  // Ortaokul Modu Özel Seçenek
+  const [langPrimaryFilter, setLangPrimaryFilter] = useState('second_lang');
   const [keepInOwnClassroom, setKeepInOwnClassroom] = useState(false);
+
+  // Salonları sayısal/alfabetik (Salon-1, Salon-2 ... Salon-10) doğru sıralayan fonksiyon
+  const sortRoomsNaturally = (a, b) => {
+    return (a.name || '').localeCompare(b.name || '', 'tr', { numeric: true, sensitivity: 'base' });
+  };
 
   useEffect(() => {
     const fetchData = async () => {
@@ -30,7 +29,8 @@ const SeatingDistribution = () => {
         setExams(examData || []);
 
         const { data: roomData } = await supabase.from('rooms').select('*').order('name', { ascending: true });
-        setRooms(roomData || []);
+        // Gelen salonları akıllı sıralamadan geçiriyoruz
+        setRooms((roomData || []).sort(sortRoomsNaturally));
       } catch (error) {
         console.error('Veri yükleme hatası:', error);
       }
@@ -121,7 +121,6 @@ const SeatingDistribution = () => {
     return list;
   };
 
-  // DAĞITIM MOTORU
   const runDistribution = async () => {
     if (!selectedExamId) return setMessage('Lütfen bir sınav seçin.');
 
@@ -135,12 +134,7 @@ const SeatingDistribution = () => {
     try {
       const assignments = [];
 
-      // =========================================================================
-      // MOD 1 & MOD 3 (Grup Karma Yapı): LİSE AKADEMİK VE ORTAOKUL AKADEMİK
-      // =========================================================================
       if (examMode === 'lise_akademik' || examMode === 'ortaokul_akademik') {
-
-        // ORTAOKUL SEÇENEĞİ: HERKES KENDİ ŞUBESİNDE SINAVA GİRSİN
         if (examMode === 'ortaokul_akademik' && keepInOwnClassroom) {
           const classGrouped = {};
           students.forEach(st => {
@@ -166,9 +160,7 @@ const SeatingDistribution = () => {
             });
             roomIdx++;
           }
-        } 
-        // STANDART ŞUBE KARMASI (HOMOJEN DAĞITIM İLE GÜNCELLENDİ)
-        else {
+        } else {
           for (const group of groups) {
             const groupStudents = students.filter(s => group.classes.includes(`${s.grade}-${s.class}`));
             if (groupStudents.length === 0) continue;
@@ -191,7 +183,6 @@ const SeatingDistribution = () => {
             const interleavedList = [];
             const totalGroupStudents = groupStudents.length;
 
-            // Ardışık olarak aynı şubenin denk gelmesini engelleyen döngü
             while (interleavedList.length < totalGroupStudents) {
               const availClasses = group.classes.filter(cls => classQueues[cls] && classQueues[cls].length > 0);
               if (availClasses.length === 0) break;
@@ -207,8 +198,6 @@ const SeatingDistribution = () => {
               interleavedList.push(classQueues[chosenClass].shift());
             }
 
-            // HOMOJEN DAĞITIM MANTIĞI: 
-            // Seçilen salonlar arasında kapasiteleri oranında veya eşit olarak dengeli paylaştırma
             const totalCapacity = groupRooms.reduce((sum, r) => sum + r.totalCap, 0);
             if (totalCapacity < totalGroupStudents) {
               throw new Error(`"${group.name}" grubundaki toplam öğrenci sayısı (${totalGroupStudents}) seçilen salonların toplam kapasitesini (${totalCapacity}) aşıyor!`);
@@ -217,12 +206,10 @@ const SeatingDistribution = () => {
             let studentIdx = 0;
             for (let i = 0; i < groupRooms.length; i++) {
               const room = groupRooms[i];
-              // Son salonda kalan tüm öğrenciler alınır, diğerlerinde orantılı/homojen pay düşülür
               let targetCount = i === groupRooms.length - 1 
                 ? interleavedList.length - studentIdx 
                 : Math.round((room.totalCap / totalCapacity) * interleavedList.length);
 
-              // Salon kapasitesini ve kalan öğrenci sınırını gözet
               targetCount = Math.min(targetCount, room.totalCap, interleavedList.length - studentIdx);
 
               for (let c = 0; c < targetCount; c++) {
@@ -233,7 +220,6 @@ const SeatingDistribution = () => {
               }
             }
 
-            // Küsurat hesaplamalarından dolayı artan öğrenciler olursa boş yeri olan salonlara dağıt
             while (studentIdx < interleavedList.length) {
               const availableRoom = groupRooms.find(r => r.seats.length < r.totalCap);
               if (availableRoom) {
@@ -258,12 +244,7 @@ const SeatingDistribution = () => {
             });
           }
         }
-      }
-
-      // =========================================================================
-      // MOD 2: LİSE YABANCI DİL SINAVI (ORANTILI VE BLOK KORUYUCU DAĞITIM)
-      // =========================================================================
-      else if (examMode === 'lise_yabanci_dil') {
+      } else if (examMode === 'lise_yabanci_dil') {
         for (const group of groups) {
           const groupStudents = students.filter(s => group.classes.includes(`${s.grade}-${s.class}`));
           if (groupStudents.length === 0) continue;
@@ -344,7 +325,6 @@ const SeatingDistribution = () => {
         }
       }
 
-      // Supabase Veritabanına Yaz
       await supabase.from('seating_plans').delete().eq('exam_id', selectedExamId);
       const { error: insertError } = await supabase.from('seating_plans').insert({
         exam_id: selectedExamId,
@@ -368,19 +348,13 @@ const SeatingDistribution = () => {
     <div style={{ padding: '1rem', maxWidth: '1400px', margin: '0 auto' }}>
       <h2>🪑 Sınav Oturma Düzeni Paneli</h2>
 
-      {/* MOD SEÇİM EKRANI */}
       <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem' }}>
         <button
           onClick={() => setExamMode('lise_akademik')}
           style={{
-            flex: 1,
-            padding: '1rem',
-            borderRadius: '8px',
-            border: '2px solid #007bff',
+            flex: 1, padding: '1rem', borderRadius: '8px', border: '2px solid #007bff',
             background: examMode === 'lise_akademik' ? '#007bff' : '#fff',
-            color: examMode === 'lise_akademik' ? '#fff' : '#007bff',
-            fontWeight: 'bold',
-            cursor: 'pointer'
+            color: examMode === 'lise_akademik' ? '#fff' : '#007bff', fontWeight: 'bold', cursor: 'pointer'
           }}
         >
           📘 1. Lise Akademik Deneme
@@ -389,14 +363,9 @@ const SeatingDistribution = () => {
         <button
           onClick={() => setExamMode('lise_yabanci_dil')}
           style={{
-            flex: 1,
-            padding: '1rem',
-            borderRadius: '8px',
-            border: '2px solid #28a745',
+            flex: 1, padding: '1rem', borderRadius: '8px', border: '2px solid #28a745',
             background: examMode === 'lise_yabanci_dil' ? '#28a745' : '#fff',
-            color: examMode === 'lise_yabanci_dil' ? '#fff' : '#28a745',
-            fontWeight: 'bold',
-            cursor: 'pointer'
+            color: examMode === 'lise_yabanci_dil' ? '#fff' : '#28a745', fontWeight: 'bold', cursor: 'pointer'
           }}
         >
           🌍 2. Lise Yabancı Dil Deneme
@@ -405,21 +374,15 @@ const SeatingDistribution = () => {
         <button
           onClick={() => setExamMode('ortaokul_akademik')}
           style={{
-            flex: 1,
-            padding: '1rem',
-            borderRadius: '8px',
-            border: '2px solid #fd7e14',
+            flex: 1, padding: '1rem', borderRadius: '8px', border: '2px solid #fd7e14',
             background: examMode === 'ortaokul_akademik' ? '#fd7e14' : '#fff',
-            color: examMode === 'ortaokul_akademik' ? '#fff' : '#fd7e14',
-            fontWeight: 'bold',
-            cursor: 'pointer'
+            color: examMode === 'ortaokul_akademik' ? '#fff' : '#fd7e14', fontWeight: 'bold', cursor: 'pointer'
           }}
         >
           📙 3. Ortaokul Akademik Deneme
         </button>
       </div>
 
-      {/* Sınav Seçimi (Sınıf Seviyeleri Eklendi) */}
       <div style={{ marginBottom: '1.5rem' }}>
         <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '0.5rem' }}>Sınavı Seçin</label>
         <select
@@ -440,7 +403,6 @@ const SeatingDistribution = () => {
         </select>
       </div>
 
-      {/* MOD 2: YABANCI DİL SINAVI İÇİN SIRALAMA AYARI (EXCEL MODU) */}
       {selectedExamId && examMode === 'lise_yabanci_dil' && (
         <div style={{ background: '#eef6ff', padding: '1rem', borderRadius: '8px', border: '1px solid #b6d4fe', marginBottom: '1.5rem' }}>
           <h4 style={{ margin: '0 0 0.5rem 0', color: '#055160' }}>📊 Excel Tipi Sıralama Düzeni</h4>
@@ -470,7 +432,6 @@ const SeatingDistribution = () => {
         </div>
       )}
 
-      {/* MOD 3: ORTAOKUL ÖZEL SEÇENEĞİ */}
       {selectedExamId && examMode === 'ortaokul_akademik' && (
         <div style={{ background: '#fff3cd', padding: '1rem', borderRadius: '8px', border: '1px solid #ffeeba', marginBottom: '1.5rem' }}>
           <label
@@ -483,7 +444,6 @@ const SeatingDistribution = () => {
         </div>
       )}
 
-      {/* GRUP VE SALON YAPILANDIRMASI */}
       {selectedExamId && !(examMode === 'ortaokul_akademik' && keepInOwnClassroom) && (
         <div style={{ marginBottom: '2rem' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
@@ -502,7 +462,6 @@ const SeatingDistribution = () => {
                 </button>
               </div>
 
-              {/* Şubeler */}
               <div style={{ marginBottom: '0.8rem' }}>
                 <small style={{ fontWeight: 'bold' }}>Şubeler:</small>
                 <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginTop: '0.3rem' }}>
@@ -514,9 +473,7 @@ const SeatingDistribution = () => {
                         padding: '0.2rem 0.6rem',
                         background: group.classes.includes(cls) ? '#007bff' : '#f1f1f1',
                         color: group.classes.includes(cls) ? '#fff' : '#333',
-                        border: 'none',
-                        borderRadius: '4px',
-                        cursor: 'pointer'
+                        border: 'none', borderRadius: '4px', cursor: 'pointer'
                       }}
                     >
                       {cls}
@@ -525,11 +482,10 @@ const SeatingDistribution = () => {
                 </div>
               </div>
 
-              {/* Salonlar */}
               <div>
                 <small style={{ fontWeight: 'bold' }}>Salonlar:</small>
                 <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginTop: '0.3rem' }}>
-                  {rooms.map(room => {
+                  {rooms.slice().sort(sortRoomsNaturally).map(room => {
                     const totalCap = Number(room.capacity || 0) + Number(room.extra_seats_added || room.extraSeatsAdded || 0);
                     return (
                       <button
@@ -539,9 +495,7 @@ const SeatingDistribution = () => {
                           padding: '0.2rem 0.6rem',
                           background: group.roomIds.includes(room.id) ? '#17a2b8' : '#f1f1f1',
                           color: group.roomIds.includes(room.id) ? '#fff' : '#333',
-                          border: 'none',
-                          borderRadius: '4px',
-                          cursor: 'pointer'
+                          border: 'none', borderRadius: '4px', cursor: 'pointer'
                         }}
                       >
                         {room.name} ({totalCap} Kişi)
@@ -555,7 +509,6 @@ const SeatingDistribution = () => {
         </div>
       )}
 
-      {/* ÇALIŞTIR BUTONU */}
       {selectedExamId && (
         <button
           onClick={runDistribution}
@@ -568,7 +521,6 @@ const SeatingDistribution = () => {
 
       {message && <p style={{ marginTop: '1rem', fontWeight: 'bold', color: message.includes('Hata') ? 'red' : 'green' }}>{message}</p>}
 
-      {/* SONUÇ TABLOSU */}
       {distributions.length > 0 && (
         <div style={{ marginTop: '2rem' }}>
           <h3>Dağıtım Listesi ({distributions.length} Öğrenci)</h3>
