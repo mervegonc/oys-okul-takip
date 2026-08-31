@@ -212,7 +212,8 @@ const Students = () => {
       alert('Bir hata oluştu: ' + error.message);
     }
   };
-// Tüm öğrencileri Excel'e uyumlu (Tab kolonlu) kopyalanabilir veya indirilebilir formatta dışa aktar
+
+  // Tüm öğrencileri Excel'e uyumlu dışa aktar
   const handleExportExcel = async () => {
     try {
       setLoading(true);
@@ -224,7 +225,6 @@ const Students = () => {
         return;
       }
 
-      // Excel'in hücreleri doğrudan tanıması için Tab (\t) karakteri kullanıyoruz
       const headers = ['ID', 'Ad', 'Soyad', 'Sınıf', 'Şube', 'Öğrenci No', 'TC No', 'Alan', '2. Dil', 'Cinsiyet', 'İngilizce Seviyesi'];
       let content = '\uFEFF' + headers.join('\t') + '\n';
 
@@ -253,7 +253,6 @@ const Students = () => {
         content += values.join('\t') + '\n';
       });
 
-      // Doğrudan .xls / .tsv uzantılı dosya olarak indirelim ki Excel direkt sütunlara bölsün
       const blob = new Blob([content], { type: 'text/tab-separated-values;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
@@ -270,7 +269,7 @@ const Students = () => {
     }
   };
 
-  // Toplu Güncelleme / Ekleme (Upsert) - Yeni sıralamaya uyumlu
+  // Toplu Güncelleme / Ekleme (Tek ve Doğru Fonksiyon)
   const handleBulkUpsert = async () => {
     if (!bulkText.trim()) {
       alert('Lütfen güncellenecek/eklenecek verileri yapıştırın.');
@@ -285,7 +284,7 @@ const Students = () => {
       
       let startIndex = 0;
       const firstLineLower = lines[0].toLowerCase();
-      if (firstLineLower.includes('id') || firstLineLower.includes('ad') || firstLineLower.includes('tc')) {
+      if (firstLineLower.includes('id') || firstLineLower.includes('ad') || firstLineLower.includes('tc') || firstLineLower.includes('no')) {
         startIndex = 1;
       }
 
@@ -293,14 +292,11 @@ const Students = () => {
         const line = lines[i].trim();
         if (!line) continue;
 
-        // Sekme (Tab) veya noktalı virgül ayrımını destekle
         const cols = line.split(/[\t;]/).map(c => c.trim().replace(/^["']|["']$/g, ''));
         
-        // Yeni Sıra: 
-        // [0]: id, [1]: Ad, [2]: Soyad, [3]: Sınıf, [4]: Şube, [5]: Öğrenci No, [6]: TC No, [7]: Alan, [8]: 2. Dil, [9]: Cinsiyet, [10]: İngilizce Seviyesi
         if (cols.length >= 6) {
           recordsToUpsert.push({
-            ...(cols[0] && cols[0].length > 15 ? { id: cols[0] } : {}), // Eğer ID varsa güncelleme için ekle
+            ...(cols[0] && cols[0].length > 15 ? { id: cols[0] } : {}),
             first_name: cols[1] || '',
             last_name: cols[2] || '',
             grade: cols[3] || '',
@@ -320,143 +316,6 @@ const Students = () => {
         return;
       }
 
-      const { error } = await supabase
-        .from('students')
-        .upsert(recordsToUpsert, { onConflict: 'student_no' });
-
-      if (error) throw error;
-
-      alert(`${recordsToUpsert.length} öğrenci başarıyla güncellendi / eklendi.`);
-      setBulkText('');
-      setShowBulkUpdateModal(false);
-      fetchStats();
-      fetchStudents(currentPage);
-    } catch (error) {
-      console.error('Toplu güncelleme hatası:', error);
-      alert('Toplu işlem sırasında hata oluştu: ' + error.message);
-    }
-  };
-
-  // Toplu Güncelleme / Ekleme (Upsert) - Yeni sıralamaya uyumlu
-  const handleBulkUpsert = async () => {
-    if (!bulkText.trim()) {
-      alert('Lütfen güncellenecek/eklenecek verileri yapıştırın.');
-      return;
-    }
-
-    try {
-      const lines = bulkText.trim().split('\n');
-      if (lines.length === 0) return;
-
-      const recordsToUpsert = [];
-      
-      let startIndex = 0;
-      const firstLineLower = lines[0].toLowerCase();
-      if (firstLineLower.includes('id') || firstLineLower.includes('ad') || firstLineLower.includes('tc')) {
-        startIndex = 1;
-      }
-
-      for (let i = startIndex; i < lines.length; i++) {
-        const line = lines[i].trim();
-        if (!line) continue;
-
-        // Sekme (Tab) veya noktalı virgül ayrımını destekle
-        const cols = line.split(/[\t;]/).map(c => c.trim().replace(/^["']|["']$/g, ''));
-        
-        // Yeni Sıra: 
-        // [0]: id, [1]: Ad, [2]: Soyad, [3]: Sınıf, [4]: Şube, [5]: Öğrenci No, [6]: TC No, [7]: Alan, [8]: 2. Dil, [9]: Cinsiyet, [10]: İngilizce Seviyesi
-        if (cols.length >= 6) {
-          recordsToUpsert.push({
-            ...(cols[0] && cols[0].length > 15 ? { id: cols[0] } : {}), // Eğer ID varsa güncelleme için ekle
-            first_name: cols[1] || '',
-            last_name: cols[2] || '',
-            grade: cols[3] || '',
-            class: cols[4] || '',
-            student_no: cols[5] || null,
-            tc_no: cols[6] ? encrypt(cols[6]) : null,
-            field: cols[7] || '',
-            second_lang: cols[8] || 'None',
-            gender: cols[9] || '',
-            english_level: cols[10] || 'Core',
-          });
-        }
-      }
-
-      if (recordsToUpsert.length === 0) {
-        alert('İşlenecek geçerli veri bulunamadı.');
-        return;
-      }
-
-      const { error } = await supabase
-        .from('students')
-        .upsert(recordsToUpsert, { onConflict: 'student_no' });
-
-      if (error) throw error;
-
-      alert(`${recordsToUpsert.length} öğrenci başarıyla güncellendi / eklendi.`);
-      setBulkText('');
-      setShowBulkUpdateModal(false);
-      fetchStats();
-      fetchStudents(currentPage);
-    } catch (error) {
-      console.error('Toplu güncelleme hatası:', error);
-      alert('Toplu işlem sırasında hata oluştu: ' + error.message);
-    }
-  };
-
-  // Toplu Güncelleme / Ekleme (Upsert) - TC No veya Öğrenci No bazlı
-  const handleBulkUpsert = async () => {
-    if (!bulkText.trim()) {
-      alert('Lütfen güncellenecek/eklenecek verileri yapıştırın.');
-      return;
-    }
-
-    try {
-      const lines = bulkText.trim().split('\n');
-      if (lines.length === 0) return;
-
-      const recordsToUpsert = [];
-      
-      // İlk satır başlık mı kontrol edelim (Örn: "Öğrenci No" veya "tc_no" içeriyorsa geçelim)
-      let startIndex = 0;
-      const firstLineLower = lines[0].toLowerCase();
-      if (firstLineLower.includes('no') || firstLineLower.includes('ad') || firstLineLower.includes('tc')) {
-        startIndex = 1;
-      }
-
-      for (let i = startIndex; i < lines.length; i++) {
-        const line = lines[i].trim();
-        if (!line) continue;
-
-        // Sekme (Tab - Excel kopyalaması) veya virgül/noktalı virgül ayrımı
-        const cols = line.split(/[\t;,]/).map(c => c.trim().replace(/^["']|["']$/g, ''));
-        
-        // Beklenen format (Örnek sıra): 
-        // [0]: Öğrenci No, [1]: Ad, [2]: Soyad, [3]: Sınıf, [4]: Şube, [5]: TC No, [6]: Alan, [7]: 2. Dil, [8]: Cinsiyet, [9]: İngilizce Seviyesi
-        // Veya daha esnek bir yapı kurabiliriz. TC Kimlik No veya Öğrenci No benzersiz anahtar olarak kullanılabilir.
-        if (cols.length >= 3) {
-          recordsToUpsert.push({
-            student_no: cols[0] || null,
-            first_name: cols[1] || '',
-            last_name: cols[2] || '',
-            grade: cols[3] || '',
-            class: cols[4] || '',
-            tc_no: cols[5] ? encrypt(cols[5]) : null,
-            field: cols[6] || '',
-            second_lang: cols[7] || 'None',
-            gender: cols[8] || '',
-            english_level: cols[9] || 'Core',
-          });
-        }
-      }
-
-      if (recordsToUpsert.length === 0) {
-        alert('İşlenecek geçerli veri bulunamadı. Lütfen sütun sıralamasını kontrol edin.');
-        return;
-      }
-
-      // Supabase Upsert (student_no veya tc_no benzersiz alan tanımlı olmalı veya veritabanı kuralına göre eklenir)
-      // Not: Eğer student_no veritabanında UNIQUE ise onConflict kullanılabilir.
       const { error } = await supabase
         .from('students')
         .upsert(recordsToUpsert, { onConflict: 'student_no' });
@@ -666,7 +525,6 @@ const Students = () => {
           )}
         </div>
 
-        {/* Tüm Listeyi İndir Butonu */}
         <button
           onClick={handleExportExcel}
           style={{
@@ -764,7 +622,6 @@ const Students = () => {
         </div>
       </div>
 
-      {/* Toplu Güncelleme / Ekleme Paneli */}
       {showBulkUpdateModal && (
         <div
           style={{
@@ -778,15 +635,15 @@ const Students = () => {
           <h4>🔄 Toplu Öğrenci Güncelleme ve Ekleme (Upsert)</h4>
           <p style={{ fontSize: '0.85rem', color: '#555', marginBottom: '0.5rem' }}>
             Excel'den kopyaladığınız verileri aşağıya yapıştırın. Sistem, öğrenci numarasına göre eşleşenlerin 
-            bilgilerini (şube, alan, numara vb.) <strong>güncelleyecek</strong>, sistemde olmayanları ise <strong>yeni olarak ekleyecektir</strong>.
+            bilgilerini güncelleyecek, sistemde olmayanları ise yeni olarak ekleyecektir.
             <br />
-            <em>Sıralama: Öğrenci No | Ad | Soyad | Sınıf | Şube | TC No | Alan | 2. Dil | Cinsiyet | İng. Seviyesi</em>
+            <em>Sıralama: ID | Ad | Soyad | Sınıf | Şube | Öğrenci No | TC No | Alan | 2. Dil | Cinsiyet | İng. Seviyesi</em>
           </p>
           <textarea
             rows="6"
             value={bulkText}
             onChange={(e) => setBulkText(e.target.value)}
-            placeholder="Verileri buraya yapıştırın (Tab veya virgül ayrımcıları algılanır)..."
+            placeholder="Verileri buraya yapıştırın..."
             style={{ width: '100%', padding: '0.5rem', fontFamily: 'monospace', fontSize: '0.85rem', borderRadius: '4px', border: '1px solid #ccc' }}
           />
           <div style={{ marginTop: '0.5rem' }}>
@@ -806,7 +663,6 @@ const Students = () => {
         </div>
       )}
 
-      {/* Yeni Öğrenci Formu */}
       {showForm && (
         <form
           onSubmit={handleAddStudent}
@@ -938,7 +794,6 @@ const Students = () => {
   );
 };
 
-// Yardımcı fonksiyon (gender gösterimi için)
 const systemGender = (g) => g;
 
-export default Students; // export default Students
+export default Students;
