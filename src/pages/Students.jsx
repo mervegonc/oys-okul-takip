@@ -214,6 +214,7 @@ const Students = () => {
   };
 
   // Tüm öğrencileri Excel (CSV) olarak indirme fonksiyonu
+// Tüm öğrencileri Excel (CSV) olarak indirme fonksiyonu
   const handleExportExcel = async () => {
     try {
       setLoading(true);
@@ -227,6 +228,7 @@ const Students = () => {
 
       const headers = ['id', 'first_name', 'last_name', 'grade', 'class', 'student_no', 'tc_no', 'field', 'second_lang', 'gender', 'english_level'];
       
+      // Türkçe Excel için sütunların düzgün bölünmesi adına noktalı virgül (;) kullanıyoruz
       let csvContent = '\uFEFF' + headers.join(';') + '\n';
 
       data.forEach((row) => {
@@ -283,6 +285,7 @@ const Students = () => {
 
       const recordsToUpsert = [];
       
+      // İlk satır başlık mı kontrol edelim (Örn: "Öğrenci No" veya "tc_no" içeriyorsa geçelim)
       let startIndex = 0;
       const firstLineLower = lines[0].toLowerCase();
       if (firstLineLower.includes('no') || firstLineLower.includes('ad') || firstLineLower.includes('tc')) {
@@ -293,8 +296,12 @@ const Students = () => {
         const line = lines[i].trim();
         if (!line) continue;
 
+        // Sekme (Tab - Excel kopyalaması) veya virgül/noktalı virgül ayrımı
         const cols = line.split(/[\t;,]/).map(c => c.trim().replace(/^["']|["']$/g, ''));
         
+        // Beklenen format (Örnek sıra): 
+        // [0]: Öğrenci No, [1]: Ad, [2]: Soyad, [3]: Sınıf, [4]: Şube, [5]: TC No, [6]: Alan, [7]: 2. Dil, [8]: Cinsiyet, [9]: İngilizce Seviyesi
+        // Veya daha esnek bir yapı kurabiliriz. TC Kimlik No veya Öğrenci No benzersiz anahtar olarak kullanılabilir.
         if (cols.length >= 3) {
           recordsToUpsert.push({
             student_no: cols[0] || null,
@@ -316,6 +323,8 @@ const Students = () => {
         return;
       }
 
+      // Supabase Upsert (student_no veya tc_no benzersiz alan tanımlı olmalı veya veritabanı kuralına göre eklenir)
+      // Not: Eğer student_no veritabanında UNIQUE ise onConflict kullanılabilir.
       const { error } = await supabase
         .from('students')
         .upsert(recordsToUpsert, { onConflict: 'student_no' });
@@ -797,6 +806,7 @@ const Students = () => {
   );
 };
 
+// Yardımcı fonksiyon (gender gösterimi için)
 const systemGender = (g) => g;
 
-export default Students;
+export default Students; // export default Students
