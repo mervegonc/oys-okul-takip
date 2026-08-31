@@ -8,52 +8,67 @@
 </head>
 <body class="bg-slate-50 min-h-screen text-slate-800 p-6">
     <div class="max-w-7xl mx-auto">
-        <div class="flex justify-between items-center mb-6 bg-white p-4 rounded-xl shadow-sm border border-slate-100">
+        <!-- Üst Kısım -->
+        <div class="flex flex-col md:flex-row justify-between items-center mb-6 bg-white p-4 rounded-xl shadow-sm border border-slate-100 gap-4">
             <div>
                 <h1 class="text-xl font-bold">8. Sınıf Şube Dağıtım Paneli</h1>
-                <p class="text-sm text-slate-500">Excel dosyanı yükle, yeni şubeleri belirle ve sekme sekmeli listeleri gör.</p>
+                <p class="text-sm text-slate-500">Excel verilerini yükle, yeni şubeleri belirle, şube bazlı Excel veya PDF çıktısı al.</p>
             </div>
-            <div class="flex gap-2">
-                <button onclick="exportExcel()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg font-medium text-sm transition">
-                    📊 Excel İndir
+            <div class="flex flex-wrap gap-2">
+                <button onclick="exportExcel()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg font-medium text-sm transition shadow-sm">
+                    📊 Tüm Listeyi Excel İndir
                 </button>
-                <label class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg cursor-pointer font-medium text-sm transition">
+                <label class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg cursor-pointer font-medium text-sm transition shadow-sm">
                     📂 Excel Yükle
                     <input type="file" id="excel-file" accept=".xlsx, .xls" class="hidden" onchange="handleExcelUpload(event)">
                 </label>
             </div>
         </div>
 
-        <!-- Şube Sekmeleri -->
-        <div class="flex gap-2 mb-4 overflow-x-auto pb-2" id="branch-tabs">
-            <button onclick="filterTab('all')" id="tab-all" class="px-4 py-2 rounded-lg font-medium text-sm bg-blue-600 text-white transition shadow-sm">Tüm Liste</button>
-            <button onclick="filterTab('M Şubesi')" id="tab-M Şubesi" class="px-4 py-2 rounded-lg font-medium text-sm bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 transition">M Şubesi</button>
-            <button onclick="filterTab('N Şubesi')" id="tab-N Şubesi" class="px-4 py-2 rounded-lg font-medium text-sm bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 transition">N Şubesi</button>
-            <button onclick="filterTab('P Şubesi')" id="tab-P Şubesi" class="px-4 py-2 rounded-lg font-medium text-sm bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 transition">P Şubesi</button>
-            <button onclick="filterTab('R Şubesi')" id="tab-R Şubesi" class="px-4 py-2 rounded-lg font-medium text-sm bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 transition">R Şubesi</button>
-            <button onclick="filterTab('S Şubesi')" id="tab-S Şubesi" class="px-4 py-2 rounded-lg font-medium text-sm bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 transition">S Şubesi</button>
-            <button onclick="filterTab('T Şubesi')" id="tab-T Şubesi" class="px-4 py-2 rounded-lg font-medium text-sm bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 transition">T Şubesi</button>
+        <!-- Şube Sekmeleri ve Çıktı Butonları -->
+        <div class="flex flex-col md:flex-row justify-between items-center mb-4 gap-4 bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
+            <div class="flex gap-2 overflow-x-auto pb-1 w-full md:w-auto" id="branch-tabs">
+                <button onclick="filterTab('all')" id="tab-all" class="px-4 py-2 rounded-lg font-medium text-sm bg-blue-600 text-white transition shadow-sm whitespace-nowrap">Tüm Liste</button>
+                <button onclick="filterTab('M Şubesi')" id="tab-M Şubesi" class="px-4 py-2 rounded-lg font-medium text-sm bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 transition whitespace-nowrap">M Şubesi</button>
+                <button onclick="filterTab('N Şubesi')" id="tab-N Şubesi" class="px-4 py-2 rounded-lg font-medium text-sm bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 transition whitespace-nowrap">N Şubesi</button>
+                <button onclick="filterTab('P Şubesi')" id="tab-P Şubesi" class="px-4 py-2 rounded-lg font-medium text-sm bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 transition whitespace-nowrap">P Şubesi</button>
+                <button onclick="filterTab('R Şubesi')" id="tab-R Şubesi" class="px-4 py-2 rounded-lg font-medium text-sm bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 transition whitespace-nowrap">R Şubesi</button>
+                <button onclick="filterTab('S Şubesi')" id="tab-S Şubesi" class="px-4 py-2 rounded-lg font-medium text-sm bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 transition whitespace-nowrap">S Şubesi</button>
+                <button onclick="filterTab('T Şubesi')" id="tab-T Şubesi" class="px-4 py-2 rounded-lg font-medium text-sm bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 transition whitespace-nowrap">T Şubesi</button>
+            </div>
+            
+            <div class="flex gap-2 w-full md:w-auto justify-end">
+                <button onclick="exportCurrentTabExcel()" class="bg-slate-800 hover:bg-slate-900 text-white px-3 py-1.5 rounded-lg text-xs font-medium transition">
+                    📥 Aktif Şubeyi Excel İndir
+                </button>
+                <button onclick="printCurrentTabPDF()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg text-xs font-medium transition">
+                    🖨️ Aktif Şubeyi Yazdır / PDF
+                </button>
+            </div>
         </div>
 
+        <!-- Tablo -->
         <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
             <div class="overflow-x-auto">
-                <table class="w-full text-left border-collapse">
+                <table class="w-full text-left border-collapse" id="student-table">
                     <thead>
                         <tr class="bg-slate-50 border-b border-slate-100 text-xs font-semibold text-slate-500 uppercase">
-                            <th class="p-4">Sıra</th>
-                            <th class="p-4">Okul No</th>
-                            <th class="p-4">TC Kimlik</th>
-                            <th class="p-4">Adı Soyadı</th>
-                            <th class="p-4">Mevcut Şube</th>
-                            <th class="p-4">Cinsiyet</th>
-                            <th class="p-4">Dil</th>
-                            <th class="p-4">Puan</th>
-                            <th class="p-4">Yeni Şube Belirle</th>
+                            <th class="p-3">Sıra</th>
+                            <th class="p-3">Okul No</th>
+                            <th class="p-3">TC Kimlik</th>
+                            <th class="p-3">Adı Soyadı</th>
+                            <th class="p-3">Sınıf</th>
+                            <th class="p-3">Mevcut Şube</th>
+                            <th class="p-3">Cinsiyet</th>
+                            <th class="p-3">Dil</th>
+                            <th class="p-3">Puan</th>
+                            <th class="p-3">Sıralama</th>
+                            <th class="p-3">Yeni Şube Belirle</th>
                         </tr>
                     </thead>
                     <tbody id="student-table-body" class="divide-y divide-slate-100 text-sm">
                         <tr>
-                            <td colspan="9" class="p-8 text-center text-slate-400">Henüz öğrenci yüklenmedi. Yukarıdan Excel dosyası seçin.</td>
+                            <td colspan="11" class="p-8 text-center text-slate-400">Henüz öğrenci yüklenmedi. Yukarıdan Excel dosyası seçin.</td>
                         </tr>
                     </tbody>
                 </table>
@@ -66,7 +81,7 @@
         let currentTab = 'all';
 
         window.onload = function() {
-            const saved = localStorage.getItem('oys_students');
+            const saved = localStorage.getItem('oys_students_v2');
             if (saved) {
                 students = JSON.parse(saved);
                 renderTable();
@@ -86,7 +101,6 @@
                     const worksheet = workbook.Sheets[firstSheetName];
                     const json = XLSX.utils.sheet_to_json(worksheet);
 
-                    // Mevcut yeni şube seçimlerini koruyarak yeni listeyi yükle
                     students = json.map(s => {
                         const keys = Object.keys(s);
                         const getField = (names) => {
@@ -96,22 +110,31 @@
                             return '';
                         };
 
+                        const ad = getField(['adı', 'ad ']);
+                        const soyad = getField(['soyadı', 'soyad']);
+                        const adSoyad = (ad || soyad) ? `${ad} ${soyad}`.trim() : (s['Adı Soyadı'] || s['Ad Soyad'] || '-');
+
                         return {
                             raw: s,
-                            okulNo: getField(['okul', 'no', 'numara']),
-                            tc: getField(['tc', 'kimlik']),
-                            adSoyad: getField(['ad', 'soyad', 'adi', 'soyadi']),
-                            mevcutSube: getField(['sube', 'mevcut']),
+                            okulNo: getField(['okul numara', 'okul no', 'numara']),
+                            tc: getField(['tc kimlik', 'tc', 'kimlik numarası']),
+                            adSoyad: adSoyad,
+                            sinif: getField(['sınıf', 'sinif']),
+                            mevcutSube: getField(['şube', 'sube']),
                             cinsiyet: getField(['cinsiyet']),
-                            dil: getField(['dil']),
+                            dil: getField(['yabancı dil', 'dil']),
                             puan: getField(['puan', 'not']),
+                            siralama: getField(['sıralama', 'siralama', 'sıra']),
                             yeniSube: s.yeniSube || ''
                         };
                     });
 
-                    localStorage.setItem('oys_students', JSON.stringify(students));
+                    //Puana göre varsayılan sıralama yap
+                    students.sort((a, b) => (parseFloat(b.puan) || 0) - (parseFloat(a.puan) || 0));
+
+                    localStorage.setItem('oys_students_v2', JSON.stringify(students));
                     renderTable();
-                    alert('Tüm öğrenciler başarıyla yüklendi!');
+                    alert('Tüm öğrenciler ve sütunlar başarıyla eşleştirilerek yüklendi!');
                 } catch (err) {
                     alert('Excel okunurken hata oluştu: ' + err.message);
                 }
@@ -122,18 +145,18 @@
         function filterTab(tab) {
             currentTab = tab;
             document.querySelectorAll('#branch-tabs button').forEach(btn => {
-                btn.className = "px-4 py-2 rounded-lg font-medium text-sm bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 transition";
+                btn.className = "px-4 py-2 rounded-lg font-medium text-sm bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 transition whitespace-nowrap";
             });
             const activeBtn = document.getElementById('tab-' + tab);
             if (activeBtn) {
-                activeBtn.className = "px-4 py-2 rounded-lg font-medium text-sm bg-blue-600 text-white transition shadow-sm";
+                activeBtn.className = "px-4 py-2 rounded-lg font-medium text-sm bg-blue-600 text-white transition shadow-sm whitespace-nowrap";
             }
             renderTable();
         }
 
         function updateNewBranch(indexInAll, value) {
             students[indexInAll].yeniSube = value;
-            localStorage.setItem('oys_students', JSON.stringify(students));
+            localStorage.setItem('oys_students_v2', JSON.stringify(students));
         }
 
         function renderTable() {
@@ -145,7 +168,7 @@
             });
 
             if (filtered.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="9" class="p-8 text-center text-slate-400">Bu sekmede gösterilecek öğrenci bulunamadı.</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="11" class="p-8 text-center text-slate-400">Bu sekmede gösterilecek öğrenci bulunamadı.</td></tr>`;
                 return;
             }
 
@@ -154,16 +177,18 @@
             tbody.innerHTML = filtered.map((s, displayIndex) => {
                 return `
                     <tr class="hover:bg-slate-50/50">
-                        <td class="p-4 text-slate-500">${displayIndex + 1}</td>
-                        <td class="p-4 font-medium">${s.okulNo || '-'}</td>
-                        <td class="p-4 text-slate-600">${s.tc || '-'}</td>
-                        <td class="p-4 font-semibold text-slate-900">${s.adSoyad || '-'}</td>
-                        <td class="p-4"><span class="px-2.5 py-1 bg-slate-100 rounded-md font-medium text-xs">${s.mevcutSube || '-'}</span></td>
-                        <td class="p-4 text-slate-600">${s.cinsiyet || '-'}</td>
-                        <td class="p-4 text-slate-600">${s.dil || '-'}</td>
-                        <td class="p-4 font-bold text-blue-600">${s.puan || '-'}</td>
-                        <td class="p-4">
-                            <select onchange="updateNewBranch(${s.originalIndex}, this.value)" class="border border-slate-300 rounded-lg p-1.5 text-xs bg-white focus:ring-2 focus:ring-blue-500 outline-none font-medium">
+                        <td class="p-3 text-slate-500">${displayIndex + 1}</td>
+                        <td class="p-3 font-medium">${s.okulNo || '-'}</td>
+                        <td class="p-3 text-slate-600">${s.tc || '-'}</td>
+                        <td class="p-3 font-semibold text-slate-900">${s.adSoyad || '-'}</td>
+                        <td class="p-3 text-slate-600">${s.sinif || '-'}</td>
+                        <td class="p-3"><span class="px-2 py-0.5 bg-slate-100 rounded-md font-medium text-xs">${s.mevcutSube || '-'}</span></td>
+                        <td class="p-3 text-slate-600">${s.cinsiyet || '-'}</td>
+                        <td class="p-3 text-slate-600">${s.dil || '-'}</td>
+                        <td class="p-3 font-bold text-blue-600">${s.puan || '-'}</td>
+                        <td class="p-3 text-slate-600">${s.siralama || (displayIndex + 1)}</td>
+                        <td class="p-3">
+                            <select onchange="updateNewBranch(${s.originalIndex}, this.value)" class="border border-slate-300 rounded-lg p-1 text-xs bg-white focus:ring-2 focus:ring-blue-500 outline-none font-medium">
                                 <option value="">Şube Seçilmedi</option>
                                 ${branches.map(b => `<option value="${b}" ${s.yeniSube === b ? 'selected' : ''}>${b}</option>`).join('')}
                             </select>
@@ -174,25 +199,80 @@
         }
 
         function exportExcel() {
-            if (students.length === 0) {
-                alert('İndirilecek öğrenci verisi yok!');
-                return;
-            }
+            if (students.length === 0) { alert('Veri yok!'); return; }
             const exportData = students.map((s, i) => ({
                 'Sıra': i + 1,
                 'Okul No': s.okulNo,
                 'TC Kimlik': s.tc,
                 'Adı Soyadı': s.adSoyad,
+                'Sınıf': s.sinif,
                 'Mevcut Şube': s.mevcutSube,
                 'Cinsiyet': s.cinsiyet,
                 'Dil': s.dil,
                 'Puan': s.puan,
+                'Sıralama': s.siralama,
                 'Yeni Şube': s.yeniSube
             }));
             const worksheet = XLSX.utils.json_to_sheet(exportData);
             const workbook = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(workbook, worksheet, "Yeni Şube Dağılımı");
-            XLSX.writeFile(workbook, "sube-dagitimi-guncel.xlsx");
+            XLSX.utils.book_append_sheet(workbook, worksheet, "Tüm Liste");
+            XLSX.writeFile(workbook, "tum-ogrenci-dagilimi.xlsx");
+        }
+
+        function exportCurrentTabExcel() {
+            let filtered = students.filter(s => currentTab === 'all' || s.yeniSube === currentTab);
+            if (filtered.length === 0) { alert('Bu şubede indirilecek öğrenci yok!'); return; }
+            
+            const exportData = filtered.map((s, i) => ({
+                'Sıra': i + 1,
+                'Okul No': s.okulNo,
+                'TC Kimlik': s.tc,
+                'Adı Soyadı': s.adSoyad,
+                'Sınıf': s.sinif,
+                'Mevcut Şube': s.mevcutSube,
+                'Cinsiyet': s.cinsiyet,
+                'Dil': s.dil,
+                'Puan': s.puan,
+                'Sıralama': s.siralama,
+                'Yeni Şube': s.yeniSube
+            }));
+            const worksheet = XLSX.utils.json_to_sheet(exportData);
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, currentTab);
+            XLSX.writeFile(workbook, `${currentTab.toLowerCase().replace(/\s+/g, '-')}-listesi.xlsx`);
+        }
+
+        function printCurrentTabPDF() {
+            let filtered = students.filter(s => currentTab === 'all' || s.yeniSube === currentTab);
+            if (filtered.length === 0) { alert('Yazdırılacak öğrenci yok!'); return; }
+
+            const printWindow = window.open('', '', 'height=700,width=900');
+            printWindow.document.write('<html><head><title>' + currentTab + ' Listesi</title>');
+            printWindow.document.write('<style>body{font-family:sans-serif;padding:20px;} h2{text-align:center;} table{width:100%;border-collapse:collapse;margin-top:20px;} th, td{border:1px solid #ccc;padding:8px;text-align:left;font-size:12px;} th{background:#f1f5f9;}</style>');
+            printWindow.document.write('</head><body>');
+            printWindow.document.write('<h2>8. Sınıf - ' + (currentTab === 'all' ? 'Tüm Liste' : currentTab) + ' Yerleştirme Listesi</h2>');
+            printWindow.document.write('<table><thead><tr><th>Sıra</th><th>Okul No</th><th>TC Kimlik</th><th>Adı Soyadı</th><th>Sınıf</th><th>Mevcut Şube</th><th>Cinsiyet</th><th>Dil</th><th>Puan</th><th>Sıralama</th><th>Yeni Şube</th></tr></thead><tbody>');
+            
+            filtered.forEach((s, i) => {
+                printWindow.document.write(`<tr>
+                    <td>${i+1}</td>
+                    <td>${s.okulNo || ''}</td>
+                    <td>${s.tc || ''}</td>
+                    <td>${s.adSoyad || ''}</td>
+                    <td>${s.sinif || ''}</td>
+                    <td>${s.mevcutSube || ''}</td>
+                    <td>${s.cinsiyet || ''}</td>
+                    <td>${s.dil || ''}</td>
+                    <td>${s.puan || ''}</td>
+                    <td>${s.siralama || ''}</td>
+                    <td><b>${s.yeniSube || 'Seçilmedi'}</b></td>
+                </tr>`);
+            });
+
+            printWindow.document.write('</tbody></table></body></html>');
+            printWindow.document.close();
+            printWindow.focus();
+            setTimeout(() => { printWindow.print(); printWindow.close(); }, 500);
         }
     </script>
 </body>
