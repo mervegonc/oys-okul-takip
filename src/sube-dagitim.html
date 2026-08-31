@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <title>OYS - 8. Sınıf Şube Dağıtım Modülü</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <!-- Supabase JS Client -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <!-- SheetJS (Excel İndirmek İçin) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+</head>
+<body class="bg-slate-50 min-h-screen text-slate-800 p-6">
+    <div class="max-w-7xl mx-auto">
+        <!-- Üst Bilgi ve Dışa Aktar Butonları -->
+        <div class="flex flex-col md:flex-row justify-between items-center mb-6 bg-white p-6 rounded-2xl shadow-sm border border-slate-100 gap-4">
+            <div>
+                <div class="flex items-center gap-2">
+                    <span class="bg-indigo-100 text-indigo-700 text-xs font-bold px-2.5 py-1 rounded-lg">OYS Modülü</span>
+                    <h1 class="text-2xl font-bold text-slate-900">8. Sınıf Şube Dağıtım Paneli</h1>
+                </div>
+                <p class="text-sm text-slate-500 mt-1">Yapılan değişiklikler anında Supabase veritabanına kaydedilir.</p>
+            </div>
+            <div class="flex flex-wrap gap-2">
+                <button onclick="exportToExcel()" class="bg-emerald-600 text-white px-4 py-2 rounded-xl text-sm font-medium hover:bg-emerald-500 transition cursor-pointer">📊 Excel İndir</button>
+                <button onclick="window.print()" class="bg-slate-800 text-white px-4 py-2 rounded-xl text-sm font-medium hover:bg-slate-700 transition cursor-pointer">🖨️ Yazdır / PDF</button>
+            </div>
+        </div>
+
+        <!-- Sekmeler -->
+        <div class="flex flex-wrap gap-2 mb-6 border-b border-slate-200 pb-4" id="tab-buttons">
+            <button onclick="switchTab('all')" class="tab-btn px-5 py-2.5 rounded-xl font-semibold text-sm transition bg-indigo-600 text-white shadow-sm cursor-pointer">Tüm Liste (128)</button>
+            <button onclick="switchTab('M')" class="tab-btn px-5 py-2.5 rounded-xl font-semibold text-sm transition bg-white text-slate-600 hover:bg-slate-100 border border-slate-200 cursor-pointer">M Şubesi</button>
+            <button onclick="switchTab('N')" class="tab-btn px-5 py-2.5 rounded-xl font-semibold text-sm transition bg-white text-slate-600 hover:bg-slate-100 border border-slate-200 cursor-pointer">N Şubesi</button>
+            <button onclick="switchTab('P')" class="tab-btn px-5 py-2.5 rounded-xl font-semibold text-sm transition bg-white text-slate-600 hover:bg-slate-100 border border-slate-200 cursor-pointer">P Şubesi</button>
+            <button onclick="switchTab('R')" class="tab-btn px-5 py-2.5 rounded-xl font-semibold text-sm transition bg-white text-slate-600 hover:bg-slate-100 border border-slate-200 cursor-pointer">R Şubesi</button>
+            <button onclick="switchTab('S')" class="tab-btn px-5 py-2.5 rounded-xl font-semibold text-sm transition bg-white text-slate-600 hover:bg-slate-100 border border-slate-200 cursor-pointer">S Şubesi</button>
+            <button onclick="switchTab('T')" class="tab-btn px-5 py-2.5 rounded-xl font-semibold text-sm transition bg-white text-slate-600 hover:bg-slate-100 border border-slate-200 cursor-pointer">T Şubesi</button>
+        </div>
+
+        <!-- İstatistik Kutuları -->
+        <div class="grid grid-cols-2 md:grid-cols-7 gap-4 mb-6" id="stats-container"></div>
+
+        <!-- Tablo Alanı -->
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="bg-slate-50 text-slate-500 uppercase text-xs tracking-wider border-b border-slate-100">
+                            <th class="p-4">Sıra</th>
+                            <th class="p-4">Okul No</th>
+                            <th class="p-4">TC Kimlik</th>
+                            <th class="p-4">Adı Soyadı</th>
+                            <th class="p-4">Mevcut Şube</th>
+                            <th class="p-4">Cinsiyet</th>
+                            <th class="p-4">Dil</th>
+                            <th class="p-4">Puan</th>
+                            <th class="p-4 bg-indigo-50 text-indigo-700" id="header-action-title">Yeni Şube Seç</th>
+                        </tr>
+                    </thead>
+                    <tbody id="student-table-body" class="divide-y divide-slate-100 text-sm"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Supabase Bağlantı Bilgilerin (Kendi bilgilerini buraya yazacaksın)
+        const SUPABASE_URL = 'https://ztjdsnwtdmdasclveume.supabase.co';
+        const SUPABASE_KEY = 'sb_publishable_LazklBcp_ZUQ8LjC_q6jnw_hMkF555C';
+        const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        let students = [];
+        let currentTab = 'all';
+
+        // Verileri Supabase'den Çek
+        async function fetchStudents() {
+            let { data, error } = await _supabase.from('sube_dagitim').select('*').order('puan', { ascending: false });
+            if (error) {
+                console.error('Veri çekme hatası:', error);
+                return;
+            }
+            students = data || [];
+            renderStats();
+            renderTable();
+        }
+
+        // Şube Değiştiğinde Supabase'e Anında Kaydet
+        async function updateStudentSub(no, newSub) {
+            let student = students.find(s => s.ogrenci_no === no);
+            if(student) {
+                student.yeni_sube = newSub;
+                renderStats();
+                
+                // Supabase Güncelleme
+                let { error } = await _supabase
+                    .from('sube_dagitim')
+                    .update({ yeni_sube: newSub })
+                    .eq('ogrenci_no', no);
+
+                if (error) {
+                    alert('Kayıt güncellenirken hata oluştu!');
+                    console.error(error);
+                }
+            }
+        }
+
+        function switchTab(tab) {
+            currentTab = tab;
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.className = "tab-btn px-5 py-2.5 rounded-xl font-semibold text-sm transition bg-white text-slate-600 hover:bg-slate-100 border border-slate-200 cursor-pointer";
+            });
+            let activeBtn = event ? event.currentTarget : document.querySelector(`button[onclick="switchTab('${tab}')"]`);
+            if(activeBtn) {
+                activeBtn.className = "tab-btn px-5 py-2.5 rounded-xl font-semibold text-sm transition bg-indigo-600 text-white shadow-sm cursor-pointer";
+            }
+            renderStats();
+            renderTable();
+        }
+
+        function renderStats() {
+            let statsContainer = document.getElementById('stats-container');
+            let counts = { M: 0, N: 0, P: 0, R: 0, S: 0, T: 0 };
+            students.forEach(s => {
+                if(counts[s.yeni_sube] !== undefined) {
+                    counts[s.yeni_sube]++;
+                }
+            });
+            statsContainer.innerHTML = `
+                <div class="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm"><div class="text-xs text-slate-400 font-medium">TOPLAM</div><div class="text-xl font-bold text-slate-900 mt-1">${students.length}</div></div>
+                <div class="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm"><div class="text-xs text-indigo-500 font-medium">M ŞUBESİ</div><div class="text-xl font-bold text-indigo-600 mt-1">${counts.M}</div></div>
+                <div class="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm"><div class="text-xs text-indigo-500 font-medium">N ŞUBESİ</div><div class="text-xl font-bold text-indigo-600 mt-1">${counts.N}</div></div>
+                <div class="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm"><div class="text-xs text-indigo-500 font-medium">P ŞUBESİ</div><div class="text-xl font-bold text-indigo-600 mt-1">${counts.P}</div></div>
+                <div class="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm"><div class="text-xs text-indigo-500 font-medium">R ŞUBESİ</div><div class="text-xl font-bold text-indigo-600 mt-1">${counts.R}</div></div>
+                <div class="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm"><div class="text-xs text-indigo-500 font-medium">S ŞUBESİ</div><div class="text-xl font-bold text-indigo-600 mt-1">${counts.S}</div></div>
+                <div class="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm"><div class="text-xs text-indigo-500 font-medium">T ŞUBESİ</div><div class="text-xl font-bold text-indigo-600 mt-1">${counts.T}</div></div>
+            `;
+        }
+
+        function renderTable() {
+            let tbody = document.getElementById('student-table-body');
+            let headerTitle = document.getElementById('header-action-title');
+            let filtered = students;
+            if(currentTab !== 'all') {
+                filtered = students.filter(s => s.yeni_sube === currentTab);
+                headerTitle.innerText = currentTab + " Şubesi Durumu";
+            } else {
+                headerTitle.innerText = "Yeni Şube Seç";
+            }
+            if(filtered.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="9" class="p-8 text-center text-slate-400">Bu şubeye atanmış öğrenci bulunmuyor.</td></tr>`;
+                return;
+            }
+            let html = "";
+            filtered.forEach((s, index) => {
+                let options = `<option value="">Seçilmedi</option>`;
+                ['M', 'N', 'P', 'R', 'S', 'T'].forEach(sub => {
+                    let sel = s.yeni_sube === sub ? 'selected' : '';
+                    options += `<option value="${sub}" ${sel}>${sub} Şubesi</option>`;
+                });
+                html += `
+                    <tr class="hover:bg-slate-50/80 transition">
+                        <td class="p-4 text-slate-400 font-mono text-xs">${index + 1}</td>
+                        <td class="p-4 font-medium text-slate-700">${s.ogrenci_no}</td>
+                        <td class="p-4 text-slate-500 font-mono text-xs">${s.tc}</td>
+                        <td class="p-4 font-semibold text-slate-900">${s.ad} ${s.soyad}</td>
+                        <td class="p-4"><span class="bg-slate-100 text-slate-600 px-2.5 py-1 rounded-lg text-xs font-bold">${s.mevcut_sube}</span></td>
+                        <td class="p-4 text-slate-600">${s.cinsiyet}</td>
+                        <td class="p-4 text-slate-600">${s.dil}</td>
+                        <td class="p-4 font-mono font-medium text-slate-700">${s.puan}</td>
+                        <td class="p-4">
+                            <select onchange="updateStudentSub(${s.ogrenci_no}, this.value)" class="bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-semibold text-slate-700 focus:outline-none focus:border-indigo-500 cursor-pointer">
+                                ${options}
+                            </select>
+                        </td>
+                    </tr>
+                `;
+            });
+            tbody.innerHTML = html;
+        }
+
+        // Excel Olarak İndirme Fonksiyonu
+        function exportToExcel() {
+            let dataToExport = students.map((s, i) => ({
+                "Sıra": i + 1,
+                "Okul No": s.ogrenci_no,
+                "TC Kimlik": s.tc,
+                "Ad": s.ad,
+                "Soyad": s.soyad,
+                "Mevcut Şube": s.mevcut_sube,
+                "Cinsiyet": s.cinsiyet,
+                "Seçmeli Dil": s.dil,
+                "Puan": s.puan,
+                "Yeni Şube": s.yeni_sube
+            }));
+            let worksheet = XLSX.utils.json_to_sheet(dataToExport);
+            let workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, "Şube Dağılımı");
+            XLSX.writeFile(workbook, "Sube_Dagitim_Listesi.xlsx");
+        }
+
+        // Sayfa açıldığında verileri yükle
+        fetchStudents();
+    </script>
+</body>
+</html>
