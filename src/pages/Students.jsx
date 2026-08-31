@@ -2,7 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../supabase';
 import ExcelUpload from '../components/ExcelUpload';
 import { encrypt, decrypt } from '../utils/encryption';
-import { FaTrash, FaUserPlus, FaSort, FaSortUp, FaSortDown, FaFilter } from 'react-icons/fa';
+import { FaTrash, FaUserPlus, FaSort, FaSortUp, FaSortDown, FaFilter, FaFileExcel } from 'react-icons/fa';
+import * as XLSX from 'xlsx'; // Excel dışa aktarımı için SheetJS kütüphanesi
 
 const Students = () => {
   const [students, setStudents] = useState([]);
@@ -13,6 +14,7 @@ const Students = () => {
   const [totalCount, setTotalCount] = useState(0);
   const [pageSize] = useState(20);
   const [classStats, setClassStats] = useState({});
+  const [exporting, setExporting] = useState(false);
 
   // Filtreleme State'leri
   const [selectedGradeFilter, setSelectedGradeFilter] = useState('ALL');
@@ -129,7 +131,7 @@ const Students = () => {
             console.warn('Çözümleme hatası:', e);
           }
         } else {
-          if (tcNo) tcNo = '***';
+          tcNo = '***';
         }
 
         return { ...student, tcNo };
@@ -140,6 +142,63 @@ const Students = () => {
       console.error('Öğrenciler alınamadı:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Tüm listeyi (sayfalamasız, filtrelere uygun) Excel olarak indir
+  const handleExportAllToExcel = async () => {
+    try {
+      setExporting(true);
+      let query = supabase.from('students').select('*');
+
+      if (selectedGradeFilter !== 'ALL') {
+        query = query.eq('grade', selectedGradeFilter);
+      }
+      if (selectedClassFilter !== 'ALL') {
+        query = query.eq('class', selectedClassFilter);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+
+      // Verileri tablo formatına ve şifresi çözülmüş TC'ye dönüştür
+      const excelData = (data || []).map((raw, index) => {
+        let rawTc = raw.tc_no || '';
+        try {
+          if (rawTc && rawTc.length > 20) {
+            rawTc = decrypt(rawTc);
+          }
+        } catch (e) {
+          console.warn('TC Çözümleme hatası:', e);
+        }
+
+        return {
+          '#': index + 1,
+          'Ad': raw.first_name || '',
+          'Soyad': raw.last_name || '',
+          'Sınıf': raw.grade || '',
+          'Şube': raw.class || '',
+          'Öğrenci No': raw.student_no || '',
+          'TC Kimlik No': rawTc,
+          'Alan': raw.field || '',
+          '2. Dil': raw.second_lang || '',
+          'Cinsiyet': raw.gender || '',
+          'İngilizce Seviyesi': raw.english_level || 'Core',
+        };
+      });
+
+      // SheetJS ile Excel dosyası oluşturma
+      const worksheet = XLSX.utils.json_to_sheet(excelData);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Öğrenciler');
+
+      // Dosyayı oluştur ve indir
+      XLSX.writeFile(workbook, `Ogrenci_Listesi_${selectedGradeFilter}_Sinif.xlsx`);
+    } catch (error) {
+      console.error('Excel dışa aktarma hatası:', error);
+      alert('Excel dosyası oluşturulurken bir hata oluştu.');
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -371,7 +430,7 @@ const Students = () => {
             style={{ padding: '0.4rem', borderRadius: '4px', border: '1px solid #ccc' }}
           >
             <option value="ALL">Tüm Şubeler</option>
-            {['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'].map((c) => (
+            {['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'Y.K.', 'M'].map((c) => (
               <option key={c} value={c}>
                 {c} Şubesi
               </option>
@@ -418,7 +477,7 @@ const Students = () => {
           gap: '0.5rem',
         }}
       >
-        <div>
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
           <button
             onClick={() => setShowForm(!showForm)}
             style={{
@@ -435,6 +494,26 @@ const Students = () => {
           >
             <FaUserPlus /> Yeni Öğrenci
           </button>
+
+          {/* TÜM ÖĞRENCİLERİ EXCEL OLARAK İNDİR BUTONU */}
+          <button
+            onClick={handleExportAllToExcel}
+            disabled={exporting}
+            style={{
+              padding: '0.4rem 1rem',
+              background: '#28a745',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+            }}
+          >
+            <FaFileExcel /> {exporting ? 'İndiriliyor...' : 'Tüm Listeyi Excel Olarak İndir'}
+          </button>
+
           {selectedIds.length > 0 && (
             <button
               onClick={handleBulkDelete}
@@ -448,7 +527,6 @@ const Students = () => {
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: '0.5rem',
-                marginLeft: '0.5rem',
               }}
             >
               <FaTrash /> Seçileni Sil ({selectedIds.length})
