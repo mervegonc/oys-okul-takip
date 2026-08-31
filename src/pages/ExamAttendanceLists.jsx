@@ -46,9 +46,7 @@ const ExamAttendanceLists = () => {
   // Sekme & Filtre Durumları
   const [activeTab, setActiveTab] = useState('attendance');
   const [showTc, setShowTc] = useState(true);
-  const [examCategory, setExamCategory] = useState('akademik'); // 'akademik', 'lise_dil_ve_2dil', 'lise_sadece_2dil', 'ortaokul_dil', 'ortaokul_ingilizce'
-  const [schoolType, setSchoolType] = useState('lise'); // 'lise', 'ortaokul'
-  const [sessionType, setSessionType] = useState('sozel'); // 'sozel' veya 'sayisal'
+  const [examCategory, setExamCategory] = useState('akademik_lise'); // 'akademik_lise', 'sadece_ingilizce', 'sadece_ikinci_dil', 'ingilizce_ve_ikinci_dil', 'akademik_ortaokul_sozel', 'akademik_ortaokul_sayisal'
   const [invigilators, setInvigilators] = useState({});
 
   useEffect(() => {
@@ -278,9 +276,11 @@ const ExamAttendanceLists = () => {
   };
 
   const getHeaderTitle = (roomName, gradeSummary) => {
-    if (schoolType === 'ortaokul') {
-      const sessionLabel = sessionType === 'sayisal' ? 'SAYISAL OTURUMU' : 'SÖZEL OTURUMU';
-      return `${selectedExam.title} - ${gradeSummary} (${sessionLabel}) - ${roomName.toUpperCase()} YOKLAMA LİSTESİ`;
+    if (examCategory === 'akademik_ortaokul_sozel') {
+      return `${selectedExam.title} - ${gradeSummary} (SÖZEL OTURUMU) - ${roomName.toUpperCase()} YOKLAMA LİSTESİ`;
+    }
+    if (examCategory === 'akademik_ortaokul_sayisal') {
+      return `${selectedExam.title} - ${gradeSummary} (SAYISAL OTURUMU) - ${roomName.toUpperCase()} YOKLAMA LİSTESİ`;
     }
     return `${selectedExam.title} - ${gradeSummary} - ${roomName.toUpperCase()} YOKLAMA LİSTESİ`;
   };
@@ -343,15 +343,15 @@ const ExamAttendanceLists = () => {
           'Öğrenci Soyadı, Adı': det.surnameFirstFormat,
           'Sınıf/Şube': `${det.grade}-${det.className}`
         };
-        if (schoolType === 'lise' && examCategory === 'akademik') {
+        if (examCategory === 'akademik_lise') {
           item['Alan'] = det.track;
-        } else if (schoolType === 'lise' && examCategory === 'lise_dil_ve_2dil') {
+        } else if (examCategory === 'ingilizce_ve_ikinci_dil') {
           item['İng. Seviye'] = det.englishLevel;
           item['2. Yab. Dil'] = det.secondLanguage;
-        } else if (schoolType === 'lise' && examCategory === 'lise_sadece_2dil') {
+        } else if (examCategory === 'sadece_ikinci_dil') {
           item['2. Yab. Dil'] = det.secondLanguage;
-        } else if (schoolType === 'ortaokul' && examCategory === 'ortaokul_dil') {
-          item['2. Yab. Dil'] = det.secondLanguage;
+        } else if (examCategory === 'sadece_ingilizce') {
+          item['İng. Seviye'] = det.englishLevel;
         }
         item['Salon Adı'] = getRoomName(st);
         item['Masa Sıra No'] = st.seatNumber || st.seat_number || '';
@@ -372,15 +372,15 @@ const ExamAttendanceLists = () => {
           'Öğrenci Adı Soyadı': det.fullName,
           'Sınıf/Şube': `${det.grade}-${det.className}`
         };
-        if (schoolType === 'lise' && examCategory === 'akademik') {
+        if (examCategory === 'akademik_lise') {
           item['Alan'] = det.track;
-        } else if (schoolType === 'lise' && examCategory === 'lise_dil_ve_2dil') {
+        } else if (examCategory === 'ingilizce_ve_ikinci_dil') {
           item['İng. Seviye'] = det.englishLevel;
           item['2. Yab. Dil'] = det.secondLanguage;
-        } else if (schoolType === 'lise' && examCategory === 'lise_sadece_2dil') {
+        } else if (examCategory === 'sadece_ikinci_dil') {
           item['2. Yab. Dil'] = det.secondLanguage;
-        } else if (schoolType === 'ortaokul' && examCategory === 'ortaokul_dil') {
-          item['2. Yab. Dil'] = det.secondLanguage;
+        } else if (examCategory === 'sadece_ingilizce') {
+          item['İng. Seviye'] = det.englishLevel;
         }
         if (showTc) {
           item['TC Kimlik No'] = det.tc;
@@ -526,45 +526,16 @@ const ExamAttendanceLists = () => {
 
             <div style={{ background: '#f8fafc', padding: '1.2rem', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '1.5rem', display: 'flex', flexWrap: 'wrap', gap: '1.5rem', alignItems: 'center' }}>
               <div>
-                <label style={{ fontWeight: 'bold', fontSize: '0.85rem', display: 'block' }}>Sınav Türü:</label>
-                <select value={examCategory} onChange={(e) => setExamCategory(e.target.value)} style={{ padding: '0.4rem', borderRadius: '4px', border: '1px solid #ccc' }}>
-                  <option value="akademik">Akademik Sınav (Deneme / Yazılı)</option>
-                  {schoolType === 'lise' ? (
-                    <>
-                      <option value="lise_dil_ve_2dil">Lise Yabancı Dil Sınavı (İng. + 2. Dil)</option>
-                      <option value="lise_sadece_2dil">Lise 2. Yabancı Dil Sınavı (Sadece 2. Dil)</option>
-                    </>
-                  ) : (
-                    <>
-                      <option value="ortaokul_dil">Ortaokul Yabancı Dil Sınavı</option>
-                      <option value="ortaokul_ingilizce">Ortaokul İngilizce Sınavı</option>
-                    </>
-                  )}
+                <label style={{ fontWeight: 'bold', fontSize: '0.85rem', display: 'block' }}>Sınav / Liste Kategorisi:</label>
+                <select value={examCategory} onChange={(e) => setExamCategory(e.target.value)} style={{ padding: '0.4rem', borderRadius: '4px', border: '1px solid #ccc', fontWeight: 'bold' }}>
+                  <option value="akademik_lise">Akademik Lise</option>
+                  <option value="sadece_ingilizce">Sadece İngilizce</option>
+                  <option value="sadece_ikinci_dil">Sadece 2. Yabancı Dil</option>
+                  <option value="ingilizce_ve_ikinci_dil">İngilizce ve 2. Yabancı Dil</option>
+                  <option value="akademik_ortaokul_sozel">Akademik Ortaokul Sözel</option>
+                  <option value="akademik_ortaokul_sayisal">Akademik Ortaokul Sayısal</option>
                 </select>
               </div>
-
-              <div>
-                <label style={{ fontWeight: 'bold', fontSize: '0.85rem', display: 'block' }}>Kademe:</label>
-                <select value={schoolType} onChange={(e) => {
-                  const newType = e.target.value;
-                  setSchoolType(newType);
-                  if (newType === 'lise' && examCategory.includes('ortaokul')) setExamCategory('akademik');
-                  if (newType === 'ortaokul' && examCategory.includes('lise')) setExamCategory('akademik');
-                }} style={{ padding: '0.4rem', borderRadius: '4px', border: '1px solid #ccc' }}>
-                  <option value="lise">Lise (9-12)</option>
-                  <option value="ortaokul">Ortaokul (5-8)</option>
-                </select>
-              </div>
-
-              {schoolType === 'ortaokul' && (
-                <div>
-                  <label style={{ fontWeight: 'bold', fontSize: '0.85rem', display: 'block', color: '#2b6cb0' }}>Oturum Türü:</label>
-                  <select value={sessionType} onChange={(e) => setSessionType(e.target.value)} style={{ padding: '0.4rem', borderRadius: '4px', border: '1px solid #2b6cb0', fontWeight: 'bold' }}>
-                    <option value="sozel">Sözel Oturum</option>
-                    <option value="sayisal">Sayısal Oturum</option>
-                  </select>
-                </div>
-              )}
 
               <div style={{ display: 'flex', alignItems: 'center', marginTop: '1.2rem' }}>
                 <label style={{ fontSize: '0.9rem', cursor: 'pointer', fontWeight: 'bold', color: '#2b6cb0' }}>
@@ -731,20 +702,20 @@ const ExamAttendanceLists = () => {
                           <th>ÖĞRENCİ ADI SOYADI</th>
                           <th style={{ width: '11%', textAlign: 'center' }}>SINIF / ŞUBE</th>
                           
-                          {schoolType === 'lise' && examCategory === 'akademik' && (
+                          {examCategory === 'akademik_lise' && (
                             <th style={{ width: '10%', textAlign: 'center' }}>ALAN</th>
                           )}
-                          {schoolType === 'lise' && examCategory === 'lise_dil_ve_2dil' && (
+                          {examCategory === 'sadece_ingilizce' && (
+                            <th style={{ width: '12%', textAlign: 'center' }}>İNG. SEVİYE</th>
+                          )}
+                          {examCategory === 'sadece_ikinci_dil' && (
+                            <th style={{ width: '12%', textAlign: 'center' }}>2. YAB. DİL</th>
+                          )}
+                          {examCategory === 'ingilizce_ve_ikinci_dil' && (
                             <>
                               <th style={{ width: '11%', textAlign: 'center' }}>İNG. SEVİYE</th>
                               <th style={{ width: '11%', textAlign: 'center' }}>2. YAB. DİL</th>
                             </>
-                          )}
-                          {schoolType === 'lise' && examCategory === 'lise_sadece_2dil' && (
-                            <th style={{ width: '12%', textAlign: 'center' }}>2. YAB. DİL</th>
-                          )}
-                          {schoolType === 'ortaokul' && examCategory === 'ortaokul_dil' && (
-                            <th style={{ width: '12%', textAlign: 'center' }}>2. YAB. DİL</th>
                           )}
 
                           <th style={{ width: '18%', textAlign: 'center' }}>YOKLAMA +/-</th>
@@ -765,10 +736,20 @@ const ExamAttendanceLists = () => {
                               <td style={{ fontWeight: '500' }}>{det.fullName}</td>
                               <td style={{ textAlign: 'center' }}>{det.grade}-{det.className}</td>
 
-                              {schoolType === 'lise' && examCategory === 'akademik' && (
+                              {examCategory === 'akademik_lise' && (
                                 <td style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '9pt' }}>{det.track}</td>
                               )}
-                              {schoolType === 'lise' && examCategory === 'lise_dil_ve_2dil' && (
+                              {examCategory === 'sadece_ingilizce' && (
+                                <td className={engStyle.className} style={{ textAlign: 'center', fontSize: '9pt', ...engStyle.style }}>
+                                  {det.englishLevel}
+                                </td>
+                              )}
+                              {examCategory === 'sadece_ikinci_dil' && (
+                                <td className={langStyle.className} style={{ textAlign: 'center', fontSize: '9pt', ...langStyle.style }}>
+                                  {det.secondLanguage}
+                                </td>
+                              )}
+                              {examCategory === 'ingilizce_ve_ikinci_dil' && (
                                 <>
                                   <td className={engStyle.className} style={{ textAlign: 'center', fontSize: '9pt', ...engStyle.style }}>
                                     {det.englishLevel}
@@ -777,16 +758,6 @@ const ExamAttendanceLists = () => {
                                     {det.secondLanguage}
                                   </td>
                                 </>
-                              )}
-                              {schoolType === 'lise' && examCategory === 'lise_sadece_2dil' && (
-                                <td className={langStyle.className} style={{ textAlign: 'center', fontSize: '9pt', ...langStyle.style }}>
-                                  {det.secondLanguage}
-                                </td>
-                              )}
-                              {schoolType === 'ortaokul' && examCategory === 'ortaokul_dil' && (
-                                <td className={langStyle.className} style={{ textAlign: 'center', fontSize: '9pt', ...langStyle.style }}>
-                                  {det.secondLanguage}
-                                </td>
                               )}
 
                               <td style={{ textAlign: 'center', color: '#999' }}>[ &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; ]</td>
@@ -797,7 +768,7 @@ const ExamAttendanceLists = () => {
                     </table>
 
                     <div style={{ marginTop: '0.6rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                      {examCategory === 'lise_dil_ve_2dil' && (
+                      {(examCategory === 'sadece_ingilizce' || examCategory === 'ingilizce_ve_ikinci_dil') && (
                         <div style={{ border: '1px dashed #666', padding: '0.4rem 0.6rem', fontSize: '8.5pt', borderRadius: '4px', background: '#f8fafc', display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'center' }}>
                           <span style={{ color: '#555', fontWeight: 'bold' }}>İNGİLİZCE SEVİYE BİLGİSİ:</span>
                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem' }}>
@@ -807,7 +778,7 @@ const ExamAttendanceLists = () => {
                         </div>
                       )}
 
-                      {(examCategory === 'lise_sadece_2dil' || examCategory === 'ortaokul_dil') && (
+                      {(examCategory === 'sadece_ikinci_dil' || examCategory === 'ingilizce_ve_ikinci_dil') && (
                         <div style={{ border: '1px dashed #666', padding: '0.4rem 0.6rem', fontSize: '8.5pt', borderRadius: '4px', background: '#f8fafc', display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'center' }}>
                           <span style={{ color: '#555', fontWeight: 'bold' }}>2. DİL DAĞILIMI:</span>
                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem' }}>
