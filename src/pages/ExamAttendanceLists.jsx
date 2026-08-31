@@ -34,20 +34,6 @@ const decryptTC = (cipherText) => {
   return cipherText;
 };
 
-// Salon adlarını sayısal olarak doğru sıralamak için yardımcı fonksiyon (örn: Salon-6, Salon-13, Salon-14)
-const sortRoomNames = (a, b) => {
-  const getNumber = (str) => {
-    const match = String(str).match(/\d+/);
-    return match ? parseInt(match[0], 10) : 0;
-  };
-  const numA = getNumber(a);
-  const numB = getNumber(b);
-  if (numA !== numB) {
-    return numA - numB;
-  }
-  return String(a).localeCompare(String(b), 'tr', { sensitivity: 'base' });
-};
-
 const ExamAttendanceLists = () => {
   const [exams, setExams] = useState([]);
   const [selectedExam, setSelectedExam] = useState(null);
@@ -137,6 +123,7 @@ const ExamAttendanceLists = () => {
               const rawNo = String(st.no || st.student_no || st.studentNo || st.school_number || '').trim();
               const dbSt = currentStudentMap[rawId] || currentStudentMap[rawTc] || currentStudentMap[rawNo];
               
+              // Veritabanında artık bulunmayan öğrencileri istatistiklere katma
               if (!dbSt) return;
 
               const grade = dbSt.grade || st.grade || st.sinif;
@@ -299,6 +286,7 @@ const ExamAttendanceLists = () => {
     return `${selectedExam.title} - ${gradeSummary} - ${roomName.toUpperCase()} YOKLAMA LİSTESİ`;
   };
 
+  // Okuldan silinmiş (students tablosunda artık bulunmayan) öğrencileri otomatik olarak listeden filtrele
   const rawAssignments = seatingPlan?.assignments || [];
   const assignments = rawAssignments.filter(st => {
     const rawId = String(st.studentId || st.student_id || st.id || '').trim();
@@ -306,6 +294,7 @@ const ExamAttendanceLists = () => {
     const rawNo = String(st.no || st.student_no || st.studentNo || st.school_number || '').trim();
     
     const dbSt = studentMap[rawId] || studentMap[rawTc] || studentMap[rawNo];
+    // Eğer öğrenci students tablosunda yoksa veya TC'si boş/tire ise listeye alma
     if (!dbSt) return false;
     const resolvedTc = decryptTC(dbSt.tc_no || st.tc_no || st.tc);
     if (!resolvedTc || resolvedTc === '-') return false;
@@ -313,6 +302,7 @@ const ExamAttendanceLists = () => {
     return true;
   });
 
+  // Salon bazlı gruplama ve Masa Sıra Numarasına göre küçükten büyüğe sıralama
   const groupedByRoom = assignments.reduce((acc, curr) => {
     const roomName = getRoomName(curr);
     if (!acc[roomName]) acc[roomName] = [];
@@ -371,9 +361,7 @@ const ExamAttendanceLists = () => {
       });
     } else {
       const allSortedAssignments = [];
-      // Salonları sayısal sıraya göre sıralayarak ekle
-      const sortedRoomKeys = Object.keys(groupedByRoom).sort(sortRoomNames);
-      sortedRoomKeys.forEach(room => {
+      Object.keys(groupedByRoom).forEach(room => {
         allSortedAssignments.push(...groupedByRoom[room]);
       });
 
@@ -646,8 +634,7 @@ const ExamAttendanceLists = () => {
         <div className="print-area">
           {activeTab === 'attendance' && (
             <div>
-              {/* Salon isimlerini sayısal sıraya göre (Salon-6, Salon-13, Salon-14...) sırala */}
-              {Object.keys(groupedByRoom).sort(sortRoomNames).map((roomName) => {
+              {Object.keys(groupedByRoom).map((roomName) => {
                 const students = groupedByRoom[roomName];
                 const gradeSummary = getGradeSummary(students);
 
