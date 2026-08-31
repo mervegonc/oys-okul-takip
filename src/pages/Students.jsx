@@ -214,11 +214,11 @@ const Students = () => {
   };
 
   // Tüm öğrencileri Excel (CSV) olarak indirme fonksiyonu
-// Tüm öğrencileri Excel (CSV) olarak indirme fonksiyonu
+// Tüm öğrencileri Excel'e uyumlu (Tab kolonlu) kopyalanabilir veya indirilebilir formatta dışa aktar
   const handleExportExcel = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase.from('students').select('*');
+      const { data, error } = await supabase.from('students').select('*').order('last_name', { ascending: true });
       if (error) throw error;
 
       if (!data || data.length === 0) {
@@ -226,10 +226,9 @@ const Students = () => {
         return;
       }
 
-      const headers = ['id', 'first_name', 'last_name', 'grade', 'class', 'student_no', 'tc_no', 'field', 'second_lang', 'gender', 'english_level'];
-      
-      // Türkçe Excel için sütunların düzgün bölünmesi adına noktalı virgül (;) kullanıyoruz
-      let csvContent = '\uFEFF' + headers.join(';') + '\n';
+      // Excel'in hücreleri doğrudan tanıması için Tab (\t) karakteri kullanıyoruz
+      const headers = ['ID', 'Ad', 'Soyad', 'Sınıf', 'Şube', 'Öğrenci No', 'TC No', 'Alan', '2. Dil', 'Cinsiyet', 'İngilizce Seviyesi'];
+      let content = '\uFEFF' + headers.join('\t') + '\n';
 
       data.forEach((row) => {
         let rawTc = row.tc_no || '';
@@ -242,25 +241,26 @@ const Students = () => {
 
         const values = [
           row.id,
-          `"${row.first_name || ''}"`,
-          `"${row.last_name || ''}"`,
-          `"${row.grade || ''}"`,
-          `"${row.class || ''}"`,
-          `"${row.student_no || ''}"`,
-          `"${decryptedTc}"`,
-          `"${row.field || ''}"`,
-          `"${row.second_lang || ''}"`,
-          `"${row.gender || ''}"`,
-          `"${row.english_level || ''}"`,
+          row.first_name || '',
+          row.last_name || '',
+          row.grade || '',
+          row.class || '',
+          row.student_no || '',
+          decryptedTc,
+          row.field || '',
+          row.second_lang || '',
+          row.gender || '',
+          row.english_level || '',
         ];
-        csvContent += values.join(';') + '\n';
+        content += values.join('\t') + '\n';
       });
 
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      // Doğrudan .xls / .tsv uzantılı dosya olarak indirelim ki Excel direkt sütunlara bölsün
+      const blob = new Blob([content], { type: 'text/tab-separated-values;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.setAttribute('href', url);
-      link.setAttribute('download', `ogrenci_listesi_${new Date().toISOString().slice(0, 10)}.csv`);
+      link.setAttribute('download', `ogrenci_listesi_${new Date().toISOString().slice(0, 10)}.xls`);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -269,6 +269,73 @@ const Students = () => {
       alert('Öğrenciler dışa aktarılırken hata oluştu.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Toplu Güncelleme / Ekleme (Upsert) - Yeni sıralamaya uyumlu
+  const handleBulkUpsert = async () => {
+    if (!bulkText.trim()) {
+      alert('Lütfen güncellenecek/eklenecek verileri yapıştırın.');
+      return;
+    }
+
+    try {
+      const lines = bulkText.trim().split('\n');
+      if (lines.length === 0) return;
+
+      const recordsToUpsert = [];
+      
+      let startIndex = 0;
+      const firstLineLower = lines[0].toLowerCase();
+      if (firstLineLower.includes('id') || firstLineLower.includes('ad') || firstLineLower.includes('tc')) {
+        startIndex = 1;
+      }
+
+      for (let i = startIndex; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+
+        // Sekme (Tab) veya noktalı virgül ayrımını destekle
+        const cols = line.split(/[\t;]/).map(c => c.trim().replace(/^["']|["']$/g, ''));
+        
+        // Yeni Sıra: 
+        // [0]: id, [1]: Ad, [2]: Soyad, [3]: Sınıf, [4]: Şube, [5]: Öğrenci No, [6]: TC No, [7]: Alan, [8]: 2. Dil, [9]: Cinsiyet, [10]: İngilizce Seviyesi
+        if (cols.length >= 6) {
+          recordsToUpsert.push({
+            ...(cols[0] && cols[0].length > 15 ? { id: cols[0] } : {}), // Eğer ID varsa güncelleme için ekle
+            first_name: cols[1] || '',
+            last_name: cols[2] || '',
+            grade: cols[3] || '',
+            class: cols[4] || '',
+            student_no: cols[5] || null,
+            tc_no: cols[6] ? encrypt(cols[6]) : null,
+            field: cols[7] || '',
+            second_lang: cols[8] || 'None',
+            gender: cols[9] || '',
+            english_level: cols[10] || 'Core',
+          });
+        }
+      }
+
+      if (recordsToUpsert.length === 0) {
+        alert('İşlenecek geçerli veri bulunamadı.');
+        return;
+      }
+
+      const { error } = await supabase
+        .from('students')
+        .upsert(recordsToUpsert, { onConflict: 'student_no' });
+
+      if (error) throw error;
+
+      alert(`${recordsToUpsert.length} öğrenci başarıyla güncellendi / eklendi.`);
+      setBulkText('');
+      setShowBulkUpdateModal(false);
+      fetchStats();
+      fetchStudents(currentPage);
+    } catch (error) {
+      console.error('Toplu güncelleme hatası:', error);
+      alert('Toplu işlem sırasında hata oluştu: ' + error.message);
     }
   };
 
