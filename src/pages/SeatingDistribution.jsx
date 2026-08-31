@@ -14,11 +14,10 @@ const SeatingDistribution = () => {
   const [message, setMessage] = useState('');
 
   // 4 EKRAN / MOD SEÇİMİ
-  // 'lise_akademik' | 'lise_yabanci_dil' | 'ortaokul_akademik' | 'ortaokul_yabanci_dil'
   const [examMode, setExamMode] = useState('lise_akademik');
 
-  // Lise Yabancı Dil Modu Filtre ve Sıralama Ayarı (Excel Mantığı)
-  const [langPrimaryFilter, setLangPrimaryFilter] = useState('second_lang'); // 'second_lang' | 'english_level'
+  // Lise Yabancı Dil Modu Filtre ve Sıralama Ayarı
+  const [langPrimaryFilter, setLangPrimaryFilter] = useState('second_lang');
 
   // Ortaokul Modu Özel Seçenek
   const [keepInOwnClassroom, setKeepInOwnClassroom] = useState(false);
@@ -136,11 +135,10 @@ const SeatingDistribution = () => {
       const assignments = [];
 
       // =========================================================================
-      // MOD 1 & MOD 3 (Grup Karma Yapı): LİSE AKADEMİK VE ORTAOKUL AKADEMİK
+      // MOD 1 & MOD 3: LİSE AKADEMİK VE ORTAOKUL AKADEMİK
       // =========================================================================
       if (examMode === 'lise_akademik' || examMode === 'ortaokul_akademik') {
 
-        // ORTAOKUL SEÇENEĞİ: HERKES KENDİ ŞUBESİNDE SINAVA GİRSİN
         if (examMode === 'ortaokul_akademik' && keepInOwnClassroom) {
           const classGrouped = {};
           students.forEach(st => {
@@ -166,9 +164,7 @@ const SeatingDistribution = () => {
             });
             roomIdx++;
           }
-        } 
-        // STANDART ŞUBE KARMASI
-        else {
+        } else {
           for (const group of groups) {
             const groupStudents = students.filter(s => group.classes.includes(`${s.grade}-${s.class}`));
             if (groupStudents.length === 0) continue;
@@ -339,7 +335,7 @@ const SeatingDistribution = () => {
       }
 
       // =========================================================================
-      // MOD 4: ORTAOKUL YABANCI DİL SINAVI (Salon başına tek 2. yabancı dil kuralı)
+      // MOD 4: ORTAOKUL YABANCI DİL SINAVI (Sıkı Kontrollü Tek Dil Kuralı)
       // =========================================================================
       else if (examMode === 'ortaokul_yabanci_dil') {
         for (const group of groups) {
@@ -356,6 +352,7 @@ const SeatingDistribution = () => {
 
           if (groupRooms.length === 0) throw new Error(`"${group.name}" için salon seçilmedi.`);
 
+          // Dillerine göre öğrencileri grupla
           const langGroups = {};
           groupStudents.forEach(st => {
             const lang = st.second_lang || st.second_language || 'Belirtilmedi';
@@ -366,11 +363,11 @@ const SeatingDistribution = () => {
           let roomIndex = 0;
           for (const [lang, langStudents] of Object.entries(langGroups)) {
             const shuffledLangStudents = shuffleArray(langStudents);
-            
             let studentSubIdx = 0;
+
             while (studentSubIdx < shuffledLangStudents.length) {
               if (roomIndex >= groupRooms.length) {
-                throw new Error(`Seçilen salon kapasiteleri ${lang} grubu öğrencileri için yetersiz kaldı!`);
+                throw new Error(`Kapasite Hatası: "${lang}" dersi öğrencileri için seçilen salonlar yetersiz kaldı veya farklı diller aynı salona karışmak zorunda kaldı! Lütfen gruba daha fazla salon ekleyin.`);
               }
               const currentRoom = groupRooms[roomIndex];
               
@@ -380,6 +377,14 @@ const SeatingDistribution = () => {
               } else {
                 roomIndex++;
               }
+            }
+          }
+
+          // Salonlarda birden fazla dil olup olmadığını kesin olarak denetle (Güvenlik Kontrolü)
+          for (const room of groupRooms) {
+            const languagesInRoom = new Set(room.seats.map(st => st.second_lang || st.second_language || 'Belirtilmedi'));
+            if (languagesInRoom.size > 1) {
+              throw new Error(`Hata: "${room.name}" salonuna birden fazla farklı 2. yabancı dil (Örn: Almanca ve Fransızca) atandı! Lütfen bu grup için daha fazla salon seçin.`);
             }
           }
 
