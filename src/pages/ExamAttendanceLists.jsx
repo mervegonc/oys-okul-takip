@@ -121,7 +121,11 @@ const ExamAttendanceLists = () => {
               const rawId = String(st.studentId || st.student_id || st.id || '').trim();
               const rawTc = String(st.tc || st.tc_no || st.tcNo || '').trim();
               const rawNo = String(st.no || st.student_no || st.studentNo || st.school_number || '').trim();
-              const dbSt = currentStudentMap[rawId] || currentStudentMap[rawTc] || currentStudentMap[rawNo] || {};
+              const dbSt = currentStudentMap[rawId] || currentStudentMap[rawTc] || currentStudentMap[rawNo];
+              
+              // Veritabanında artık bulunmayan öğrencileri istatistiklere katma
+              if (!dbSt) return;
+
               const grade = dbSt.grade || st.grade || st.sinif;
               if (grade) grades.add(String(grade).replace('.', ''));
             });
@@ -282,7 +286,21 @@ const ExamAttendanceLists = () => {
     return `${selectedExam.title} - ${gradeSummary} - ${roomName.toUpperCase()} YOKLAMA LİSTESİ`;
   };
 
-  const assignments = seatingPlan?.assignments || [];
+  // Okuldan silinmiş (students tablosunda artık bulunmayan) öğrencileri otomatik olarak listeden filtrele
+  const rawAssignments = seatingPlan?.assignments || [];
+  const assignments = rawAssignments.filter(st => {
+    const rawId = String(st.studentId || st.student_id || st.id || '').trim();
+    const rawTc = String(st.tc || st.tc_no || st.tcNo || '').trim();
+    const rawNo = String(st.no || st.student_no || st.studentNo || st.school_number || '').trim();
+    
+    const dbSt = studentMap[rawId] || studentMap[rawTc] || studentMap[rawNo];
+    // Eğer öğrenci students tablosunda yoksa veya TC'si boş/tire ise listeye alma
+    if (!dbSt) return false;
+    const resolvedTc = decryptTC(dbSt.tc_no || st.tc_no || st.tc);
+    if (!resolvedTc || resolvedTc === '-') return false;
+    
+    return true;
+  });
 
   // Salon bazlı gruplama ve Masa Sıra Numarasına göre küçükten büyüğe sıralama
   const groupedByRoom = assignments.reduce((acc, curr) => {
@@ -399,7 +417,7 @@ const ExamAttendanceLists = () => {
           }
           @page {
             size: A4 portrait;
-            margin: 7mm; /* Sayfa yapısının tam oturması için ideal kenar boşluğu */
+            margin: 7mm;
           }
           .no-print {
             display: none !important;
@@ -410,7 +428,7 @@ const ExamAttendanceLists = () => {
             display: block !important;
             margin-bottom: 0 !important;
             padding-bottom: 0 !important;
-            height: 98vh !important; /* Sayfaya tam oturmasını ve altta boşluk kalmasını sağlar */
+            height: 98vh !important;
             box-sizing: border-box !important;
           }
           table {
@@ -419,8 +437,8 @@ const ExamAttendanceLists = () => {
           }
           th, td {
             border: 1px solid #000 !important;
-            padding: 4px 6px !important; /* Okunaklı ama aşırı büyük olmayan optimize yükseklik */
-            font-size: 9.5pt !important; /* Okunabilir, ideal yazı boyutu */
+            padding: 4px 6px !important;
+            font-size: 9.5pt !important;
             color: #000 !important;
             line-height: 1.25 !important;
           }
