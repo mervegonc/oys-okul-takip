@@ -225,8 +225,35 @@ const Students = () => {
         return;
       }
 
-      const headers = ['id', 'first_name', 'last_name', 'grade', 'class', 'student_no', 'tc_no', 'field', 'second_lang', 'gender', 'english_level'];
+     const headers = ['id', 'first_name', 'last_name', 'grade', 'class', 'student_no', 'tc_no', 'field', 'second_lang', 'gender', 'english_level'];
       
+      // Virgül ile ayırıp Excel'in doğrudan sütunlara bölmesini sağlayalım
+      let csvContent = '\uFEFF' + headers.join(',') + '\n';
+
+      data.forEach((row) => {
+        let rawTc = row.tc_no || '';
+        let decryptedTc = rawTc;
+        try {
+          if (rawTc && rawTc.length > 20) decryptedTc = decrypt(rawTc);
+        } catch (e) {
+          decryptedTc = rawTc;
+        }
+
+        const values = [
+          row.id,
+          `"${row.first_name || ''}"`,
+          `"${row.last_name || ''}"`,
+          `"${row.grade || ''}"`,
+          `"${row.class || ''}"`,
+          `"${row.student_no || ''}"`,
+          `"${decryptedTc}"`,
+          `"${row.field || ''}"`,
+          `"${row.second_lang || ''}"`,
+          `"${row.gender || ''}"`,
+          `"${row.english_level || ''}"`,
+        ];
+        csvContent += values.join(',') + '\n';
+      });
       let csvContent = '\uFEFF' + headers.join(';') + '\n';
 
       data.forEach((row) => {
