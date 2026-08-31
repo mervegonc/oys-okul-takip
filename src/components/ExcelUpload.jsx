@@ -1,196 +1,155 @@
 import React, { useState } from 'react';
 import * as XLSX from 'xlsx';
 import { supabase } from '../supabase';
-import { encrypt } from '../utils/encryption';
+import { encrypt, decrypt } from '../utils/encryption';
 
 const ExcelUpload = ({ onUploadComplete }) => {
   const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState('');
-  const [messageType, setMessageType] = useState('');
-  const [mode, setMode] = useState('add');
-
-  const [updateFields, setUpdateFields] = useState({
-    firstName: false,
-    lastName: false,
-    grade: false,
-    class: false,
-    field: false,
-    secondLang: false,
-    phone: false,
-    parentPhone: false,
-    parentPhone2: false,
-    gender: false,
-    englishLevel: false,
-  });
-
-  const columnMapping = {
-    'tcNo': 'tc_no',
-    'okul numarası': 'student_no',
-    'Sınıf': 'grade',
-    'Şube': 'class',
-    'Adı': 'first_name',
-    'Soyadı': 'last_name',
-    'Öğrenim Alanı': 'field',
-    '2. Yab. Dil': 'second_lang',
-    'Telefon Numarası1': 'phone',
-    'Veli 1 Telefon Numarası': 'parent_phone',
-    'Veli 2 Telefon Numarası': 'parent_phone2',
-    'Cinsiyet': 'gender',
-    'İngilizce Seviyesi': 'english_level',
-  };
 
   const handleFileUpload = async (event) => {
-    console.log("🔹 1. Dosya seçme olayı tetiklendi!");
     const file = event.target.files[0];
-    if (!file) {
-      console.log("🔹 2. Dosya seçilmedi.");
-      return;
-    }
+    if (!file) return;
 
-    console.log("🔹 3. Dosya seçildi:", file.name);
     setUploading(true);
-    setMessage('');
-    setMessageType('');
+    setMessage('Excel dosyası okunuyor ve senkronize ediliyor...');
 
     const reader = new FileReader();
     reader.onload = async (e) => {
       try {
-        console.log("🔹 4. Dosya okundu, işleniyor...");
         const data = new Uint8Array(e.target.result);
         const workbook = XLSX.read(data, { type: 'array' });
         const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
         const jsonData = XLSX.utils.sheet_to_json(firstSheet, { defval: '' });
 
-        console.log("🔹 5. JSON verisi (ilk 3 satır):", jsonData.slice(0, 3));
-
         if (jsonData.length === 0) {
           setMessage('Excel dosyası boş.');
-          setMessageType('error');
           setUploading(false);
           return;
         }
 
-        const headers = Object.keys(jsonData[0] || {});
-        console.log("🔹 6. Sütun başlıkları:", headers);
+        // 1. Veritabanındaki mevcut tüm öğrencileri çek (TC karşılaştırması için)
+        const { data: dbStudents, error: fetchError } = await supabase
+          .from('students')
+          .select('*');
 
-        const mappedHeaders = headers.map(h => columnMapping[h] || null);
-        const missingHeaders = headers.filter((h, i) => !mappedHeaders[i]);
-        if (missingHeaders.length > 0) {
-          setMessage(`Tanımlanamayan sütunlar: ${missingHeaders.join(', ')}`);
-          setMessageType('error');
-          setUploading(false);
-          return;
-        }
+        if (fetchError) throw fetchError;
+
+        // Mevcut verileri çözülmüş TC anahtarlı bir Map yapısına atalım
+        const dbMap = new Map();
+        (dbStudents || []).forEach((st) => {
+          try {
+            let decryptedTc = st.tc_no;
+            if (decryptedTc && decryptedTc.length > 20) {
+              decryptedTc = decrypt(decryptedTc);
+            }
+            if (decryptedTc) {
+              dbMap.set(String(decryptedTc).trim(), st);
+            }
+          } catch (err) {
+            console.warn('TC çözme hatası:', err);
+          }
+        });
 
         let addedCount = 0;
         let updatedCount = 0;
-        let errorCount = 0;
+        let deletedCount = 0;
 
-        if (mode === 'add') {
-          console.log("🔹 7. EKLEME modu başladı...");
-          for (const row of jsonData) {
-            try {
-              const studentData = {
-                first_name: row['Adı'] || '',
-                last_name: row['Soyadı'] || '',
-                grade: row['Sınıf'] ? String(row['Sınıf']) : '',
-                class: row['Şube'] || '',
-                student_no: row['okul numarası'] ? String(row['okul numarası']) : '',
-                tc_no: encrypt(row['tcNo'] ? String(row['tcNo']) : ''),
-                phone: encrypt(row['Telefon Numarası1'] ? String(row['Telefon Numarası1']) : ''),
-                parent_phone: encrypt(row['Veli 1 Telefon Numarası'] ? String(row['Veli 1 Telefon Numarası']) : ''),
-                parent_phone2: encrypt(row['Veli 2 Telefon Numarası'] ? String(row['Veli 2 Telefon Numarası']) : ''),
-                field: row['Öğrenim Alanı'] || '',
-                second_lang: row['2. Yab. Dil'] || '',
-                gender: row['Cinsiyet'] || '',
-                english_level: row['İngilizce Seviyesi'] || 'Core',
-                created_at: new Date().toISOString()
-              };
+        const excelTcSet = new Set();
+        const operations = [];
 
-              if (!studentData.first_name || !studentData.last_name || !studentData.grade) {
-                errorCount++;
-                continue;
-              }
+        // 2. Excel'deki satırları dön (Ekleme veya Güncelleme)
+        for (const row of jsonData) {
+          const rawTc = row['TC Kimlik Numarası'] ? String(row['TC Kimlik Numarası']).trim() : '';
+          if (!rawTc) continue;
 
-              const { error } = await supabase
-                .from('students')
-                .insert(studentData);
-              
-              if (error) throw error;
-              addedCount++;
-              console.log(`✅ Eklendi: ${studentData.first_name} ${studentData.last_name}`);
-            } catch (err) {
-              console.error('❌ Öğrenci eklenirken hata:', err);
-              errorCount++;
-            }
+          excelTcSet.add(rawTc);
+
+          let gradeVal = row['Sınıf'] ? String(row['Sınıf']).trim() : '';
+          let classVal = row['Şube'] ? String(row['Şube']).trim() : '';
+
+          // Ekran görüntüsündeki gibi şube hücresinde "8 A" şeklinde birleşik yazılmışsa ayır
+          if (!gradeVal && classVal.includes(' ')) {
+            const parts = classVal.split(' ');
+            gradeVal = parts[0];
+            classVal = parts.slice(1).join(' ');
           }
-          setMessage(`${addedCount} öğrenci başarıyla eklendi. ${errorCount} hata oluştu.`);
-          setMessageType('success');
-        } else if (mode === 'update') {
-          console.log("🔹 8. GÜNCELLEME modu başladı...");
-          for (const row of jsonData) {
-            try {
-              const tcNo = row['tcNo'] ? String(row['tcNo']) : '';
-              if (!tcNo) {
-                errorCount++;
-                continue;
-              }
 
-              const encryptedTc = encrypt(tcNo);
-              const { data: existing, error: findError } = await supabase
-                .from('students')
-                .select('*')
-                .eq('tc_no', encryptedTc)
-                .maybeSingle();
+          const incomingData = {
+            first_name: row['Adı'] ? String(row['Adı']).trim() : '',
+            last_name: row['Soyadı'] ? String(row['Soyadı']).trim() : '',
+            grade: gradeVal,
+            class: classVal,
+            student_no: row['Okul Numarası'] ? String(row['Okul Numarası']).trim() : '',
+            field: row['Alan'] || '',
+            gender: row['Cinsiyet'] || '',
+            second_lang: row['Yabancı Dil Bilgisi'] || '',
+          };
 
-              if (findError) throw findError;
-              if (!existing) {
-                errorCount++;
-                console.log(`⚠️ TC bulunamadı: ${tcNo}`);
-                continue;
-              }
+          const existingStudent = dbMap.get(rawTc);
 
-              const updateData = {};
-              if (updateFields.firstName) updateData.first_name = row['Adı'] || '';
-              if (updateFields.lastName) updateData.last_name = row['Soyadı'] || '';
-              if (updateFields.grade) updateData.grade = row['Sınıf'] ? String(row['Sınıf']) : '';
-              if (updateFields.class) updateData.class = row['Şube'] || '';
-              if (updateFields.field) updateData.field = row['Öğrenim Alanı'] || '';
-              if (updateFields.secondLang) updateData.second_lang = row['2. Yab. Dil'] || '';
-              if (updateFields.phone) updateData.phone = encrypt(row['Telefon Numarası1'] ? String(row['Telefon Numarası1']) : '');
-              if (updateFields.parentPhone) updateData.parent_phone = encrypt(row['Veli 1 Telefon Numarası'] ? String(row['Veli 1 Telefon Numarası']) : '');
-              if (updateFields.parentPhone2) updateData.parent_phone2 = encrypt(row['Veli 2 Telefon Numarası'] ? String(row['Veli 2 Telefon Numarası']) : '');
-              if (updateFields.gender) updateData.gender = row['Cinsiyet'] || '';
-              if (updateFields.englishLevel) updateData.english_level = row['İngilizce Seviyesi'] || 'Core';
+          if (!existingStudent) {
+            // Sistemde yoksa -> EKLE
+            const encryptedTc = encrypt(rawTc);
+            operations.push(
+              supabase.from('students').insert({
+                ...incomingData,
+                tc_no: encryptedTc,
+                created_at: new Date().toISOString(),
+              })
+            );
+            addedCount++;
+          } else {
+            // Sistemde varsa -> Bilgiler farklı mı kontrol et, değiştiyse GÜNCELLE
+            const isDifferent =
+              String(existingStudent.grade || '') !== String(incomingData.grade) ||
+              String(existingStudent.class || '') !== String(incomingData.class) ||
+              String(existingStudent.first_name || '') !== String(incomingData.first_name) ||
+              String(existingStudent.last_name || '') !== String(incomingData.last_name) ||
+              String(existingStudent.student_no || '') !== String(incomingData.student_no) ||
+              String(existingStudent.field || '') !== String(incomingData.field) ||
+              String(existingStudent.gender || '') !== String(incomingData.gender) ||
+              String(existingStudent.second_lang || '') !== String(incomingData.second_lang);
 
-              if (Object.keys(updateData).length === 0) {
-                errorCount++;
-                continue;
-              }
-
-              const { error: updateError } = await supabase
-                .from('students')
-                .update(updateData)
-                .eq('id', existing.id);
-
-              if (updateError) throw updateError;
+            if (isDifferent) {
+              operations.push(
+                supabase
+                  .from('students')
+                  .update(incomingData)
+                  .eq('id', existingStudent.id)
+              );
               updatedCount++;
-              console.log(`✅ Güncellendi: TC ${tcNo}`);
-            } catch (err) {
-              console.error('❌ Güncelleme hatası:', err);
-              errorCount++;
             }
           }
-          setMessage(`${updatedCount} öğrenci güncellendi. ${errorCount} hata oluştu.`);
-          setMessageType('success');
         }
 
-        console.log("🔹 9. İşlem tamamlandı.");
+        // 3. Excel listesinde olmayıp veritabanında kalanları SİL
+        for (const [dbTc, dbSt] of dbMap.entries()) {
+          if (!excelTcSet.has(dbTc)) {
+            operations.push(
+              supabase.from('students').delete().eq('id', dbSt.id)
+            );
+            deletedCount++;
+          }
+        }
+
+        // Tüm işlemleri toplu olarak gerçekleştir
+        if (operations.length > 0) {
+          const results = await Promise.all(operations);
+          const hasError = results.some((res) => res.error);
+          if (hasError) {
+            console.error('İşlem sırasında bazı hatalar oluştu:', results);
+          }
+        }
+
+        setMessage(
+          `Senkronizasyon başarılı! Eklenen: ${addedCount}, Güncellenen: ${updatedCount}, Silinen: ${deletedCount}`
+        );
+
         if (onUploadComplete) onUploadComplete();
       } catch (err) {
-        console.error("🔹 10. KRİTİK HATA:", err);
-        setMessage('Dosya okunamadı: ' + err.message);
-        setMessageType('error');
+        console.error('Excel işleme hatası:', err);
+        setMessage('Dosya işlenirken hata oluştu: ' + err.message);
       } finally {
         setUploading(false);
         event.target.value = '';
@@ -200,63 +159,27 @@ const ExcelUpload = ({ onUploadComplete }) => {
     reader.readAsArrayBuffer(file);
   };
 
-  const handleCheckboxChange = (e) => {
-    setUpdateFields({
-      ...updateFields,
-      [e.target.name]: e.target.checked,
-    });
-  };
-
   return (
     <div style={{ margin: '1rem 0', padding: '1rem', border: '1px solid #ddd', borderRadius: '8px', background: '#f9f9f9' }}>
-      <h4>📤 Excel ile Öğrenci İşlemleri</h4>
-
-      <div style={{ marginBottom: '1rem' }}>
-        <label style={{ marginRight: '1rem' }}>
-          <input
-            type="radio"
-            value="add"
-            checked={mode === 'add'}
-            onChange={() => setMode('add')}
-          /> Yeni Öğrenci Ekle
-        </label>
-        <label>
-          <input
-            type="radio"
-            value="update"
-            checked={mode === 'update'}
-            onChange={() => setMode('update')}
-          /> Varolanları Güncelle (TC'ye göre)
-        </label>
-      </div>
-
-      {mode === 'update' && (
-        <div style={{ marginBottom: '1rem', display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-          <span style={{ fontWeight: 'bold', marginRight: '0.5rem' }}>Güncellenecek alanlar:</span>
-          {Object.keys(updateFields).map((field) => (
-            <label key={field} style={{ marginRight: '0.5rem', fontSize: '0.9rem' }}>
-              <input
-                type="checkbox"
-                name={field}
-                checked={updateFields[field]}
-                onChange={handleCheckboxChange}
-              /> {field}
-            </label>
-          ))}
-        </div>
-      )}
+      <h4>📤 Otomatik Excel Senkronizasyonu</h4>
+      <p style={{ fontSize: '0.85rem', color: '#555', marginBottom: '0.8rem' }}>
+        Yüklenen Excel dosyasındaki TC kimlik numaraları taranır: Sistemde olmayanlar eklenir, bilgileri değişenler güncellenir, Excel'de bulunmayan eski kayıtlar silinir.
+      </p>
 
       <div>
-        <label htmlFor="excel-upload" style={{
-          display: 'inline-block',
-          padding: '0.5rem 1rem',
-          background: '#007bff',
-          color: 'white',
-          borderRadius: '4px',
-          cursor: 'pointer',
-          marginRight: '1rem'
-        }}>
-          📂 Dosya Seç
+        <label
+          htmlFor="excel-upload"
+          style={{
+            display: 'inline-block',
+            padding: '0.5rem 1rem',
+            background: '#007bff',
+            color: 'white',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            marginRight: '1rem',
+          }}
+        >
+          📂 Excel Seç ve Senkronize Et
         </label>
         <input
           id="excel-upload"
@@ -266,25 +189,14 @@ const ExcelUpload = ({ onUploadComplete }) => {
           disabled={uploading}
           style={{ display: 'none' }}
         />
-        {uploading && <span>Yükleniyor...</span>}
+        {uploading && <span>Senkronize ediliyor, lütfen bekleyin...</span>}
       </div>
 
       {message && (
-        <p style={{
-          marginTop: '0.5rem',
-          color: messageType === 'error' ? '#dc3545' : '#28a745',
-          fontWeight: 'bold'
-        }}>
+        <p style={{ marginTop: '0.8rem', fontWeight: '500', color: message.includes('hata') ? 'red' : 'green' }}>
           {message}
         </p>
       )}
-
-      <details style={{ marginTop: '0.5rem' }}>
-        <summary style={{ cursor: 'pointer', fontSize: '0.9rem', color: '#666' }}>✅ Geçerli sütun başlıkları</summary>
-        <p style={{ fontSize: '0.8rem', marginTop: '0.3rem' }}>
-          tcNo, okul numarası, Sınıf, Şube, Adı, Soyadı, Öğrenim Alanı, 2. Yab. Dil, Telefon Numarası1, Veli 1 Telefon Numarası, Veli 2 Telefon Numarası, Cinsiyet, İngilizce Seviyesi (opsiyonel)
-        </p>
-      </details>
     </div>
   );
 };
