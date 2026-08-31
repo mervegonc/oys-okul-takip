@@ -46,7 +46,7 @@ const ExamAttendanceLists = () => {
   // Sekme & Filtre Durumları
   const [activeTab, setActiveTab] = useState('attendance');
   const [showTc, setShowTc] = useState(true);
-  const [examCategory, setExamCategory] = useState('akademik'); // 'akademik', 'lise_dil', 'ortaokul_dil', 'ortaokul_ingilizce'
+  const [examCategory, setExamCategory] = useState('akademik'); // 'akademik', 'lise_dil_ve_2dil', 'lise_sadece_2dil', 'ortaokul_dil', 'ortaokul_ingilizce'
   const [schoolType, setSchoolType] = useState('lise'); // 'lise', 'ortaokul'
   const [sessionType, setSessionType] = useState('sozel'); // 'sozel' veya 'sayisal'
   const [invigilators, setInvigilators] = useState({});
@@ -345,8 +345,11 @@ const ExamAttendanceLists = () => {
         };
         if (schoolType === 'lise' && examCategory === 'akademik') {
           item['Alan'] = det.track;
-        } else if (schoolType === 'lise' && examCategory === 'lise_dil') {
+        } else if (schoolType === 'lise' && examCategory === 'lise_dil_ve_2dil') {
           item['İng. Seviye'] = det.englishLevel;
+          item['2. Yab. Dil'] = det.secondLanguage;
+        } else if (schoolType === 'lise' && examCategory === 'lise_sadece_2dil') {
+          item['2. Yab. Dil'] = det.secondLanguage;
         } else if (schoolType === 'ortaokul' && examCategory === 'ortaokul_dil') {
           item['2. Yab. Dil'] = det.secondLanguage;
         }
@@ -371,8 +374,11 @@ const ExamAttendanceLists = () => {
         };
         if (schoolType === 'lise' && examCategory === 'akademik') {
           item['Alan'] = det.track;
-        } else if (schoolType === 'lise' && examCategory === 'lise_dil') {
+        } else if (schoolType === 'lise' && examCategory === 'lise_dil_ve_2dil') {
           item['İng. Seviye'] = det.englishLevel;
+          item['2. Yab. Dil'] = det.secondLanguage;
+        } else if (schoolType === 'lise' && examCategory === 'lise_sadece_2dil') {
+          item['2. Yab. Dil'] = det.secondLanguage;
         } else if (schoolType === 'ortaokul' && examCategory === 'ortaokul_dil') {
           item['2. Yab. Dil'] = det.secondLanguage;
         }
@@ -524,7 +530,10 @@ const ExamAttendanceLists = () => {
                 <select value={examCategory} onChange={(e) => setExamCategory(e.target.value)} style={{ padding: '0.4rem', borderRadius: '4px', border: '1px solid #ccc' }}>
                   <option value="akademik">Akademik Sınav (Deneme / Yazılı)</option>
                   {schoolType === 'lise' ? (
-                    <option value="lise_dil">1-11. Sınıflar Yabancı Dil Sınavı</option>
+                    <>
+                      <option value="lise_dil_ve_2dil">Lise Yabancı Dil Sınavı (İng. + 2. Dil)</option>
+                      <option value="lise_sadece_2dil">Lise 2. Yabancı Dil Sınavı (Sadece 2. Dil)</option>
+                    </>
                   ) : (
                     <>
                       <option value="ortaokul_dil">Ortaokul Yabancı Dil Sınavı</option>
@@ -540,7 +549,7 @@ const ExamAttendanceLists = () => {
                   const newType = e.target.value;
                   setSchoolType(newType);
                   if (newType === 'lise' && examCategory.includes('ortaokul')) setExamCategory('akademik');
-                  if (newType === 'ortaokul' && examCategory === 'lise_dil') setExamCategory('akademik');
+                  if (newType === 'ortaokul' && examCategory.includes('lise')) setExamCategory('akademik');
                 }} style={{ padding: '0.4rem', borderRadius: '4px', border: '1px solid #ccc' }}>
                   <option value="lise">Lise (9-12)</option>
                   <option value="ortaokul">Ortaokul (5-8)</option>
@@ -725,11 +734,17 @@ const ExamAttendanceLists = () => {
                           {schoolType === 'lise' && examCategory === 'akademik' && (
                             <th style={{ width: '10%', textAlign: 'center' }}>ALAN</th>
                           )}
-                          {schoolType === 'lise' && examCategory === 'lise_dil' && (
-                            <th style={{ width: '12%', textAlign: 'center' }}>İNG. SEVİYE</th>
+                          {schoolType === 'lise' && examCategory === 'lise_dil_ve_2dil' && (
+                            <>
+                              <th style={{ width: '11%', textAlign: 'center' }}>İNG. SEVİYE</th>
+                              <th style={{ width: '11%', textAlign: 'center' }}>2. YAB. DİL</th>
+                            </>
+                          )}
+                          {schoolType === 'lise' && examCategory === 'lise_sadece_2dil' && (
+                            <th style={{ width: '12%', textAlign: 'center' }}>2. YAB. DİL</th>
                           )}
                           {schoolType === 'ortaokul' && examCategory === 'ortaokul_dil' && (
-                            <th style={{ width: '12%', textAlign: 'center' }}>2. Yab. Dil</th>
+                            <th style={{ width: '12%', textAlign: 'center' }}>2. YAB. DİL</th>
                           )}
 
                           <th style={{ width: '18%', textAlign: 'center' }}>YOKLAMA +/-</th>
@@ -753,9 +768,19 @@ const ExamAttendanceLists = () => {
                               {schoolType === 'lise' && examCategory === 'akademik' && (
                                 <td style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '9pt' }}>{det.track}</td>
                               )}
-                              {schoolType === 'lise' && examCategory === 'lise_dil' && (
-                                <td className={engStyle.className} style={{ textAlign: 'center', fontSize: '9pt', ...engStyle.style }}>
-                                  {det.englishLevel}
+                              {schoolType === 'lise' && examCategory === 'lise_dil_ve_2dil' && (
+                                <>
+                                  <td className={engStyle.className} style={{ textAlign: 'center', fontSize: '9pt', ...engStyle.style }}>
+                                    {det.englishLevel}
+                                  </td>
+                                  <td className={langStyle.className} style={{ textAlign: 'center', fontSize: '9pt', ...langStyle.style }}>
+                                    {det.secondLanguage}
+                                  </td>
+                                </>
+                              )}
+                              {schoolType === 'lise' && examCategory === 'lise_sadece_2dil' && (
+                                <td className={langStyle.className} style={{ textAlign: 'center', fontSize: '9pt', ...langStyle.style }}>
+                                  {det.secondLanguage}
                                 </td>
                               )}
                               {schoolType === 'ortaokul' && examCategory === 'ortaokul_dil' && (
@@ -772,9 +797,9 @@ const ExamAttendanceLists = () => {
                     </table>
 
                     <div style={{ marginTop: '0.6rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                      {examCategory === 'lise_dil' && (
+                      {examCategory === 'lise_dil_ve_2dil' && (
                         <div style={{ border: '1px dashed #666', padding: '0.4rem 0.6rem', fontSize: '8.5pt', borderRadius: '4px', background: '#f8fafc', display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'center' }}>
-                          <span style={{ color: '#555', fontWeight: 'bold' }}>SINIF MEVCUT BİLGİSİ:</span>
+                          <span style={{ color: '#555', fontWeight: 'bold' }}>İNGİLİZCE SEVİYE BİLGİSİ:</span>
                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem' }}>
                             {totalCore > 0 && <span>Core = {totalCore}</span>}
                             {totalExt > 0 && <span>Ext = {totalExt}</span>}
@@ -782,7 +807,7 @@ const ExamAttendanceLists = () => {
                         </div>
                       )}
 
-                      {examCategory === 'ortaokul_dil' && (
+                      {(examCategory === 'lise_sadece_2dil' || examCategory === 'ortaokul_dil') && (
                         <div style={{ border: '1px dashed #666', padding: '0.4rem 0.6rem', fontSize: '8.5pt', borderRadius: '4px', background: '#f8fafc', display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'center' }}>
                           <span style={{ color: '#555', fontWeight: 'bold' }}>2. DİL DAĞILIMI:</span>
                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem' }}>
