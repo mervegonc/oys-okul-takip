@@ -13,8 +13,8 @@ const SeatingDistribution = () => {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
 
-  // 3 EKRAN / MOD SEÇİMİ
-  // 'lise_akademik' | 'lise_yabanci_dil' | 'ortaokul_akademik'
+  // 4 EKRAN / MOD SEÇİMİ
+  // 'lise_akademik' | 'lise_yabanci_dil' | 'ortaokul_akademik' | 'ortaokul_yabanci_dil'
   const [examMode, setExamMode] = useState('lise_akademik');
 
   // Lise Yabancı Dil Modu Filtre ve Sıralama Ayarı (Excel Mantığı)
@@ -167,7 +167,7 @@ const SeatingDistribution = () => {
             roomIdx++;
           }
         } 
-        // STANDART ŞUBE KARMASI (HOMOJEN DAĞITIM İLE GÜNCELLENDİ)
+        // STANDART ŞUBE KARMASI
         else {
           for (const group of groups) {
             const groupStudents = students.filter(s => group.classes.includes(`${s.grade}-${s.class}`));
@@ -191,7 +191,6 @@ const SeatingDistribution = () => {
             const interleavedList = [];
             const totalGroupStudents = groupStudents.length;
 
-            // Ardışık olarak aynı şubenin denk gelmesini engelleyen döngü
             while (interleavedList.length < totalGroupStudents) {
               const availClasses = group.classes.filter(cls => classQueues[cls] && classQueues[cls].length > 0);
               if (availClasses.length === 0) break;
@@ -207,8 +206,6 @@ const SeatingDistribution = () => {
               interleavedList.push(classQueues[chosenClass].shift());
             }
 
-            // HOMOJEN DAĞITIM MANTIĞI: 
-            // Seçilen salonlar arasında kapasiteleri oranında veya eşit olarak dengeli paylaştırma
             const totalCapacity = groupRooms.reduce((sum, r) => sum + r.totalCap, 0);
             if (totalCapacity < totalGroupStudents) {
               throw new Error(`"${group.name}" grubundaki toplam öğrenci sayısı (${totalGroupStudents}) seçilen salonların toplam kapasitesini (${totalCapacity}) aşıyor!`);
@@ -217,12 +214,10 @@ const SeatingDistribution = () => {
             let studentIdx = 0;
             for (let i = 0; i < groupRooms.length; i++) {
               const room = groupRooms[i];
-              // Son salonda kalan tüm öğrenciler alınır, diğerlerinde orantılı/homojen pay düşülür
               let targetCount = i === groupRooms.length - 1 
                 ? interleavedList.length - studentIdx 
                 : Math.round((room.totalCap / totalCapacity) * interleavedList.length);
 
-              // Salon kapasitesini ve kalan öğrenci sınırını gözet
               targetCount = Math.min(targetCount, room.totalCap, interleavedList.length - studentIdx);
 
               for (let c = 0; c < targetCount; c++) {
@@ -233,7 +228,6 @@ const SeatingDistribution = () => {
               }
             }
 
-            // Küsurat hesaplamalarından dolayı artan öğrenciler olursa boş yeri olan salonlara dağıt
             while (studentIdx < interleavedList.length) {
               const availableRoom = groupRooms.find(r => r.seats.length < r.totalCap);
               if (availableRoom) {
@@ -261,7 +255,7 @@ const SeatingDistribution = () => {
       }
 
       // =========================================================================
-      // MOD 2: LİSE YABANCI DİL SINAVI (ORANTILI VE BLOK KORUYUCU DAĞITIM)
+      // MOD 2: LİSE YABANCI DİL SINAVI
       // =========================================================================
       else if (examMode === 'lise_yabanci_dil') {
         for (const group of groups) {
@@ -344,6 +338,67 @@ const SeatingDistribution = () => {
         }
       }
 
+      // =========================================================================
+      // MOD 4: ORTAOKUL YABANCI DİL SINAVI (Salon başına tek 2. yabancı dil kuralı)
+      // =========================================================================
+      else if (examMode === 'ortaokul_yabanci_dil') {
+        for (const group of groups) {
+          const groupStudents = students.filter(s => group.classes.includes(`${s.grade}-${s.class}`));
+          if (groupStudents.length === 0) continue;
+
+          const groupRooms = rooms
+            .filter(r => group.roomIds.includes(r.id))
+            .map(r => ({
+              ...r,
+              totalCap: Number(r.capacity || 0) + Number(r.extra_seats_added || r.extraSeatsAdded || 0),
+              seats: []
+            }));
+
+          if (groupRooms.length === 0) throw new Error(`"${group.name}" için salon seçilmedi.`);
+
+          const langGroups = {};
+          groupStudents.forEach(st => {
+            const lang = st.second_lang || st.second_language || 'Belirtilmedi';
+            if (!langGroups[lang]) langGroups[lang] = [];
+            langGroups[lang].push(st);
+          });
+
+          let roomIndex = 0;
+          for (const [lang, langStudents] of Object.entries(langGroups)) {
+            const shuffledLangStudents = shuffleArray(langStudents);
+            
+            let studentSubIdx = 0;
+            while (studentSubIdx < shuffledLangStudents.length) {
+              if (roomIndex >= groupRooms.length) {
+                throw new Error(`Seçilen salon kapasiteleri ${lang} grubu öğrencileri için yetersiz kaldı!`);
+              }
+              const currentRoom = groupRooms[roomIndex];
+              
+              if (currentRoom.seats.length < currentRoom.totalCap) {
+                currentRoom.seats.push(shuffledLangStudents[studentSubIdx]);
+                studentSubIdx++;
+              } else {
+                roomIndex++;
+              }
+            }
+          }
+
+          groupRooms.forEach(room => {
+            room.seats.forEach((st, idx) => {
+              assignments.push({
+                student_id: st.id,
+                room_id: room.id,
+                seat_number: idx + 1,
+                student_name: `${st.first_name || st.firstName || ''} ${st.last_name || st.lastName || ''}`.trim(),
+                class: st.class,
+                grade: st.grade,
+                second_language: st.second_lang || st.second_language || null,
+              });
+            });
+          });
+        }
+      }
+
       // Supabase Veritabanına Yaz
       await supabase.from('seating_plans').delete().eq('exam_id', selectedExamId);
       const { error: insertError } = await supabase.from('seating_plans').insert({
@@ -369,11 +424,11 @@ const SeatingDistribution = () => {
       <h2>🪑 Sınav Oturma Düzeni Paneli</h2>
 
       {/* MOD SEÇİM EKRANI */}
-      <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem' }}>
+      <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
         <button
           onClick={() => setExamMode('lise_akademik')}
           style={{
-            flex: 1,
+            flex: '1 1 200px',
             padding: '1rem',
             borderRadius: '8px',
             border: '2px solid #007bff',
@@ -389,7 +444,7 @@ const SeatingDistribution = () => {
         <button
           onClick={() => setExamMode('lise_yabanci_dil')}
           style={{
-            flex: 1,
+            flex: '1 1 200px',
             padding: '1rem',
             borderRadius: '8px',
             border: '2px solid #28a745',
@@ -405,7 +460,7 @@ const SeatingDistribution = () => {
         <button
           onClick={() => setExamMode('ortaokul_akademik')}
           style={{
-            flex: 1,
+            flex: '1 1 200px',
             padding: '1rem',
             borderRadius: '8px',
             border: '2px solid #fd7e14',
@@ -417,9 +472,25 @@ const SeatingDistribution = () => {
         >
           📙 3. Ortaokul Akademik Deneme
         </button>
+
+        <button
+          onClick={() => setExamMode('ortaokul_yabanci_dil')}
+          style={{
+            flex: '1 1 200px',
+            padding: '1rem',
+            borderRadius: '8px',
+            border: '2px solid #6f42c1',
+            background: examMode === 'ortaokul_yabanci_dil' ? '#6f42c1' : '#fff',
+            color: examMode === 'ortaokul_yabanci_dil' ? '#fff' : '#6f42c1',
+            fontWeight: 'bold',
+            cursor: 'pointer'
+          }}
+        >
+          🗣️ 4. Ortaokul Yabancı Dil
+        </button>
       </div>
 
-      {/* Sınav Seçimi (Sınıf Seviyeleri Eklendi) */}
+      {/* Sınav Seçimi */}
       <div style={{ marginBottom: '1.5rem' }}>
         <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '0.5rem' }}>Sınavı Seçin</label>
         <select
@@ -440,14 +511,14 @@ const SeatingDistribution = () => {
         </select>
       </div>
 
-      {/* MOD 2: YABANCI DİL SINAVI İÇİN SIRALAMA AYARI (EXCEL MODU) */}
+      {/* MOD 2: YABANCI DİL SINAVI İÇİN SIRALAMA AYARI */}
       {selectedExamId && examMode === 'lise_yabanci_dil' && (
         <div style={{ background: '#eef6ff', padding: '1rem', borderRadius: '8px', border: '1px solid #b6d4fe', marginBottom: '1.5rem' }}>
           <h4 style={{ margin: '0 0 0.5rem 0', color: '#055160' }}>📊 Excel Tipi Sıralama Düzeni</h4>
           <p style={{ margin: '0 0 0.8rem 0', fontSize: '0.85rem', color: '#555' }}>
-            Öğrenciler karma yapılmadan sırayla dizilir (Almanca biter, Fransızca başlar).
+            Öğrenciler karma yapılmadan sırayla dizilir.
           </p>
-          <div style={{ display: 'flex', gap: '1.5rem' }}>
+          <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
             <label style={{ cursor: 'pointer', fontWeight: 'bold' }}>
               <input
                 type="radio"
@@ -455,7 +526,7 @@ const SeatingDistribution = () => {
                 value="second_lang"
                 checked={langPrimaryFilter === 'second_lang'}
                 onChange={() => setLangPrimaryFilter('second_lang')}
-              /> 1. 2. Yabancı Dil (Almanca, Fransızca vb.) ➔ 2. Seviye
+              /> 1. 2. Yabancı Dil ➔ 2. Seviye
             </label>
             <label style={{ cursor: 'pointer', fontWeight: 'bold' }}>
               <input
@@ -464,13 +535,13 @@ const SeatingDistribution = () => {
                 value="english_level"
                 checked={langPrimaryFilter === 'english_level'}
                 onChange={() => setLangPrimaryFilter('english_level')}
-              /> 1. İngilizce Seviye (Core, Extended vb.) ➔ 2. 2. Yabancı Dil
+              /> 1. İngilizce Seviye ➔ 2. 2. Yabancı Dil
             </label>
           </div>
         </div>
       )}
 
-      {/* MOD 3: ORTAOKUL ÖZEL SEÇENEĞİ */}
+      {/* MOD 3: ORTAOKUL AKADEMİK ÖZEL SEÇENEĞİ */}
       {selectedExamId && examMode === 'ortaokul_akademik' && (
         <div style={{ background: '#fff3cd', padding: '1rem', borderRadius: '8px', border: '1px solid #ffeeba', marginBottom: '1.5rem' }}>
           <label
@@ -579,7 +650,7 @@ const SeatingDistribution = () => {
                 <th style={{ padding: '0.6rem' }}>Sıra</th>
                 <th style={{ padding: '0.6rem' }}>Öğrenci Adı</th>
                 <th style={{ padding: '0.6rem' }}>Sınıf</th>
-                {examMode === 'lise_yabanci_dil' && <th style={{ padding: '0.6rem' }}>2. Yabancı Dil</th>}
+                {examMode.includes('yabanci_dil') && <th style={{ padding: '0.6rem' }}>2. Yabancı Dil</th>}
                 {examMode === 'lise_yabanci_dil' && <th style={{ padding: '0.6rem' }}>İngilizce Seviyesi</th>}
               </tr>
             </thead>
@@ -592,7 +663,7 @@ const SeatingDistribution = () => {
                     <td style={{ padding: '0.6rem' }}>{item.seat_number}</td>
                     <td style={{ padding: '0.6rem' }}>{item.student_name}</td>
                     <td style={{ padding: '0.6rem' }}>{item.grade}-{item.class}</td>
-                    {examMode === 'lise_yabanci_dil' && (
+                    {examMode.includes('yabanci_dil') && (
                       <td style={{ padding: '0.6rem', color: '#28a745', fontWeight: 'bold' }}>{item.second_language || '-'}</td>
                     )}
                     {examMode === 'lise_yabanci_dil' && (
