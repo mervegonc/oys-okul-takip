@@ -689,7 +689,7 @@ const ExamAttendanceLists = () => {
                       </h1>
                       <div style={{ fontSize: '9.5pt', fontWeight: 'bold', display: 'flex', justifyContent: 'space-around', borderTop: '1px solid #000', paddingTop: '0.3rem', marginTop: '0.3rem' }}>
                         <span>TARİH: {selectedExam.date}</span>
-                        <span>SALON: {roomName.toUpperCase()}</span>
+                        <span>{roomName.toUpperCase()}</span>
                       </div>
                     </div>
 
