@@ -212,8 +212,6 @@ const Students = () => {
       alert('Bir hata oluştu: ' + error.message);
     }
   };
-
-  // Tüm öğrencileri Excel (CSV) olarak indirme fonksiyonu
 // Tüm öğrencileri Excel'e uyumlu (Tab kolonlu) kopyalanabilir veya indirilebilir formatta dışa aktar
   const handleExportExcel = async () => {
     try {
@@ -269,6 +267,73 @@ const Students = () => {
       alert('Öğrenciler dışa aktarılırken hata oluştu.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Toplu Güncelleme / Ekleme (Upsert) - Yeni sıralamaya uyumlu
+  const handleBulkUpsert = async () => {
+    if (!bulkText.trim()) {
+      alert('Lütfen güncellenecek/eklenecek verileri yapıştırın.');
+      return;
+    }
+
+    try {
+      const lines = bulkText.trim().split('\n');
+      if (lines.length === 0) return;
+
+      const recordsToUpsert = [];
+      
+      let startIndex = 0;
+      const firstLineLower = lines[0].toLowerCase();
+      if (firstLineLower.includes('id') || firstLineLower.includes('ad') || firstLineLower.includes('tc')) {
+        startIndex = 1;
+      }
+
+      for (let i = startIndex; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+
+        // Sekme (Tab) veya noktalı virgül ayrımını destekle
+        const cols = line.split(/[\t;]/).map(c => c.trim().replace(/^["']|["']$/g, ''));
+        
+        // Yeni Sıra: 
+        // [0]: id, [1]: Ad, [2]: Soyad, [3]: Sınıf, [4]: Şube, [5]: Öğrenci No, [6]: TC No, [7]: Alan, [8]: 2. Dil, [9]: Cinsiyet, [10]: İngilizce Seviyesi
+        if (cols.length >= 6) {
+          recordsToUpsert.push({
+            ...(cols[0] && cols[0].length > 15 ? { id: cols[0] } : {}), // Eğer ID varsa güncelleme için ekle
+            first_name: cols[1] || '',
+            last_name: cols[2] || '',
+            grade: cols[3] || '',
+            class: cols[4] || '',
+            student_no: cols[5] || null,
+            tc_no: cols[6] ? encrypt(cols[6]) : null,
+            field: cols[7] || '',
+            second_lang: cols[8] || 'None',
+            gender: cols[9] || '',
+            english_level: cols[10] || 'Core',
+          });
+        }
+      }
+
+      if (recordsToUpsert.length === 0) {
+        alert('İşlenecek geçerli veri bulunamadı.');
+        return;
+      }
+
+      const { error } = await supabase
+        .from('students')
+        .upsert(recordsToUpsert, { onConflict: 'student_no' });
+
+      if (error) throw error;
+
+      alert(`${recordsToUpsert.length} öğrenci başarıyla güncellendi / eklendi.`);
+      setBulkText('');
+      setShowBulkUpdateModal(false);
+      fetchStats();
+      fetchStudents(currentPage);
+    } catch (error) {
+      console.error('Toplu güncelleme hatası:', error);
+      alert('Toplu işlem sırasında hata oluştu: ' + error.message);
     }
   };
 
