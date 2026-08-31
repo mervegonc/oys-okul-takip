@@ -47,7 +47,6 @@
     <script>
         let students = [];
 
-        // Sayfa açıldığında hafızada kayıtlı veri var mı diye bak
         window.onload = function() {
             const saved = localStorage.getItem('oys_students');
             if (saved) {
@@ -70,7 +69,6 @@
                     const json = XLSX.utils.sheet_to_json(worksheet);
 
                     students = json;
-                    // Verileri tarayıcının kalıcı hafızasına kaydet
                     localStorage.setItem('oys_students', JSON.stringify(students));
                     renderTable();
                     alert('Öğrenciler başarıyla yüklendi ve kaydedildi!');
@@ -88,18 +86,38 @@
                 return;
             }
 
-            tbody.innerHTML = students.map((s, index) => `
-                <tr class="hover:bg-slate-50/50">
-                    <td class="p-4 text-slate-500">${index + 1}</td>
-                    <td class="p-4 font-medium">${s['Okul No'] || s['okul_no'] || '-'}</td>
-                    <td class="p-4 text-slate-600">${s['TC Kimlik'] || s['tc'] || '-'}</td>
-                    <td class="p-4 font-semibold text-slate-900">${s['Adı Soyadı'] || s['adi_soyadi'] || s['Ad Soyad'] || '-'}</td>
-                    <td class="p-4"><span class="px-2.5 py-1 bg-slate-100 rounded-md font-medium text-xs">${s['Mevcut Şube'] || s['sube'] || '-'}</span></td>
-                    <td class="p-4 text-slate-600">${s['Cinsiyet'] || s['cinsiyet'] || '-'}</td>
-                    <td class="p-4 text-slate-600">${s['Dil'] || s['dil'] || '-'}</td>
-                    <td class="p-4 font-bold text-blue-600">${s['Puan'] || s['puan'] || '-'}</td>
-                </tr>
-            `).join('');
+            tbody.innerHTML = students.map((s, index) => {
+                const keys = Object.keys(s);
+                const getVal = (possibleNames) => {
+                    for (let k of keys) {
+                        if (possibleNames.some(p => k.toLowerCase().includes(p.toLowerCase()))) {
+                            return s[k];
+                        }
+                    }
+                    return '-';
+                };
+
+                const okulNo = getVal(['okul', 'no', 'numara']);
+                const tc = getVal(['tc', 'kimlik']);
+                const adSoyad = getVal(['ad', 'soyad', 'adi', 'soyadi']);
+                const sube = getVal(['sube', 'mevcut']);
+                const cinsiyet = getVal(['cinsiyet']);
+                const dil = getVal(['dil']);
+                const puan = getVal(['puan', 'not']);
+
+                return `
+                    <tr class="hover:bg-slate-50/50">
+                        <td class="p-4 text-slate-500">${index + 1}</td>
+                        <td class="p-4 font-medium">${okulNo}</td>
+                        <td class="p-4 text-slate-600">${tc}</td>
+                        <td class="p-4 font-semibold text-slate-900">${adSoyad}</td>
+                        <td class="p-4"><span class="px-2.5 py-1 bg-slate-100 rounded-md font-medium text-xs">${sube}</span></td>
+                        <td class="p-4 text-slate-600">${cinsiyet}</td>
+                        <td class="p-4 text-slate-600">${dil}</td>
+                        <td class="p-4 font-bold text-blue-600">${puan}</td>
+                    </tr>
+                `;
+            }).join('');
         }
     </script>
 </body>
