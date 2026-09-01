@@ -199,7 +199,7 @@ const ManualEdit = () => {
             });
 
             const newRoomId = matchedRoomObj ? matchedRoomObj.id : (item.roomId || item.room_id);
-            const newSeat = parseInt(matchedRow['Sıra'] || matchedRow['Sıra No'] || matchedRow['Sıra Numarası'] || المرسوم || matchedRow['Masa No']) || (item.seatNumber || item.seat_number || 1);
+            const newSeat = parseInt(matchedRow['Sıra'] || matchedRow['Sıra No'] || matchedRow['Sıra Numarası'] || matchedRow['Masa No']) || (item.seatNumber || item.seat_number || 1);
             const newGroup = matchedRow['Grup'] !== undefined ? matchedRow['Grup'] : item.group;
 
             return {
@@ -315,13 +315,16 @@ const ManualEdit = () => {
 
   const grouped = groupByRoom();
 
-  // Her salon içinde aynı sıra numarasından birden fazla var mı kontrol et (Duplicate Seat Check)
+  // Çakışma, sıra atlama ve mantık hatalarını tespit et
   let totalConflicts = 0;
-  const conflictMap = {}; // { "SalonAdı-SıraNo": true }
+  const conflictMap = {}; // { "SalonAdı-SıraNo": true, "student-ID": true }
 
   Object.keys(grouped).forEach(roomName => {
+    const studentsInRoom = grouped[roomName];
     const seatCounts = {};
-    grouped[roomName].forEach(item => {
+
+    // 1. Aynı sıra numarasından birden fazla var mı kontrolü (Çakışma)
+    studentsInRoom.forEach(item => {
       const seat = Number(item.seatNumber || item.seat_number || 0);
       if (seat > 0) {
         seatCounts[seat] = (seatCounts[seat] || 0) + 1;
@@ -332,6 +335,20 @@ const ManualEdit = () => {
       if (seatCounts[seat] > 1) {
         totalConflicts += seatCounts[seat];
         conflictMap[`${roomName}-${seat}`] = true;
+      }
+    });
+
+    // 2. Sıra atlama, boşluk kalma veya kapasite dışına çıkma kontrolü
+    studentsInRoom.forEach((item, index) => {
+      const seat = Number(item.seatNumber || item.seat_number || 0);
+      const expectedSeat = index + 1; // 1, 2, 3... şeklinde ardışık olmalı
+
+      if (seat !== expectedSeat || seat > studentsInRoom.length || seat < 1) {
+        totalConflicts++;
+        const stId = item.studentId || item.student_id || item.id || item.studentNumber;
+        if (stId) {
+          conflictMap[`student-${stId}`] = true;
+        }
       }
     });
   });
@@ -408,7 +425,7 @@ const ManualEdit = () => {
         </div>
       )}
 
-      {/* Çakışma / Aynı Sıra No Uyarısı */}
+      {/* Uyarı Kutusu */}
       {assignments.length > 0 && totalConflicts > 0 && (
         <div style={{ 
           padding: '0.8rem 1rem', 
@@ -422,7 +439,7 @@ const ManualEdit = () => {
           alignItems: 'center',
           gap: '0.5rem'
         }}>
-          ⚠️ <strong>Dikkat!</strong> Aynı salon içinde aynı sıra numarasına sahip birden fazla öğrenci (çakışma) tespit edildi. Kırmızı renkle vurgulanan satırları inceleyip sıra numaralarını düzeltebilirsiniz.
+          ⚠️ <strong>Dikkat!</strong> Oturma planında sıra numarası çakışması veya sıra atlaması/boşluk tespit edildi. Kırmızı renkle vurgulanan satırları inceleyip düzeltebilirsiniz.
         </div>
       )}
 
@@ -530,8 +547,8 @@ const ManualEdit = () => {
                         const currentRoomId = item.roomId || item.room_id;
                         const currentSeat = Number(item.seatNumber || item.seat_number || 1);
 
-                        // Bu salonda bu sıra numarası birden fazla var mı kontrolü
-                        const isConflict = conflictMap[`${roomName}-${currentSeat}`] || false;
+                        // Çakışma veya sıra atlama/boşluk hatası kontrolü
+                        const isConflict = conflictMap[`${roomName}-${currentSeat}`] || conflictMap[`student-${stId}`] || false;
 
                         const engLevel = item.english_level || item.englishLevel;
                         const secLang = item.second_language || item.secondLanguage;
@@ -543,7 +560,7 @@ const ManualEdit = () => {
                             style={{ 
                               borderBottom: '1px solid #eee', 
                               textAlign: 'center',
-                              background: isConflict ? '#f8d7da' : 'transparent' // Çakışma varsa satırı doğrudan kırmızı tonuna boyar
+                              background: isConflict ? '#f8d7da' : 'transparent' // Hatalı/Atlanmış satırları kırmızıya boyar
                             }}
                           >
                             <td style={{ padding: '0.5rem' }}>{idx + 1}</td>
