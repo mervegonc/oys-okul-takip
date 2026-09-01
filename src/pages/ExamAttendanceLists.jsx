@@ -476,6 +476,70 @@ const ExamAttendanceLists = () => {
         <h2>📑 Yoklama ve Sınav Listeleri</h2>
         <p style={{ color: '#666' }}>Sınav salon, kapı ve soyad sıralı listelerini yönetin ve bastırın.</p>
 
+        {/* GENEL ÖZET TABLOSU (Sınav seçildiğinde yukarısındaki genel özet) */}
+        {selectedExam && assignments.length > 0 && (
+          <div style={{ background: '#fff', border: '1px solid #cbd5e1', padding: '1rem', borderRadius: '8px', marginBottom: '1.5rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+            <h3 style={{ margin: '0 0 0.8rem 0', fontSize: '1rem', color: '#1e293b', borderBottom: '2px solid #e2e8f0', paddingBottom: '0.4rem' }}>
+              📊 Sınav Salonları ve Öğrenci Dağılım Özeti
+            </h3>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '9.5pt' }}>
+                <thead>
+                  <tr style={{ background: '#f1f5f9' }}>
+                    <th style={{ border: '1px solid #cbd5e1', padding: '6px 8px', width: '30%' }}>Salon Adı</th>
+                    <th style={{ border: '1px solid #cbd5e1', padding: '6px 8px', width: '40%' }}>Detay / Dağılım (Core / Ext / 2. Dil vb.)</th>
+                    <th style={{ border: '1px solid #cbd5e1', padding: '6px 8px', textAlign: 'center', width: '30%' }}>Öğrenci Sayısı</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.keys(groupedByRoom).map((roomName) => {
+                    const roomStudents = groupedByRoom[roomName];
+                    let rCore = 0, rExt = 0;
+                    const rLangTotals = {};
+                    roomStudents.forEach(st => {
+                      const det = getStudentDetails(st);
+                      const engUp = String(det.englishLevel || '').trim().toLocaleUpperCase('tr-TR');
+                      if (engUp.includes('CORE')) rCore++;
+                      if (engUp.includes('EXT')) rExt++;
+                      const sLang = String(det.secondLanguage || '').trim().toLocaleUpperCase('tr-TR');
+                      if (sLang && sLang !== '-' && sLang !== 'YOK' && sLang !== 'BOŞ') {
+                        rLangTotals[sLang] = (rLangTotals[sLang] || 0) + 1;
+                      }
+                    });
+
+                    return (
+                      <tr key={roomName}>
+                        <td style={{ border: '1px solid #cbd5e1', padding: '6px 8px', fontWeight: 'bold' }}>{roomName.toUpperCase()}</td>
+                        <td style={{ border: '1px solid #cbd5e1', padding: '6px 8px', color: '#475569' }}>
+                          {(examCategory === 'sadece_ingilizce' || examCategory === 'ingilizce_ve_ikinci_dil') && (rCore > 0 || rExt > 0) && (
+                            <span>Core: {rCore}, Ext: {rExt}</span>
+                          )}
+                          {(examCategory === 'sadece_ikinci_dil' || examCategory === 'ingilizce_ve_ikinci_dil') && Object.keys(rLangTotals).length > 0 && (
+                            <span>{Object.entries(rLangTotals).map(([l, c]) => `${l}: ${c}`).join(' | ')}</span>
+                          )}
+                          {examCategory === 'akademik_lise' && <span>Alanlı Dağılım</span>}
+                          {examCategory === 'akademik_lise_alansiz' && <span>Standart Liste</span>}
+                        </td>
+                        <td style={{ border: '1px solid #cbd5e1', padding: '6px 8px', textAlign: 'center', fontWeight: 'bold', color: '#2563eb' }}>
+                          {roomStudents.length}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr style={{ background: '#f8fafc', fontWeight: 'bold' }}>
+                    <td colSpan="2" style={{ border: '1px solid #cbd5e1', padding: '6px 8px', textAlign: 'right' }}>TOPLAM ÖĞRENCİ SAYISI:</td>
+                    <td style={{ border: '1px solid #cbd5e1', padding: '6px 8px', textAlign: 'center', color: '#0f172a' }}>
+                      {assignments.length}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+        )}
+
         {!selectedExam ? (
           <div style={{ marginTop: '1.5rem' }}>
             <h3>Lütfen Bir Sınav Seçin</h3>
