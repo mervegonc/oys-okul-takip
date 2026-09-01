@@ -776,9 +776,10 @@ const ExamAttendanceLists = () => {
                       {(examCategory === 'sadece_ingilizce' || examCategory === 'ingilizce_ve_ikinci_dil') && (
                         <div style={{ border: '1px dashed #666', padding: '0.4rem 0.6rem', fontSize: '8.5pt', borderRadius: '4px', background: '#f8fafc', display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'center' }}>
                           <span style={{ color: '#555', fontWeight: 'bold' }}>İNGİLİZCE SEVİYE BİLGİSİ:</span>
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem' }}>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'center', width: '100%' }}>
                             {totalCore > 0 && <span>Core = {totalCore}</span>}
                             {totalExt > 0 && <span>Ext = {totalExt}</span>}
+                            <span style={{ fontWeight: 'bold', marginLeft: 'auto' }}>TOPLAM: {totalCore + totalExt}</span>
                           </div>
                         </div>
                       )}
@@ -786,10 +787,11 @@ const ExamAttendanceLists = () => {
                       {(examCategory === 'sadece_ikinci_dil' || examCategory === 'ingilizce_ve_ikinci_dil') && (
                         <div style={{ border: '1px dashed #666', padding: '0.4rem 0.6rem', fontSize: '8.5pt', borderRadius: '4px', background: '#f8fafc', display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'center' }}>
                           <span style={{ color: '#555', fontWeight: 'bold' }}>2. DİL DAĞILIMI:</span>
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem' }}>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'center', width: '100%' }}>
                             {Object.entries(langTotals).map(([langName, count]) => (
                               <span key={langName}>{langName} = {count}</span>
                             ))}
+                            <span style={{ fontWeight: 'bold', marginLeft: 'auto' }}>TOPLAM: {Object.values(langTotals).reduce((a, b) => a + b, 0)}</span>
                           </div>
                         </div>
                       )}
