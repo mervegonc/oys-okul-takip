@@ -39,7 +39,7 @@ const ManualEdit = () => {
   // Seçilen sınav nesnesini bulma
   const currentExamObj = exams.find(e => String(e.id) === String(selectedExam));
 
-  // Sınav seçilince en son oluşturulan oturma planını getir ve güncel öğrenci listesiyle filtrele
+  // Sınav seçilince oturma planını getir ve güncel students tablosuyla kesin olarak filtrele
   useEffect(() => {
     if (!selectedExam) {
       setSeatingPlan(null);
@@ -50,16 +50,20 @@ const ManualEdit = () => {
     const fetchSeatingPlan = async () => {
       setLoading(true);
       try {
-        // 1. Önce bu sınavın oturma planını çek
-        const { data: planData, error: planError } = await supabase
-          .from('seating_plans')
-          .select('*')
-          .eq('exam_id', selectedExam)
-          .order('created_at', { ascending: false })
-          .limit(1);
+        // 1. Oturma planını ve güncel aktif öğrencileri paralel/arka arkaya çek
+        const [planRes, studentRes] = await Promise.all([
+          supabase
+            .from('seating_plans')
+            .select('*')
+            .eq('exam_id', selectedExam)
+            .order('created_at', { ascending: false })
+            .limit(1),
+          supabase.from('students').select('*')
+        ]);
 
-        if (planError) throw planError;
+        if (planRes.error) throw planRes.error;
 
+        const planData = planRes.data;
         if (!planData || planData.length === 0) {
           setMessage('Bu sınava ait oturma planı bulunamadı.');
           setSeatingPlan(null);
@@ -78,29 +82,29 @@ const ManualEdit = () => {
           }
         }
 
-        // 2. Güncel aktif öğrencileri veritabanından çek (Öğrenci listeden silindiyse burada çıkmayacak)
-        // Not: Projendeki tablo yapısına göre öğrenci tablosunun adını ('students' vb.) ve filtreyi kontrol edebilirsin.
-        const { data: currentStudents, error: studentError } = await supabase
-          .from('students')
-          .select('*');
+        const currentStudents = studentRes.data || [];
+        
+        // Öğrencinin ana listede (students tablosunda) olup olmadığını ID, TC veya No ile tam eşleyerek kontrol et
+        const validStudentIdentifiers = new Set();
+        currentStudents.forEach(st => {
+          if (st.id) validStudentIdentifiers.add(String(st.id).trim());
+          if (st.student_id) validStudentIdentifiers.add(String(st.student_id).trim());
+          if (st.tc_no) validStudentIdentifiers.add(String(st.tc_no).trim());
+          if (st.student_no) validStudentIdentifiers.add(String(st.student_no).trim());
+        });
 
-        // Eğer students tablosu sorgulanabiliyorsa filtreleme yapalım, sorgulanamazsa direkt planı gösterelim
-        let finalAssignments = parsedAssignments || [];
-        if (!studentError && currentStudents) {
-          const validStudentIds = new Set(
-            currentStudents.map(st => String(st.id || st.studentId || st.student_id || st.studentNumber))
-          );
+        // Sadece ana listede hâlâ var olan öğrencileri süz
+        let finalAssignments = (parsedAssignments || []).filter(item => {
+          const stId = String(item.studentId || item.student_id || item.id || '').trim();
+          const stNo = String(item.studentNumber || item.student_number || item.school_number || item.no || '').trim();
+          const stTc = String(item.tc || item.tc_no || item.tcNo || '').trim();
 
-          // Oturma planındaki öğrencilerden sadece hâlâ sistemde (students tablosunda) var olanları tut
-          finalAssignments = finalAssignments.filter(item => {
-            const stId = String(item.studentId || item.student_id || item.id || item.studentNumber || '');
-            return validStudentIds.has(stId);
-          });
-        }
+          return validStudentIdentifiers.has(stId) || validStudentIdentifiers.has(stNo) || validStudentIdentifiers.has(stTc);
+        });
 
         setSeatingPlan(plan);
         setAssignments(finalAssignments);
-        setMessage(`${finalAssignments.length} öğrenci listelendi.`);
+        setMessage(`${finalAssignments.length} aktif öğrenci listelendi.`);
       } catch (error) {
         console.error('Oturma planı alınamadı:', error);
         setMessage('Oturma planı alınamadı: ' + error.message);
@@ -111,11 +115,9 @@ const ManualEdit = () => {
     fetchSeatingPlan();
   }, [selectedExam]);
 
-  // Yardımcı Metin Temizleme Fonksiyonu
   const cleanStr = (val) => String(val || '').trim().toLowerCase();
   const extractNumbers = (val) => String(val || '').replace(/\D/g, '');
 
-  // Excel İçe Aktarma İşlevi
   const handleFileUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -190,13 +192,13 @@ const ManualEdit = () => {
         setEditing(true);
 
         if (matchCount > 0) {
-          setMessage(`✅ Başarılı! Excel'den ${matchCount} öğrencinin salon ve sıra numarası güncellendi. Lütfen "Değişiklikleri Kaydet" butonuna basarak kaydedin.`);
+          setMessage(`✅ Başarılı! Excel'den ${matchCount} öğrencinin salon ve sıra numarası güncellendi.`);
         } else {
           setMessage(`⚠️ Excel dosyasındaki öğrenciler mevcut oturma planındaki öğrencilerle eşleşmedi.`);
         }
       } catch (err) {
         console.error('Excel okuma hatası:', err);
-        setMessage('❌ Excel dosyası okunurken bir hata oluştu: ' + err.message);
+        setMessage('❌ Excel dosyası okunurken hata oluştu: ' + err.message);
       }
     };
 
@@ -286,7 +288,6 @@ const ManualEdit = () => {
 
   const grouped = groupByRoom();
 
-  // Sınav tipini ve özelliklerini belirle
   const examType = cleanStr(currentExamObj?.exam_type || currentExamObj?.type || '');
   const isMiddleSchool = examType.includes('ortaokul') || (currentExamObj?.grade_levels || []).some(g => [5, 6, 7, 8].includes(Number(g)));
   const isLanguageExam = examType.includes('dil') || examType.includes('yabancı');
@@ -362,7 +363,7 @@ const ManualEdit = () => {
       {assignments.length > 0 && (
         <div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-            <h4>Oturma Planı ({assignments.length} öğrenci)</h4>
+            <h4>Aktif Oturma Planı ({assignments.length} öğrenci)</h4>
             {editing && (
               <div style={{ display: 'flex', gap: '0.5rem' }}>
                 <button
