@@ -253,7 +253,7 @@ const ManualEdit = () => {
   };
 
   const handleSeatChange = (targetStudentId, newSeat) => {
-    const seatNum = parseInt(newSeat) || 1;
+    const seatNum = parseInt(newSeat) || 0;
     const updated = assignments.map(a => 
       isSameStudent(a, targetStudentId)
         ? { ...a, seatNumber: seatNum, seat_number: seatNum } 
@@ -318,6 +318,18 @@ const ManualEdit = () => {
   };
 
   const grouped = groupByRoom();
+
+  // Uyumsuz sıra numarası olan toplam öğrenci sayısını bulalım
+  let totalMismatches = 0;
+  Object.keys(grouped).forEach(roomName => {
+    grouped[roomName].forEach((item, idx) => {
+      const expectedSeat = idx + 1;
+      const currentSeat = Number(item.seatNumber || item.seat_number || 0);
+      if (currentSeat !== expectedSeat) {
+        totalMismatches++;
+      }
+    });
+  });
 
   const examType = cleanStr(currentExamObj?.exam_type || currentExamObj?.type || '');
   const isMiddleSchool = examType.includes('ortaokul') || (currentExamObj?.grade_levels || []).some(g => [5, 6, 7, 8].includes(Number(g)));
@@ -388,6 +400,24 @@ const ManualEdit = () => {
           fontWeight: '500'
         }}>
           {message}
+        </div>
+      )}
+
+      {/* Uyumsuzluk Bildirim Kutusu */}
+      {assignments.length > 0 && totalMismatches > 0 && (
+        <div style={{ 
+          padding: '0.8rem 1rem', 
+          borderRadius: '6px', 
+          background: '#f8d7da', 
+          color: '#721c24', 
+          marginBottom: '1.2rem',
+          border: '1px solid #f5c6cb',
+          fontWeight: '500',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.5rem'
+        }}>
+          ⚠️ <strong>Dikkat!</strong> Sistemdeki sıra numarası ile girilen sıra numarası uyuşmayan <strong>{totalMismatches}</strong> öğrenci var. Aşağıda sarı/kırmızı renkle vurgulanan satırları kontrol edip düzeltebilirsiniz.
         </div>
       )}
 
@@ -495,13 +525,23 @@ const ManualEdit = () => {
                         const currentRoomId = item.roomId || item.room_id;
                         const currentSeat = item.seatNumber || item.seat_number || 1;
 
+                        const expectedSeat = idx + 1;
+                        const isMismatch = Number(currentSeat) !== expectedSeat;
+
                         const engLevel = item.english_level || item.englishLevel;
                         const secLang = item.second_language || item.secondLanguage;
                         const fieldVal = item.field || item.branch || item.alan;
 
                         return (
-                          <tr key={stId || idx} style={{ borderBottom: '1px solid #eee', textAlign: 'center' }}>
-                            <td style={{ padding: '0.5rem' }}>{idx + 1}</td>
+                          <tr 
+                            key={stId || idx} 
+                            style={{ 
+                              borderBottom: '1px solid #eee', 
+                              textAlign: 'center',
+                              background: isMismatch ? '#fff3cd' : 'transparent' // Uyumsuzsa satırı hafif sarıya boyar
+                            }}
+                          >
+                            <td style={{ padding: '0.5rem', fontWeight: isMismatch ? 'bold' : 'normal' }}>{expectedSeat}</td>
                             <td style={{ padding: '0.5rem', fontWeight: 'bold' }}>{stNo}</td>
                             <td style={{ padding: '0.5rem', textAlign: 'left', fontWeight: '500' }}>{stName}</td>
                             <td style={{ padding: '0.5rem' }}>{item.grade}-{item.class || item.className}</td>
@@ -543,7 +583,16 @@ const ManualEdit = () => {
                                 min="1"
                                 value={currentSeat}
                                 onChange={(e) => handleSeatChange(stId, e.target.value)}
-                                style={{ width: '60px', padding: '0.3rem', border: '1px solid #ccc', borderRadius: '4px', textAlign: 'center' }}
+                                style={{ 
+                                  width: '60px', 
+                                  padding: '0.3rem', 
+                                  border: isMismatch ? '2px solid #dc3545' : '1px solid #ccc', 
+                                  borderRadius: '4px', 
+                                  textAlign: 'center',
+                                  background: isMismatch ? '#f8d7da' : 'white',
+                                  color: isMismatch ? '#721c24' : 'inherit',
+                                  fontWeight: isMismatch ? 'bold' : 'normal'
+                                }}
                               />
                             </td>
                           </tr>
