@@ -36,10 +36,9 @@ const ManualEdit = () => {
     fetchData();
   }, []);
 
-  // Seçilen sınav nesnesini bulma
   const currentExamObj = exams.find(e => String(e.id) === String(selectedExam));
 
-  // Sınav seçilince oturma planını getir, ana listede olmayanları KESİN olarak temizle ve kaydet
+  // Sınav seçilince oturma planını getir
   useEffect(() => {
     if (!selectedExam) {
       setSeatingPlan(null);
@@ -83,7 +82,6 @@ const ManualEdit = () => {
 
         const currentStudents = studentRes.data || [];
         
-        // Öğrenci listesindeki tüm benzersiz tanımlayıcıları topluyoruz (ID, T.C., Okul No vb.)
         const validStudentIds = new Set();
         const validStudentTc = new Set();
         const validStudentNos = new Set();
@@ -103,7 +101,6 @@ const ManualEdit = () => {
           if (fName && lName) validFullNames.add(`${fName} ${lName}`);
         });
 
-        // Kesin karşılaştırma fonksiyonu: Öğrenci ana listede var mı?
         const isStudentInMainList = (item) => {
           const sId = String(item.studentId || item.student_id || item.id || '').trim();
           const sNo = String(item.studentNumber || item.student_number || item.school_number || item.no || '').trim();
@@ -126,7 +123,6 @@ const ManualEdit = () => {
         setAssignments(finalAssignments);
         setMessage(`${finalAssignments.length} öğrenci listelendi.`);
 
-        // Eğer ana listeden silinen öğrenciler varsa veritabanını anında güncelle
         if (parsedAssignments && finalAssignments.length !== parsedAssignments.length) {
           await supabase
             .from('seating_plans')
@@ -203,7 +199,7 @@ const ManualEdit = () => {
             });
 
             const newRoomId = matchedRoomObj ? matchedRoomObj.id : (item.roomId || item.room_id);
-            const newSeat = parseInt(matchedRow['Sıra'] || matchedRow['Sıra No'] || matchedRow['Sıra Numarası'] || matchedRow['Masa No']) || (item.seatNumber || item.seat_number || 1);
+            const newSeat = parseInt(matchedRow['Sıra'] || matchedRow['Sıra No'] || matchedRow['Sıra Numarası'] || المرسوم || matchedRow['Masa No']) || (item.seatNumber || item.seat_number || 1);
             const newGroup = matchedRow['Grup'] !== undefined ? matchedRow['Grup'] : item.group;
 
             return {
@@ -319,14 +315,23 @@ const ManualEdit = () => {
 
   const grouped = groupByRoom();
 
-  // Uyumsuz sıra numarası olan toplam öğrenci sayısını bulalım
-  let totalMismatches = 0;
+  // Her salon içinde aynı sıra numarasından birden fazla var mı kontrol et (Duplicate Seat Check)
+  let totalConflicts = 0;
+  const conflictMap = {}; // { "SalonAdı-SıraNo": true }
+
   Object.keys(grouped).forEach(roomName => {
-    grouped[roomName].forEach((item, idx) => {
-      const expectedSeat = idx + 1;
-      const currentSeat = Number(item.seatNumber || item.seat_number || 0);
-      if (currentSeat !== expectedSeat) {
-        totalMismatches++;
+    const seatCounts = {};
+    grouped[roomName].forEach(item => {
+      const seat = Number(item.seatNumber || item.seat_number || 0);
+      if (seat > 0) {
+        seatCounts[seat] = (seatCounts[seat] || 0) + 1;
+      }
+    });
+
+    Object.keys(seatCounts).forEach(seat => {
+      if (seatCounts[seat] > 1) {
+        totalConflicts += seatCounts[seat];
+        conflictMap[`${roomName}-${seat}`] = true;
       }
     });
   });
@@ -403,8 +408,8 @@ const ManualEdit = () => {
         </div>
       )}
 
-      {/* Uyumsuzluk Bildirim Kutusu */}
-      {assignments.length > 0 && totalMismatches > 0 && (
+      {/* Çakışma / Aynı Sıra No Uyarısı */}
+      {assignments.length > 0 && totalConflicts > 0 && (
         <div style={{ 
           padding: '0.8rem 1rem', 
           borderRadius: '6px', 
@@ -417,7 +422,7 @@ const ManualEdit = () => {
           alignItems: 'center',
           gap: '0.5rem'
         }}>
-          ⚠️ <strong>Dikkat!</strong> Sistemdeki sıra numarası ile girilen sıra numarası uyuşmayan <strong>{totalMismatches}</strong> öğrenci var. Aşağıda sarı/kırmızı renkle vurgulanan satırları kontrol edip düzeltebilirsiniz.
+          ⚠️ <strong>Dikkat!</strong> Aynı salon içinde aynı sıra numarasına sahip birden fazla öğrenci (çakışma) tespit edildi. Kırmızı renkle vurgulanan satırları inceleyip sıra numaralarını düzeltebilirsiniz.
         </div>
       )}
 
@@ -523,10 +528,10 @@ const ManualEdit = () => {
                         const stNo = item.studentNumber || item.student_number || item.school_number || item.no || '-';
                         const stName = item.studentName || item.student_name || `${item.first_name || item.firstName || ''} ${item.last_name || item.lastName || ''}`;
                         const currentRoomId = item.roomId || item.room_id;
-                        const currentSeat = item.seatNumber || item.seat_number || 1;
+                        const currentSeat = Number(item.seatNumber || item.seat_number || 1);
 
-                        const expectedSeat = idx + 1;
-                        const isMismatch = Number(currentSeat) !== expectedSeat;
+                        // Bu salonda bu sıra numarası birden fazla var mı kontrolü
+                        const isConflict = conflictMap[`${roomName}-${currentSeat}`] || false;
 
                         const engLevel = item.english_level || item.englishLevel;
                         const secLang = item.second_language || item.secondLanguage;
@@ -538,10 +543,10 @@ const ManualEdit = () => {
                             style={{ 
                               borderBottom: '1px solid #eee', 
                               textAlign: 'center',
-                              background: isMismatch ? '#fff3cd' : 'transparent' // Uyumsuzsa satırı hafif sarıya boyar
+                              background: isConflict ? '#f8d7da' : 'transparent' // Çakışma varsa satırı doğrudan kırmızı tonuna boyar
                             }}
                           >
-                            <td style={{ padding: '0.5rem', fontWeight: isMismatch ? 'bold' : 'normal' }}>{expectedSeat}</td>
+                            <td style={{ padding: '0.5rem' }}>{idx + 1}</td>
                             <td style={{ padding: '0.5rem', fontWeight: 'bold' }}>{stNo}</td>
                             <td style={{ padding: '0.5rem', textAlign: 'left', fontWeight: '500' }}>{stName}</td>
                             <td style={{ padding: '0.5rem' }}>{item.grade}-{item.class || item.className}</td>
@@ -586,12 +591,12 @@ const ManualEdit = () => {
                                 style={{ 
                                   width: '60px', 
                                   padding: '0.3rem', 
-                                  border: isMismatch ? '2px solid #dc3545' : '1px solid #ccc', 
+                                  border: isConflict ? '2px solid #dc3545' : '1px solid #ccc', 
                                   borderRadius: '4px', 
                                   textAlign: 'center',
-                                  background: isMismatch ? '#f8d7da' : 'white',
-                                  color: isMismatch ? '#721c24' : 'inherit',
-                                  fontWeight: isMismatch ? 'bold' : 'normal'
+                                  background: isConflict ? '#f5c6cb' : 'white',
+                                  color: isConflict ? '#721c24' : 'inherit',
+                                  fontWeight: isConflict ? 'bold' : 'normal'
                                 }}
                               />
                             </td>
