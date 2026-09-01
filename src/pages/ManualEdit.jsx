@@ -39,7 +39,7 @@ const ManualEdit = () => {
   // Seçilen sınav nesnesini bulma
   const currentExamObj = exams.find(e => String(e.id) === String(selectedExam));
 
-  // Sınav seçilince en son oluşturulan oturma planını getir
+  // Sınav seçilince en son oluşturulan oturma planını getir ve güncel öğrenci listesiyle filtrele
   useEffect(() => {
     if (!selectedExam) {
       setSeatingPlan(null);
@@ -50,16 +50,17 @@ const ManualEdit = () => {
     const fetchSeatingPlan = async () => {
       setLoading(true);
       try {
-        const { data, error } = await supabase
+        // 1. Önce bu sınavın oturma planını çek
+        const { data: planData, error: planError } = await supabase
           .from('seating_plans')
           .select('*')
           .eq('exam_id', selectedExam)
           .order('created_at', { ascending: false })
           .limit(1);
 
-        if (error) throw error;
+        if (planError) throw planError;
 
-        if (!data || data.length === 0) {
+        if (!planData || planData.length === 0) {
           setMessage('Bu sınava ait oturma planı bulunamadı.');
           setSeatingPlan(null);
           setAssignments([]);
@@ -67,7 +68,7 @@ const ManualEdit = () => {
           return;
         }
 
-        const plan = data[0];
+        const plan = planData[0];
         let parsedAssignments = plan.assignments;
         if (typeof parsedAssignments === 'string') {
           try {
@@ -77,9 +78,29 @@ const ManualEdit = () => {
           }
         }
 
+        // 2. Güncel aktif öğrencileri veritabanından çek (Öğrenci listeden silindiyse burada çıkmayacak)
+        // Not: Projendeki tablo yapısına göre öğrenci tablosunun adını ('students' vb.) ve filtreyi kontrol edebilirsin.
+        const { data: currentStudents, error: studentError } = await supabase
+          .from('students')
+          .select('*');
+
+        // Eğer students tablosu sorgulanabiliyorsa filtreleme yapalım, sorgulanamazsa direkt planı gösterelim
+        let finalAssignments = parsedAssignments || [];
+        if (!studentError && currentStudents) {
+          const validStudentIds = new Set(
+            currentStudents.map(st => String(st.id || st.studentId || st.student_id || st.studentNumber))
+          );
+
+          // Oturma planındaki öğrencilerden sadece hâlâ sistemde (students tablosunda) var olanları tut
+          finalAssignments = finalAssignments.filter(item => {
+            const stId = String(item.studentId || item.student_id || item.id || item.studentNumber || '');
+            return validStudentIds.has(stId);
+          });
+        }
+
         setSeatingPlan(plan);
-        setAssignments(parsedAssignments || []);
-        setMessage(`${parsedAssignments?.length || 0} öğrenci listelendi.`);
+        setAssignments(finalAssignments);
+        setMessage(`${finalAssignments.length} öğrenci listelendi.`);
       } catch (error) {
         console.error('Oturma planı alınamadı:', error);
         setMessage('Oturma planı alınamadı: ' + error.message);
@@ -388,7 +409,6 @@ const ManualEdit = () => {
                     <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd', textAlign: 'left' }}>Öğrenci</th>
                     <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd' }}>Sınıf / Şube</th>
                     
-                    {/* Sınav türüne göre dinamik başlık */}
                     {isLanguageExam && <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd' }}>İngilizce / 2. Yabancı Dil</th>}
                     {isAcademicHighSchool && !isLanguageExam && <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd' }}>Alan / Branş</th>}
                     {isMiddleSchool && <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd' }}>2. Yabancı Dil</th>}
@@ -406,7 +426,6 @@ const ManualEdit = () => {
                     const currentRoomId = item.roomId || item.room_id;
                     const currentSeat = item.seatNumber || item.seat_number || 1;
 
-                    // Dil ve Alan verilerini hazırla
                     const engLevel = item.english_level || item.englishLevel;
                     const secLang = item.second_language || item.secondLanguage;
                     const fieldVal = item.field || item.branch || item.alan;
@@ -418,7 +437,6 @@ const ManualEdit = () => {
                         <td style={{ padding: '0.5rem', textAlign: 'left', fontWeight: '500' }}>{stName}</td>
                         <td style={{ padding: '0.5rem' }}>{item.grade}-{item.class || item.className}</td>
                         
-                        {/* Sınav türüne göre dinamik hücre verisi */}
                         {isLanguageExam && (
                           <td style={{ padding: '0.5rem', fontSize: '0.85rem', color: '#4a5568' }}>
                             {[engLevel ? `İng: ${String(engLevel).toUpperCase()}` : null, secLang ? `2.Dil: ${String(secLang)}` : null].filter(Boolean).join(' - ') || '-'}
