@@ -46,7 +46,7 @@ const ExamAttendanceLists = () => {
   // Sekme & Filtre Durumları
   const [activeTab, setActiveTab] = useState('attendance');
   const [showTc, setShowTc] = useState(true);
-  const [examCategory, setExamCategory] = useState('akademik_lise'); // 'akademik_lise', 'sadece_ingilizce', 'sadece_ikinci_dil', 'ingilizce_ve_ikinci_dil', 'akademik_ortaokul_sozel', 'akademik_ortaokul_sayisal'
+  const [examCategory, setExamCategory] = useState('akademik_lise'); // 'akademik_lise', 'akademik_lise_alansiz', 'sadece_ingilizce', 'sadece_ikinci_dil', 'ingilizce_ve_ikinci_dil', 'akademik_ortaokul_sozel', 'akademik_ortaokul_sayisal'
   const [invigilators, setInvigilators] = useState({});
 
   useEffect(() => {
@@ -528,7 +528,8 @@ const ExamAttendanceLists = () => {
               <div>
                 <label style={{ fontWeight: 'bold', fontSize: '0.85rem', display: 'block' }}>Sınav / Liste Kategorisi:</label>
                 <select value={examCategory} onChange={(e) => setExamCategory(e.target.value)} style={{ padding: '0.4rem', borderRadius: '4px', border: '1px solid #ccc', fontWeight: 'bold' }}>
-                  <option value="akademik_lise">Akademik Lise</option>
+                  <option value="akademik_lise">Akademik Lise (Alanlı)</option>
+                  <option value="akademik_lise_alansiz">Akademik Lise (Alansız - 9/10. Sınıflar)</option>
                   <option value="sadece_ingilizce">Sadece İngilizce</option>
                   <option value="sadece_ikinci_dil">Sadece 2. Yabancı Dil</option>
                   <option value="ingilizce_ve_ikinci_dil">İngilizce ve 2. Yabancı Dil</option>
