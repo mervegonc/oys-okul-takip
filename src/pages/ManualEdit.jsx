@@ -39,7 +39,7 @@ const ManualEdit = () => {
   // Seçilen sınav nesnesini bulma
   const currentExamObj = exams.find(e => String(e.id) === String(selectedExam));
 
-  // Sınav seçilince oturma planını getir ve güncel students tablosuyla kesin olarak filtrele
+  // Sınav seçilince oturma planını getir, ana listede olmayanları otomatik temizle ve veritabanına kaydet
   useEffect(() => {
     if (!selectedExam) {
       setSeatingPlan(null);
@@ -50,7 +50,6 @@ const ManualEdit = () => {
     const fetchSeatingPlan = async () => {
       setLoading(true);
       try {
-        // 1. Oturma planını ve güncel aktif öğrencileri paralel/arka arkaya çek
         const [planRes, studentRes] = await Promise.all([
           supabase
             .from('seating_plans')
@@ -84,7 +83,6 @@ const ManualEdit = () => {
 
         const currentStudents = studentRes.data || [];
         
-        // Öğrencinin ana listede (students tablosunda) olup olmadığını ID, TC veya No ile tam eşleyerek kontrol et
         const validStudentIdentifiers = new Set();
         currentStudents.forEach(st => {
           if (st.id) validStudentIdentifiers.add(String(st.id).trim());
@@ -93,7 +91,6 @@ const ManualEdit = () => {
           if (st.student_no) validStudentIdentifiers.add(String(st.student_no).trim());
         });
 
-        // Sadece ana listede hâlâ var olan öğrencileri süz
         let finalAssignments = (parsedAssignments || []).filter(item => {
           const stId = String(item.studentId || item.student_id || item.id || '').trim();
           const stNo = String(item.studentNumber || item.student_number || item.school_number || item.no || '').trim();
@@ -104,7 +101,18 @@ const ManualEdit = () => {
 
         setSeatingPlan(plan);
         setAssignments(finalAssignments);
-        setMessage(`${finalAssignments.length} aktif öğrenci listelendi.`);
+        setMessage(`${finalAssignments.length} öğrenci listelendi.`);
+
+        // Ana listeden silinen bir öğrenci varsa veritabanını otomatik olarak güncelle
+        if (parsedAssignments && finalAssignments.length !== parsedAssignments.length) {
+          await supabase
+            .from('seating_plans')
+            .update({
+              assignments: finalAssignments,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', plan.id);
+        }
       } catch (error) {
         console.error('Oturma planı alınamadı:', error);
         setMessage('Oturma planı alınamadı: ' + error.message);
@@ -363,7 +371,7 @@ const ManualEdit = () => {
       {assignments.length > 0 && (
         <div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-            <h4>Aktif Oturma Planı ({assignments.length} öğrenci)</h4>
+            <h4>Oturma Planı ({assignments.length} öğrenci)</h4>
             {editing && (
               <div style={{ display: 'flex', gap: '0.5rem' }}>
                 <button
