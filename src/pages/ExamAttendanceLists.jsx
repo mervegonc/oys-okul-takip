@@ -254,16 +254,12 @@ const ExamAttendanceLists = () => {
   };
 
   const getRoomName = (item) => {
-    const rawRoomId = item.roomName || item.room_name || item.salon || item.salonAdi || item.salon_adi || item.roomId || item.room_id || item.salon_id;
+    const rawRoomId = item.roomId || item.room_id || item.salon_id || item.roomName || item.room_name || item.salon;
     if (rooms && rooms.length > 0 && rawRoomId) {
-      const foundInDb = rooms.find(r => String(r.id) === String(rawRoomId) || String(r.name).toLowerCase() === String(rawRoomId).toLowerCase());
+      const foundInDb = rooms.find(r => String(r.id) === String(rawRoomId));
       if (foundInDb && foundInDb.name) return foundInDb.name;
     }
     return rawRoomId || 'Tanımsız Salon';
-  };
-
-  const getSeatNumber = (item) => {
-    return item.seatNumber || item.seat_number || item.siraNo || item.sira_no || item.masaNo || item.masa_no || '-';
   };
 
   const getGradeSummary = (studentList) => {
@@ -312,9 +308,9 @@ const ExamAttendanceLists = () => {
 
   Object.keys(groupedByRoom).forEach(room => {
     groupedByRoom[room].sort((a, b) => {
-      const seatA = parseInt(getSeatNumber(a), 10);
-      const seatB = parseInt(getSeatNumber(b), 10);
-      return (isNaN(seatA) ? 9999 : seatA) - (isNaN(seatB) ? 9999 : seatB);
+      const seatA = parseInt(a.seatNumber || a.seat_number || 9999, 10);
+      const seatB = parseInt(b.seatNumber || b.seat_number || 9999, 10);
+      return seatA - seatB;
     });
   });
 
@@ -358,7 +354,7 @@ const ExamAttendanceLists = () => {
           item['İng. Seviye'] = det.englishLevel;
         }
         item['Salon Adı'] = getRoomName(st);
-        item['Masa Sıra No'] = getSeatNumber(st);
+        item['Masa Sıra No'] = st.seatNumber || st.seat_number || '';
         return item;
       });
     } else {
@@ -372,7 +368,7 @@ const ExamAttendanceLists = () => {
         const item = {
           'Sıra No': index + 1,
           'Salon Adı': getRoomName(st),
-          'Masa Sıra No': getSeatNumber(st),
+          'Masa Sıra No': st.seatNumber || st.seat_number || '',
           'Öğrenci Adı Soyadı': det.fullName,
           'Sınıf/Şube': `${det.grade}-${det.className}`
         };
@@ -735,7 +731,7 @@ const ExamAttendanceLists = () => {
 
                           return (
                             <tr key={st.studentId || st.id || sIdx}>
-                              <td style={{ textAlign: 'center', fontWeight: 'bold' }}>{getSeatNumber(st) !== '-' ? getSeatNumber(st) : (sIdx + 1)}</td>
+                              <td style={{ textAlign: 'center', fontWeight: 'bold' }}>{st.seatNumber || st.seat_number || (sIdx + 1)}</td>
                               {showTc && <td style={{ textAlign: 'center', fontFamily: 'monospace', fontWeight: '500' }}>{det.tc}</td>}
                               <td style={{ textAlign: 'center', fontWeight: '600' }}>{det.studentNo}</td>
                               <td style={{ fontWeight: '500' }}>{det.fullName}</td>
@@ -776,10 +772,9 @@ const ExamAttendanceLists = () => {
                       {(examCategory === 'sadece_ingilizce' || examCategory === 'ingilizce_ve_ikinci_dil') && (
                         <div style={{ border: '1px dashed #666', padding: '0.4rem 0.6rem', fontSize: '8.5pt', borderRadius: '4px', background: '#f8fafc', display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'center' }}>
                           <span style={{ color: '#555', fontWeight: 'bold' }}>İNGİLİZCE SEVİYE BİLGİSİ:</span>
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'center', width: '100%' }}>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem' }}>
                             {totalCore > 0 && <span>Core = {totalCore}</span>}
                             {totalExt > 0 && <span>Ext = {totalExt}</span>}
-                            <span style={{ fontWeight: 'bold', marginLeft: 'auto' }}>TOPLAM: {totalCore + totalExt}</span>
                           </div>
                         </div>
                       )}
@@ -787,11 +782,10 @@ const ExamAttendanceLists = () => {
                       {(examCategory === 'sadece_ikinci_dil' || examCategory === 'ingilizce_ve_ikinci_dil') && (
                         <div style={{ border: '1px dashed #666', padding: '0.4rem 0.6rem', fontSize: '8.5pt', borderRadius: '4px', background: '#f8fafc', display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'center' }}>
                           <span style={{ color: '#555', fontWeight: 'bold' }}>2. DİL DAĞILIMI:</span>
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'center', width: '100%' }}>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem' }}>
                             {Object.entries(langTotals).map(([langName, count]) => (
                               <span key={langName}>{langName} = {count}</span>
                             ))}
-                            <span style={{ fontWeight: 'bold', marginLeft: 'auto' }}>TOPLAM: {Object.values(langTotals).reduce((a, b) => a + b, 0)}</span>
                           </div>
                         </div>
                       )}
@@ -893,7 +887,7 @@ const ExamAttendanceLists = () => {
                         <td style={{ fontWeight: 'bold' }}>{det.surnameFirstFormat}</td>
                         <td style={{ textAlign: 'center' }}>{det.grade}-{det.className}</td>
                         <td style={{ textAlign: 'center', fontWeight: '500' }}>{roomName}</td>
-                        <td style={{ textAlign: 'center', fontWeight: 'bold' }}>{getSeatNumber(st)}</td>
+                        <td style={{ textAlign: 'center', fontWeight: 'bold' }}>{st.seatNumber || st.seat_number || '-'}</td>
                       </tr>
                     );
                   })}
