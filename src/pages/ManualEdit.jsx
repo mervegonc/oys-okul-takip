@@ -39,7 +39,7 @@ const ManualEdit = () => {
   // Seçilen sınav nesnesini bulma
   const currentExamObj = exams.find(e => String(e.id) === String(selectedExam));
 
-  // Sınav seçilince oturma planını getir, ana listede olmayanları otomatik temizle ve veritabanına kaydet
+  // Sınav seçilince oturma planını getir, ana listede olmayanları KESİN olarak temizle ve kaydet
   useEffect(() => {
     if (!selectedExam) {
       setSeatingPlan(null);
@@ -83,27 +83,50 @@ const ManualEdit = () => {
 
         const currentStudents = studentRes.data || [];
         
-        const validStudentIdentifiers = new Set();
+        // Öğrenci listesindeki tüm benzersiz tanımlayıcıları topluyoruz (ID, T.C., Okul No vb.)
+        const validStudentIds = new Set();
+        const validStudentTc = new Set();
+        const validStudentNos = new Set();
+        const validFullNames = new Set();
+
         currentStudents.forEach(st => {
-          if (st.id) validStudentIdentifiers.add(String(st.id).trim());
-          if (st.student_id) validStudentIdentifiers.add(String(st.student_id).trim());
-          if (st.tc_no) validStudentIdentifiers.add(String(st.tc_no).trim());
-          if (st.student_no) validStudentIdentifiers.add(String(st.student_no).trim());
+          if (st.id) validStudentIds.add(String(st.id).trim());
+          if (st.student_id) validStudentIds.add(String(st.student_id).trim());
+          if (st.tc_no) validStudentTc.add(String(st.tc_no).trim());
+          if (st.tc) validStudentTc.add(String(st.tc).trim());
+          if (st.student_no) validStudentNos.add(String(st.student_no).trim());
+          if (st.school_number) validStudentNos.add(String(st.school_number).trim());
+          if (st.no) validStudentNos.add(String(st.no).trim());
+          
+          const fName = String(st.first_name || st.firstName || st.ad || '').trim().toLowerCase();
+          const lName = String(st.last_name || st.lastName || st.soyad || '').trim().toLowerCase();
+          if (fName && lName) validFullNames.add(`${fName} ${lName}`);
         });
 
-        let finalAssignments = (parsedAssignments || []).filter(item => {
-          const stId = String(item.studentId || item.student_id || item.id || '').trim();
-          const stNo = String(item.studentNumber || item.student_number || item.school_number || item.no || '').trim();
-          const stTc = String(item.tc || item.tc_no || item.tcNo || '').trim();
+        // Kesin karşılaştırma fonksiyonu: Öğrenci ana listede var mı?
+        const isStudentInMainList = (item) => {
+          const sId = String(item.studentId || item.student_id || item.id || '').trim();
+          const sNo = String(item.studentNumber || item.student_number || item.school_number || item.no || '').trim();
+          const sTc = String(item.tc || item.tc_no || item.tcNo || '').trim();
+          const sAd = String(item.firstName || item.first_name || item.ad || '').trim().toLowerCase();
+          const sSoyad = String(item.lastName || item.last_name || item.soyad || '').trim().toLowerCase();
+          const sFullName = String(item.studentName || item.student_name || `${sAd} ${sSoyad}`).trim().toLowerCase();
 
-          return validStudentIdentifiers.has(stId) || validStudentIdentifiers.has(stNo) || validStudentIdentifiers.has(stTc);
-        });
+          if (sId && validStudentIds.has(sId)) return true;
+          if (sNo && validStudentNos.has(sNo)) return true;
+          if (sTc && validStudentTc.has(sTc)) return true;
+          if (sFullName && validFullNames.has(sFullName)) return true;
+
+          return false;
+        };
+
+        const finalAssignments = (parsedAssignments || []).filter(isStudentInMainList);
 
         setSeatingPlan(plan);
         setAssignments(finalAssignments);
         setMessage(`${finalAssignments.length} öğrenci listelendi.`);
 
-        // Ana listeden silinen bir öğrenci varsa veritabanını otomatik olarak güncelle
+        // Eğer ana listeden silinen öğrenciler varsa veritabanını anında güncelle
         if (parsedAssignments && finalAssignments.length !== parsedAssignments.length) {
           await supabase
             .from('seating_plans')
@@ -369,130 +392,170 @@ const ManualEdit = () => {
       )}
 
       {assignments.length > 0 && (
-        <div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-            <h4>Oturma Planı ({assignments.length} öğrenci)</h4>
-            {editing && (
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
-                <button
-                  onClick={handleSave}
-                  disabled={loading}
-                  style={{
-                    padding: '0.6rem 1.2rem',
-                    background: '#28a745',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '4px',
-                    cursor: 'pointer',
-                    fontWeight: 'bold',
-                    boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
-                  }}
-                >
-                  💾 Değişiklikleri Kaydet
-                </button>
-                <button
-                  onClick={handleCancel}
-                  style={{
-                    padding: '0.6rem 1.2rem',
-                    background: '#6c757d',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '4px',
-                    cursor: 'pointer'
-                  }}
-                >
-                  ↩️ İptal
-                </button>
-              </div>
-            )}
+        <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+          
+          {/* SOL KISIM: Salon Özet Tablosu */}
+          <div style={{ width: '260px', background: '#fff', padding: '1rem', borderRadius: '8px', border: '1px solid #ddd', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', position: 'sticky', top: '1rem' }}>
+            <h4 style={{ marginTop: 0, marginBottom: '0.8rem', fontSize: '1rem', borderBottom: '2px solid #2b6cb0', paddingBottom: '0.4rem', color: '#2b6cb0' }}>
+              📊 Salon Özetleri
+            </h4>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
+              <thead>
+                <tr style={{ background: '#f1f3f5', textAlign: 'left' }}>
+                  <th style={{ padding: '0.5rem', borderBottom: '1px solid #ddd' }}>Salon Adı</th>
+                  <th style={{ padding: '0.5rem', borderBottom: '1px solid #ddd', textAlign: 'right' }}>Öğrenci</th>
+                </tr>
+              </thead>
+              <tbody>
+                {Object.keys(grouped).map(roomName => (
+                  <tr key={roomName} style={{ borderBottom: '1px solid #eee' }}>
+                    <td style={{ padding: '0.5rem', fontWeight: '500' }}>{roomName}</td>
+                    <td style={{ padding: '0.5rem', textAlign: 'right', fontWeight: 'bold', color: '#2b6cb0' }}>
+                      {grouped[roomName].length}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr style={{ background: '#f8f9fa', fontWeight: 'bold' }}>
+                  <td style={{ padding: '0.5rem', borderTop: '2px solid #ddd' }}>Toplam</td>
+                  <td style={{ padding: '0.5rem', textAlign: 'right', borderTop: '2px solid #ddd', color: '#2b6cb0' }}>
+                    {assignments.length}
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
           </div>
 
-          {Object.keys(grouped).map(roomName => (
-            <div key={roomName} style={{ marginBottom: '1.5rem', padding: '1rem', background: '#f8f9fa', borderRadius: '8px', border: '1px solid #ddd' }}>
-              <h4 style={{ marginTop: 0, color: '#2b6cb0' }}>🏫 {roomName} ({grouped[roomName].length} Öğrenci)</h4>
-              <table style={{ width: '100%', borderCollapse: 'collapse', background: 'white', borderRadius: '8px', overflow: 'hidden' }}>
-                <thead style={{ background: '#e9ecef' }}>
-                  <tr>
-                    <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd' }}>#</th>
-                    <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd' }}>Okul No</th>
-                    <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd', textAlign: 'left' }}>Öğrenci</th>
-                    <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd' }}>Sınıf / Şube</th>
-                    
-                    {isLanguageExam && <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd' }}>İngilizce / 2. Yabancı Dil</th>}
-                    {isAcademicHighSchool && !isLanguageExam && <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd' }}>Alan / Branş</th>}
-                    {isMiddleSchool && <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd' }}>2. Yabancı Dil</th>}
-
-                    <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd' }}>Grup</th>
-                    <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd' }}>Salon</th>
-                    <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd' }}>Sıra No</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {grouped[roomName].map((item, idx) => {
-                    const stId = item.studentId || item.student_id || item.id || item.studentNumber;
-                    const stNo = item.studentNumber || item.student_number || item.school_number || item.no || '-';
-                    const stName = item.studentName || item.student_name || `${item.first_name || item.firstName || ''} ${item.last_name || item.lastName || ''}`;
-                    const currentRoomId = item.roomId || item.room_id;
-                    const currentSeat = item.seatNumber || item.seat_number || 1;
-
-                    const engLevel = item.english_level || item.englishLevel;
-                    const secLang = item.second_language || item.secondLanguage;
-                    const fieldVal = item.field || item.branch || item.alan;
-
-                    return (
-                      <tr key={stId || idx} style={{ borderBottom: '1px solid #eee', textAlign: 'center' }}>
-                        <td style={{ padding: '0.5rem' }}>{idx + 1}</td>
-                        <td style={{ padding: '0.5rem', fontWeight: 'bold' }}>{stNo}</td>
-                        <td style={{ padding: '0.5rem', textAlign: 'left', fontWeight: '500' }}>{stName}</td>
-                        <td style={{ padding: '0.5rem' }}>{item.grade}-{item.class || item.className}</td>
-                        
-                        {isLanguageExam && (
-                          <td style={{ padding: '0.5rem', fontSize: '0.85rem', color: '#4a5568' }}>
-                            {[engLevel ? `İng: ${String(engLevel).toUpperCase()}` : null, secLang ? `2.Dil: ${String(secLang)}` : null].filter(Boolean).join(' - ') || '-'}
-                          </td>
-                        )}
-                        {isAcademicHighSchool && !isLanguageExam && (
-                          <td style={{ padding: '0.5rem', fontSize: '0.85rem', color: '#4a5568' }}>
-                            {fieldVal || '-'}
-                          </td>
-                        )}
-                        {isMiddleSchool && (
-                          <td style={{ padding: '0.5rem', fontSize: '0.85rem', color: '#4a5568' }}>
-                            {secLang ? String(secLang) : '-'}
-                          </td>
-                        )}
-
-                        <td style={{ padding: '0.5rem' }}>{item.group || '-'}</td>
-                        <td style={{ padding: '0.5rem' }}>
-                          <select
-                            value={currentRoomId || ''}
-                            onChange={(e) => handleRoomChange(stId, e.target.value)}
-                            style={{ padding: '0.3rem', borderRadius: '4px', border: '1px solid #ccc' }}
-                          >
-                            <option value="">-- Salon Seç --</option>
-                            {rooms.map(room => (
-                              <option key={room.id} value={room.id}>
-                                {room.name} ({room.capacity} kişilik)
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-                        <td style={{ padding: '0.5rem' }}>
-                          <input
-                            type="number"
-                            min="1"
-                            value={currentSeat}
-                            onChange={(e) => handleSeatChange(stId, e.target.value)}
-                            style={{ width: '60px', padding: '0.3rem', border: '1px solid #ccc', borderRadius: '4px', textAlign: 'center' }}
-                          />
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+          {/* SAĞ KISIM: Ana Liste ve Salonlar */}
+          <div style={{ flex: 1, minWidth: '300px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h4>Oturma Planı ({assignments.length} öğrenci)</h4>
+              {editing && (
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <button
+                    onClick={handleSave}
+                    disabled={loading}
+                    style={{
+                      padding: '0.6rem 1.2rem',
+                      background: '#28a745',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      fontWeight: 'bold',
+                      boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+                    }}
+                  >
+                    💾 Değişiklikleri Kaydet
+                  </button>
+                  <button
+                    onClick={handleCancel}
+                    style={{
+                      padding: '0.6rem 1.2rem',
+                      background: '#6c757d',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    ↩️ İptal
+                  </button>
+                </div>
+              )}
             </div>
-          ))}
+
+            {Object.keys(grouped).map(roomName => (
+              <div key={roomName} style={{ marginBottom: '1.5rem', padding: '1rem', background: '#f8f9fa', borderRadius: '8px', border: '1px solid #ddd' }}>
+                <h4 style={{ marginTop: 0, color: '#2b6cb0' }}>🏫 {roomName} ({grouped[roomName].length} Öğrenci)</h4>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', background: 'white', borderRadius: '8px', overflow: 'hidden' }}>
+                    <thead style={{ background: '#e9ecef' }}>
+                      <tr>
+                        <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd' }}>#</th>
+                        <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd' }}>Okul No</th>
+                        <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd', textAlign: 'left' }}>Öğrenci</th>
+                        <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd' }}>Sınıf / Şube</th>
+                        
+                        {isLanguageExam && <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd' }}>İngilizce / 2. Yabancı Dil</th>}
+                        {isAcademicHighSchool && !isLanguageExam && <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd' }}>Alan / Branş</th>}
+                        {isMiddleSchool && <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd' }}>2. Yabancı Dil</th>}
+
+                        <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd' }}>Grup</th>
+                        <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd' }}>Salon</th>
+                        <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd' }}>Sıra No</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {grouped[roomName].map((item, idx) => {
+                        const stId = item.studentId || item.student_id || item.id || item.studentNumber;
+                        const stNo = item.studentNumber || item.student_number || item.school_number || item.no || '-';
+                        const stName = item.studentName || item.student_name || `${item.first_name || item.firstName || ''} ${item.last_name || item.lastName || ''}`;
+                        const currentRoomId = item.roomId || item.room_id;
+                        const currentSeat = item.seatNumber || item.seat_number || 1;
+
+                        const engLevel = item.english_level || item.englishLevel;
+                        const secLang = item.second_language || item.secondLanguage;
+                        const fieldVal = item.field || item.branch || item.alan;
+
+                        return (
+                          <tr key={stId || idx} style={{ borderBottom: '1px solid #eee', textAlign: 'center' }}>
+                            <td style={{ padding: '0.5rem' }}>{idx + 1}</td>
+                            <td style={{ padding: '0.5rem', fontWeight: 'bold' }}>{stNo}</td>
+                            <td style={{ padding: '0.5rem', textAlign: 'left', fontWeight: '500' }}>{stName}</td>
+                            <td style={{ padding: '0.5rem' }}>{item.grade}-{item.class || item.className}</td>
+                            
+                            {isLanguageExam && (
+                              <td style={{ padding: '0.5rem', fontSize: '0.85rem', color: '#4a5568' }}>
+                                {[engLevel ? `İng: ${String(engLevel).toUpperCase()}` : null, secLang ? `2.Dil: ${String(secLang)}` : null].filter(Boolean).join(' - ') || '-'}
+                              </td>
+                            )}
+                            {isAcademicHighSchool && !isLanguageExam && (
+                              <td style={{ padding: '0.5rem', fontSize: '0.85rem', color: '#4a5568' }}>
+                                {fieldVal || '-'}
+                              </td>
+                            )}
+                            {isMiddleSchool && (
+                              <td style={{ padding: '0.5rem', fontSize: '0.85rem', color: '#4a5568' }}>
+                                {secLang ? String(secLang) : '-'}
+                              </td>
+                            )}
+
+                            <td style={{ padding: '0.5rem' }}>{item.group || '-'}</td>
+                            <td style={{ padding: '0.5rem' }}>
+                              <select
+                                value={currentRoomId || ''}
+                                onChange={(e) => handleRoomChange(stId, e.target.value)}
+                                style={{ padding: '0.3rem', borderRadius: '4px', border: '1px solid #ccc' }}
+                              >
+                                <option value="">-- Salon Seç --</option>
+                                {rooms.map(room => (
+                                  <option key={room.id} value={room.id}>
+                                    {room.name} ({room.capacity} kişilik)
+                                  </option>
+                                ))}
+                              </select>
+                            </td>
+                            <td style={{ padding: '0.5rem' }}>
+                              <input
+                                type="number"
+                                min="1"
+                                value={currentSeat}
+                                onChange={(e) => handleSeatChange(stId, e.target.value)}
+                                style={{ width: '60px', padding: '0.3rem', border: '1px solid #ccc', borderRadius: '4px', textAlign: 'center' }}
+                              />
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ))}
+          </div>
+
         </div>
       )}
     </div>
