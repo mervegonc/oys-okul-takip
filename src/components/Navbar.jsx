@@ -22,6 +22,7 @@ const Navbar = ({ userEmail }) => {
     { path: '/manual-edit', label: 'Manuel Düzenle', icon: <FaEdit />, module: 'seating' },
     { path: '/attendance-module', label: 'Sınav Yoklama', icon: <FaClipboardCheck />, module: 'exam' },
     { path: '/attendance-lists', label: 'Yoklama Listesi', icon: <FaClipboardCheck />, module: 'exam' }, // module: 'exam' yapıldı
+    { path: '/student-matrix', label: 'Öğrenci Sınav Matrisi', icon: <FaClipboardCheck />, module: 'exam' }, 
     { path: '/calendar', label: 'Takvim', icon: <FaCalendarAlt />, module: 'calendar' },
     { path: '/candidates', label: 'Adaylar', icon: <FaUserPlus />, module: 'candidates' },
     { path: '/yds', label: 'YDS', icon: <FaLanguage />, module: 'exam' },

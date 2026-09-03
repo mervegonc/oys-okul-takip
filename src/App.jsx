@@ -14,6 +14,7 @@ import ConflictGroups from './pages/ConflictGroups';
 import ManualEdit from './pages/ManualEdit';
 import AttendanceModule from './pages/AttendanceModule';
 import ExamAttendanceLists from './pages/ExamAttendanceLists';
+import StudentMatrix from './pages/StudentMatrix'; // 1. Bileşeni içe aktar (dosya yoluna göre düzenleyebilirsin, örn: ./components/StudentMatrix)
 
 function App() {
   const [user, setUser] = useState(null);
@@ -77,8 +78,12 @@ function App() {
                   <Route path="/attendance-module" element={
                     hasPermission(userEmail, 'exam') ? <AttendanceModule /> : <Navigate to="/" />
                   } />
-                   <Route path="/attendance-lists" element={
+                  <Route path="/attendance-lists" element={
                     hasPermission(userEmail, 'exam') ? <ExamAttendanceLists /> : <Navigate to="/" />
+                  } />
+                  {/* 2. Matris sayfası için Route eklendi */}
+                  <Route path="/student-matrix" element={
+                    hasPermission(userEmail, 'exam') ? <StudentMatrix /> : <Navigate to="/" />
                   } />
                   <Route path="/" element={<Navigate to="/students" />} />
                 </Routes>
