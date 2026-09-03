@@ -8,11 +8,17 @@ const ManualEdit = () => {
   const [seatingPlan, setSeatingPlan] = useState(null);
   const [assignments, setAssignments] = useState([]);
   const [rooms, setRooms] = useState([]);
+  const [allStudents, setAllStudents] = useState([]); // Ana öğrenci listesi için state
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [editing, setEditing] = useState(false);
 
-  // Sınavları ve salonları getir
+  // Hangi salon için öğrenci ekleme modalının açık olduğunu tutar (salon ID veya adı)
+  const [activeAddRoom, setActiveAddRoom] = useState(null);
+  const [selectedStudentToAdd, setSelectedStudentToAdd] = useState('');
+  const [customSeatToAdd, setCustomSeatToAdd] = useState('');
+
+  // Sınavları, salonları ve tüm öğrencileri getir
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -29,6 +35,12 @@ const ManualEdit = () => {
           .order('name', { ascending: true });
         if (roomError) throw roomError;
         setRooms(roomData || []);
+
+        const { data: studentData, error: studentError } = await supabase
+          .from('students')
+          .select('*');
+        if (studentError) throw studentError;
+        setAllStudents(studentData || []);
       } catch (error) {
         console.error('Veri alınamadı:', error);
       }
@@ -259,6 +271,57 @@ const ManualEdit = () => {
     setEditing(true);
   };
 
+  // Salona Yeni Öğrenci Ekleme Fonksiyonu
+  const handleAddStudentToRoom = (roomId) => {
+    if (!selectedStudentToAdd) {
+      alert('Lütfen eklenecek öğrenciyi seçin.');
+      return;
+    }
+
+    const studentObj = allStudents.find(s => String(s.id) === String(selectedStudentToAdd));
+    if (!studentObj) {
+      alert('Öğrenci bulunamadı.');
+      return;
+    }
+
+    // Zaten bu planda var mı kontrolü
+    const alreadyExists = assignments.some(a => isSameStudent(a, studentObj.id));
+    if (alreadyExists) {
+      alert('Bu öğrenci zaten oturma planında yer alıyor!');
+      return;
+    }
+
+    // Otomatik sıra numarası belirleme (o salondaki mevcut öğrenci sayısı + 1)
+    const studentsInThisRoom = assignments.filter(a => String(a.roomId || a.room_id) === String(roomId));
+    const defaultSeat = studentsInThisRoom.length + 1;
+    const seatNum = parseInt(customSeatToAdd) || defaultSeat;
+
+    const newAssignmentItem = {
+      studentId: studentObj.id,
+      student_id: studentObj.id,
+      studentNumber: studentObj.student_no || studentObj.school_number || studentObj.no || '-',
+      student_number: studentObj.student_no || studentObj.school_number || studentObj.no || '-',
+      firstName: studentObj.first_name || studentObj.ad || '',
+      lastName: studentObj.last_name || studentObj.soyad || '',
+      studentName: `${studentObj.first_name || studentObj.ad || ''} ${studentObj.last_name || studentObj.soyad || ''}`,
+      grade: studentObj.grade || studentObj.sinif || '',
+      class: studentObj.class || studentObj.branch || '',
+      roomId: roomId,
+      room_id: roomId,
+      seatNumber: seatNum,
+      seat_number: seatNum,
+      tc: studentObj.tc_no || studentObj.tc || '',
+      tc_no: studentObj.tc_no || studentObj.tc || ''
+    };
+
+    setAssignments([...assignments, newAssignmentItem]);
+    setEditing(true);
+    setActiveAddRoom(null);
+    setSelectedStudentToAdd('');
+    setCustomSeatToAdd('');
+    setMessage(`✅ ${newAssignmentItem.studentName} başarıyla salona eklendi. Kaydetmeyi unutmayın.`);
+  };
+
   const handleSave = async () => {
     if (!seatingPlan) return;
     setLoading(true);
@@ -315,15 +378,13 @@ const ManualEdit = () => {
 
   const grouped = groupByRoom();
 
-  // Çakışma, sıra atlama ve mantık hatalarını tespit et
   let totalConflicts = 0;
-  const conflictMap = {}; // { "SalonAdı-SıraNo": true, "student-ID": true }
+  const conflictMap = {};
 
   Object.keys(grouped).forEach(roomName => {
     const studentsInRoom = grouped[roomName];
     const seatCounts = {};
 
-    // 1. Aynı sıra numarasından birden fazla var mı kontrolü (Çakışma)
     studentsInRoom.forEach(item => {
       const seat = Number(item.seatNumber || item.seat_number || 0);
       if (seat > 0) {
@@ -338,10 +399,9 @@ const ManualEdit = () => {
       }
     });
 
-    // 2. Sıra atlama, boşluk kalma veya kapasite dışına çıkma kontrolü
     studentsInRoom.forEach((item, index) => {
       const seat = Number(item.seatNumber || item.seat_number || 0);
-      const expectedSeat = index + 1; // 1, 2, 3... şeklinde ardışık olmalı
+      const expectedSeat = index + 1;
 
       if (seat !== expectedSeat || seat > studentsInRoom.length || seat < 1) {
         totalConflicts++;
@@ -425,7 +485,6 @@ const ManualEdit = () => {
         </div>
       )}
 
-      {/* Uyarı Kutusu */}
       {assignments.length > 0 && totalConflicts > 0 && (
         <div style={{ 
           padding: '0.8rem 1rem', 
@@ -518,113 +577,171 @@ const ManualEdit = () => {
               )}
             </div>
 
-            {Object.keys(grouped).map(roomName => (
-              <div key={roomName} style={{ marginBottom: '1.5rem', padding: '1rem', background: '#f8f9fa', borderRadius: '8px', border: '1px solid #ddd' }}>
-                <h4 style={{ marginTop: 0, color: '#2b6cb0' }}>🏫 {roomName} ({grouped[roomName].length} Öğrenci)</h4>
-                <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', background: 'white', borderRadius: '8px', overflow: 'hidden' }}>
-                    <thead style={{ background: '#e9ecef' }}>
-                      <tr>
-                        <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd' }}>#</th>
-                        <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd' }}>Okul No</th>
-                        <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd', textAlign: 'left' }}>Öğrenci</th>
-                        <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd' }}>Sınıf / Şube</th>
-                        
-                        {isLanguageExam && <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd' }}>İngilizce / 2. Yabancı Dil</th>}
-                        {isAcademicHighSchool && !isLanguageExam && <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd' }}>Alan / Branş</th>}
-                        {isMiddleSchool && <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd' }}>2. Yabancı Dil</th>}
+            {Object.keys(grouped).map(roomName => {
+              const currentRoomObj = rooms.find(r => r.name === roomName);
+              const roomId = currentRoomObj ? currentRoomObj.id : null;
+              const isAddingHere = activeAddRoom === roomId;
 
-                        <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd' }}>Grup</th>
-                        <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd' }}>Salon</th>
-                        <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd' }}>Sıra No</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {grouped[roomName].map((item, idx) => {
-                        const stId = item.studentId || item.student_id || item.id || item.studentNumber;
-                        const stNo = item.studentNumber || item.student_number || item.school_number || item.no || '-';
-                        const stName = item.studentName || item.student_name || `${item.first_name || item.firstName || ''} ${item.last_name || item.lastName || ''}`;
-                        const currentRoomId = item.roomId || item.room_id;
-                        const currentSeat = Number(item.seatNumber || item.seat_number || 1);
+              return (
+                <div key={roomName} style={{ marginBottom: '1.5rem', padding: '1rem', background: '#f8f9fa', borderRadius: '8px', border: '1px solid #ddd' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.8rem' }}>
+                    <h4 style={{ margin: 0, color: '#2b6cb0' }}>🏫 {roomName} ({grouped[roomName].length} Öğrenci)</h4>
+                    {roomId && (
+                      <button
+                        onClick={() => setActiveAddRoom(isAddingHere ? null : roomId)}
+                        style={{
+                          padding: '0.4rem 0.8rem',
+                          background: '#007bff',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '4px',
+                          cursor: 'pointer',
+                          fontSize: '0.85rem',
+                          fontWeight: 'bold'
+                        }}
+                      >
+                        {isAddingHere ? '✖ Kapat' : '➕ Bu Salona Öğrenci Ekle'}
+                      </button>
+                    )}
+                  </div>
 
-                        // Çakışma veya sıra atlama/boşluk hatası kontrolü
-                        const isConflict = conflictMap[`${roomName}-${currentSeat}`] || conflictMap[`student-${stId}`] || false;
+                  {/* Salonun Altındaki Öğrenci Ekleme Alanı / Formu */}
+                  {isAddingHere && (
+                    <div style={{ background: '#e9ecef', padding: '0.8rem', borderRadius: '6px', marginBottom: '1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                      <select
+                        value={selectedStudentToAdd}
+                        onChange={(e) => setSelectedStudentToAdd(e.target.value)}
+                        style={{ flex: 1, minWidth: '220px', padding: '0.4rem', borderRadius: '4px', border: '1px solid #ccc' }}
+                      >
+                        <option value="">-- Ana Listeden Öğrenci Seçin --</option>
+                        {allStudents
+                          .filter(st => !assignments.some(a => isSameStudent(a, st.id))) // Zaten planda olmayanlar
+                          .map(st => (
+                            <option key={st.id} value={st.id}>
+                              {st.student_no || st.school_number || st.no || 'No Yok'} - {st.first_name || st.ad} {st.last_name || st.soyad} ({st.grade || st.sinif || '-'}. Sınıf)
+                            </option>
+                          ))}
+                      </select>
+                      <input
+                        type="number"
+                        placeholder="Sıra No"
+                        value={customSeatToAdd}
+                        onChange={(e) => setCustomSeatToAdd(e.target.value)}
+                        style={{ width: '80px', padding: '0.4rem', borderRadius: '4px', border: '1px solid #ccc', textAlign: 'center' }}
+                      />
+                      <button
+                        onClick={() => handleAddStudentToRoom(roomId)}
+                        style={{ padding: '0.4rem 1rem', background: '#28a745', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}
+                      >
+                        Ekle
+                      </button>
+                    </div>
+                  )}
 
-                        const engLevel = item.english_level || item.englishLevel;
-                        const secLang = item.second_language || item.secondLanguage;
-                        const fieldVal = item.field || item.branch || item.alan;
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', background: 'white', borderRadius: '8px', overflow: 'hidden' }}>
+                      <thead style={{ background: '#e9ecef' }}>
+                        <tr>
+                          <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd' }}>#</th>
+                          <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd' }}>Okul No</th>
+                          <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd', textAlign: 'left' }}>Öğrenci</th>
+                          <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd' }}>Sınıf / Şube</th>
+                          
+                          {isLanguageExam && <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd' }}>İngilizce / 2. Yabancı Dil</th>}
+                          {isAcademicHighSchool && !isLanguageExam && <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd' }}>Alan / Branş</th>}
+                          {isMiddleSchool && <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd' }}>2. Yabancı Dil</th>}
 
-                        return (
-                          <tr 
-                            key={stId || idx} 
-                            style={{ 
-                              borderBottom: '1px solid #eee', 
-                              textAlign: 'center',
-                              background: isConflict ? '#f8d7da' : 'transparent' // Hatalı/Atlanmış satırları kırmızıya boyar
-                            }}
-                          >
-                            <td style={{ padding: '0.5rem' }}>{idx + 1}</td>
-                            <td style={{ padding: '0.5rem', fontWeight: 'bold' }}>{stNo}</td>
-                            <td style={{ padding: '0.5rem', textAlign: 'left', fontWeight: '500' }}>{stName}</td>
-                            <td style={{ padding: '0.5rem' }}>{item.grade}-{item.class || item.className}</td>
-                            
-                            {isLanguageExam && (
-                              <td style={{ padding: '0.5rem', fontSize: '0.85rem', color: '#4a5568' }}>
-                                {[engLevel ? `İng: ${String(engLevel).toUpperCase()}` : null, secLang ? `2.Dil: ${String(secLang)}` : null].filter(Boolean).join(' - ') || '-'}
+                          <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd' }}>Grup</th>
+                          <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd' }}>Salon</th>
+                          <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd' }}>Sıra No</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {grouped[roomName].map((item, idx) => {
+                          const stId = item.studentId || item.student_id || item.id || item.studentNumber;
+                          const stNo = item.studentNumber || item.student_number || item.school_number || item.no || '-';
+                          const stName = item.studentName || item.student_name || `${item.first_name || item.firstName || ''} ${item.last_name || item.lastName || ''}`;
+                          const currentRoomId = item.roomId || item.room_id;
+                          const currentSeat = Number(item.seatNumber || item.seat_number || 1);
+
+                          const isConflict = conflictMap[`${roomName}-${currentSeat}`] || conflictMap[`student-${stId}`] || false;
+
+                          const engLevel = item.english_level || item.englishLevel;
+                          const secLang = item.second_language || item.secondLanguage;
+                          const fieldVal = item.field || item.branch || item.alan;
+
+                          return (
+                            <tr 
+                              key={stId || idx} 
+                              style={{ 
+                                borderBottom: '1px solid #eee', 
+                                textAlign: 'center',
+                                background: isConflict ? '#f8d7da' : 'transparent'
+                              }}
+                            >
+                              <td style={{ padding: '0.5rem' }}>{idx + 1}</td>
+                              <td style={{ padding: '0.5rem', fontWeight: 'bold' }}>{stNo}</td>
+                              <td style={{ padding: '0.5rem', textAlign: 'left', fontWeight: '500' }}>{stName}</td>
+                              <td style={{ padding: '0.5rem' }}>{item.grade}-{item.class || item.className}</td>
+                              
+                              {isLanguageExam && (
+                                <td style={{ padding: '0.5rem', fontSize: '0.85rem', color: '#4a5568' }}>
+                                  {[engLevel ? `İng: ${String(engLevel).toUpperCase()}` : null, secLang ? `2.Dil: ${String(secLang)}` : null].filter(Boolean).join(' - ') || '-'}
+                                </td>
+                              )}
+                              {isAcademicHighSchool && !isLanguageExam && (
+                                <td style={{ padding: '0.5rem', fontSize: '0.85rem', color: '#4a5568' }}>
+                                  {fieldVal || '-'}
+                                </td>
+                              )}
+                              {isMiddleSchool && (
+                                <td style={{ padding: '0.5rem', fontSize: '0.85rem', color: '#4a5568' }}>
+                                  {secLang ? String(secLang) : '-'}
+                                </td>
+                              )}
+
+                              <td style={{ padding: '0.5rem' }}>{item.group || '-'}</td>
+                              <td style={{ padding: '0.5rem' }}>
+                                <select
+                                  value={currentRoomId || ''}
+                                  onChange={(e) => handleRoomChange(stId, e.target.value)}
+                                  style={{ padding: '0.3rem', borderRadius: '4px', border: '1px solid #ccc' }}
+                                >
+                                  <option value="">-- Salon Seç --</option>
+                                  {rooms.map(room => (
+                                    <option key={room.id} value={room.id}>
+                                      {room.name} ({room.capacity} kişilik)
+                                    </option>
+                                  ))}
+                                </select>
                               </td>
-                            )}
-                            {isAcademicHighSchool && !isLanguageExam && (
-                              <td style={{ padding: '0.5rem', fontSize: '0.85rem', color: '#4a5568' }}>
-                                {fieldVal || '-'}
+                              <td style={{ padding: '0.5rem' }}>
+                                <input
+                                  type="number"
+                                  min="1"
+                                  value={currentSeat}
+                                  onChange={(e) => handleSeatChange(stId, e.target.value)}
+                                  style={{ 
+                                    width: '60px', 
+                                    padding: '0.3rem', 
+                                    border: isConflict ? '2px solid #dc3545' : '1px solid #ccc', 
+                                    borderRadius: '4px', 
+                                    textAlign: 'center',
+                                    background: isConflict ? '#f5c6cb' : 'white',
+                                    color: isConflict ? '#721c24' : 'inherit',
+                                    fontWeight: isConflict ? 'bold' : 'normal'
+                                  }}
+                                />
                               </td>
-                            )}
-                            {isMiddleSchool && (
-                              <td style={{ padding: '0.5rem', fontSize: '0.85rem', color: '#4a5568' }}>
-                                {secLang ? String(secLang) : '-'}
-                              </td>
-                            )}
-
-                            <td style={{ padding: '0.5rem' }}>{item.group || '-'}</td>
-                            <td style={{ padding: '0.5rem' }}>
-                              <select
-                                value={currentRoomId || ''}
-                                onChange={(e) => handleRoomChange(stId, e.target.value)}
-                                style={{ padding: '0.3rem', borderRadius: '4px', border: '1px solid #ccc' }}
-                              >
-                                <option value="">-- Salon Seç --</option>
-                                {rooms.map(room => (
-                                  <option key={room.id} value={room.id}>
-                                    {room.name} ({room.capacity} kişilik)
-                                  </option>
-                                ))}
-                              </select>
-                            </td>
-                            <td style={{ padding: '0.5rem' }}>
-                              <input
-                                type="number"
-                                min="1"
-                                value={currentSeat}
-                                onChange={(e) => handleSeatChange(stId, e.target.value)}
-                                style={{ 
-                                  width: '60px', 
-                                  padding: '0.3rem', 
-                                  border: isConflict ? '2px solid #dc3545' : '1px solid #ccc', 
-                                  borderRadius: '4px', 
-                                  textAlign: 'center',
-                                  background: isConflict ? '#f5c6cb' : 'white',
-                                  color: isConflict ? '#721c24' : 'inherit',
-                                  fontWeight: isConflict ? 'bold' : 'normal'
-                                }}
-                              />
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
         </div>
