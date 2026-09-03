@@ -257,13 +257,12 @@ const ExamAttendanceLists = () => {
   const getRoomName = (item) => {
     const rawRoomId = item.roomId || item.room_id || item.salon_id || item.roomName || item.room_name || item.salon;
     if (rooms && rooms.length > 0 && rawRoomId) {
-      const foundInDb = rooms.find(r => String(r.id) === String(rawRoomId));
+      const foundInDb = rooms.find(r => String(r.id) === String(rawRoomId) || String(r.name) === String(rawRoomId));
       if (foundInDb && foundInDb.name) return foundInDb.name;
     }
     return rawRoomId || 'Tanımsız Salon';
   };
 
-  // Salon Adı ve Şube Kodunu Birlikte Getiren Yardımcı Fonksiyon
   const getRoomDetailsObj = (item) => {
     const rawRoomId = item.roomId || item.room_id || item.salon_id || item.roomName || item.room_name || item.salon;
     let roomName = rawRoomId || 'Tanımsız Salon';
@@ -273,8 +272,12 @@ const ExamAttendanceLists = () => {
       const foundInDb = rooms.find(r => String(r.id) === String(rawRoomId) || String(r.name) === String(rawRoomId));
       if (foundInDb) {
         if (foundInDb.name) roomName = foundInDb.name;
-        // Şube kodu sütun adını güvenli kontrol edelim (room_code, code vb.)
-        roomCode = foundInDb.room_code || foundInDb.code || foundInDb.sube_kodu || '';
+        const dbClass = foundInDb.class;
+        if (dbClass && String(dbClass).toUpperCase() !== 'EMPTY') {
+          roomCode = dbClass;
+        } else {
+          roomCode = foundInDb.room_code || foundInDb.code || foundInDb.sube_kodu || foundInDb.branch_code || foundInDb.short_code || '';
+        }
       }
     }
     return { roomName, roomCode };
@@ -379,7 +382,7 @@ const ExamAttendanceLists = () => {
         } else if (examCategory === 'sadece_ingilizce') {
           item['İng. Seviye'] = det.englishLevel;
         }
-        item['Sınav Salonu'] = formatRoomDisplay(st);
+        item['Salon Adı'] = formatRoomDisplay(st);
         item['Masa Sıra No'] = st.seatNumber || st.seat_number || '';
         return item;
       });
@@ -393,7 +396,7 @@ const ExamAttendanceLists = () => {
         const det = getStudentDetails(st);
         const item = {
           'Sıra No': index + 1,
-          'Sınav Salonu': formatRoomDisplay(st),
+          'Salon Adı': formatRoomDisplay(st),
           'Masa Sıra No': st.seatNumber || st.seat_number || '',
           'Öğrenci Adı Soyadı': det.fullName,
           'Sınıf/Şube': `${det.grade}-${det.className}`
@@ -502,7 +505,7 @@ const ExamAttendanceLists = () => {
         <h2>📑 Yoklama ve Sınav Listeleri</h2>
         <p style={{ color: '#666' }}>Sınav salon, kapı ve soyad sıralı listelerini yönetin ve bastırın.</p>
 
-        {/* GENEL ÖZET TABLOSU */}
+        {/* GENEL ÖZET TABLOSU (Sınav seçildiğinde yukarısındaki genel özet) */}
         {selectedExam && assignments.length > 0 && (
           <div style={{ background: '#fff', border: '1px solid #cbd5e1', padding: '1rem', borderRadius: '8px', marginBottom: '1.5rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
             <h3 style={{ margin: '0 0 0.8rem 0', fontSize: '1rem', color: '#1e293b', borderBottom: '2px solid #e2e8f0', paddingBottom: '0.4rem' }}>
@@ -932,7 +935,7 @@ const ExamAttendanceLists = () => {
                           <th style={{ width: '8%', textAlign: 'center' }}>SIRA</th>
                           <th style={{ width: '15%', textAlign: 'center' }}>ÖĞR. NO</th>
                           <th>ÖĞRENCİ ADI SOYADI</th>
-                          <th style={{ width: '35%', textAlign: 'center', background: '#e2e8f0' }}>GİDECEĞİ SALON</th>
+                          <th style={{ width: '30%', textAlign: 'center', background: '#e2e8f0' }}>GİDECEĞİ SALON</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -971,7 +974,7 @@ const ExamAttendanceLists = () => {
                     <th style={{ width: '6%', textAlign: 'center' }}>SIRA</th>
                     <th>ÖĞRENCİ SOYADI, ADI</th>
                     <th style={{ width: '15%', textAlign: 'center' }}>SINIF / ŞUBE</th>
-                    <th style={{ width: '30%', textAlign: 'center' }}>SINAV SALONU</th>
+                    <th style={{ width: '25%', textAlign: 'center' }}>SINAV SALONU</th>
                     <th style={{ width: '12%', textAlign: 'center' }}>SIRA NO</th>
                   </tr>
                 </thead>
