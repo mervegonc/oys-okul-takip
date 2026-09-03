@@ -46,6 +46,7 @@ const ExamAttendanceLists = () => {
   // Sekme & Filtre Durumları
   const [activeTab, setActiveTab] = useState('attendance');
   const [showTc, setShowTc] = useState(true);
+  const [showRoomCode, setShowRoomCode] = useState(true); // Salon Şube Kodunu Göster/Gizle
   const [examCategory, setExamCategory] = useState('akademik_lise'); // 'akademik_lise', 'akademik_lise_alansiz', 'sadece_ingilizce', 'sadece_ikinci_dil', 'ingilizce_ve_ikinci_dil', 'akademik_ortaokul_sozel', 'akademik_ortaokul_sayisal'
   const [invigilators, setInvigilators] = useState({});
 
@@ -262,6 +263,31 @@ const ExamAttendanceLists = () => {
     return rawRoomId || 'Tanımsız Salon';
   };
 
+  // Salon Adı ve Şube Kodunu Birlikte Getiren Yardımcı Fonksiyon
+  const getRoomDetailsObj = (item) => {
+    const rawRoomId = item.roomId || item.room_id || item.salon_id || item.roomName || item.room_name || item.salon;
+    let roomName = rawRoomId || 'Tanımsız Salon';
+    let roomCode = '';
+
+    if (rooms && rooms.length > 0 && rawRoomId) {
+      const foundInDb = rooms.find(r => String(r.id) === String(rawRoomId) || String(r.name) === String(rawRoomId));
+      if (foundInDb) {
+        if (foundInDb.name) roomName = foundInDb.name;
+        // Şube kodu sütun adını güvenli kontrol edelim (room_code, code vb.)
+        roomCode = foundInDb.room_code || foundInDb.code || foundInDb.sube_kodu || '';
+      }
+    }
+    return { roomName, roomCode };
+  };
+
+  const formatRoomDisplay = (item) => {
+    const { roomName, roomCode } = getRoomDetailsObj(item);
+    if (showRoomCode && roomCode) {
+      return `${roomName} (${roomCode})`;
+    }
+    return roomName;
+  };
+
   const getGradeSummary = (studentList) => {
     const grades = new Set();
     studentList.forEach(st => {
@@ -275,14 +301,14 @@ const ExamAttendanceLists = () => {
     return `${sortedGrades.join(' ve ')}. Sınıf`;
   };
 
-  const getHeaderTitle = (roomName, gradeSummary) => {
+  const getHeaderTitle = (roomDisplayStr, gradeSummary) => {
     if (examCategory === 'akademik_ortaokul_sozel') {
-      return `${selectedExam.title} - ${gradeSummary} (SÖZEL OTURUMU) - ${roomName.toUpperCase()} YOKLAMA LİSTESİ`;
+      return `${selectedExam.title} - ${gradeSummary} (SÖZEL OTURUMU) - ${roomDisplayStr.toUpperCase()} YOKLAMA LİSTESİ`;
     }
     if (examCategory === 'akademik_ortaokul_sayisal') {
-      return `${selectedExam.title} - ${gradeSummary} (SAYISAL OTURUMU) - ${roomName.toUpperCase()} YOKLAMA LİSTESİ`;
+      return `${selectedExam.title} - ${gradeSummary} (SAYISAL OTURUMU) - ${roomDisplayStr.toUpperCase()} YOKLAMA LİSTESİ`;
     }
-    return `${selectedExam.title} - ${gradeSummary} - ${roomName.toUpperCase()} YOKLAMA LİSTESİ`;
+    return `${selectedExam.title} - ${gradeSummary} - ${roomDisplayStr.toUpperCase()} YOKLAMA LİSTESİ`;
   };
 
   const rawAssignments = seatingPlan?.assignments || [];
@@ -318,7 +344,7 @@ const ExamAttendanceLists = () => {
     const det = getStudentDetails(curr);
     const classKey = det.grade && det.className ? `${det.grade}-${det.className}` : 'Diğer';
     if (!acc[classKey]) acc[classKey] = [];
-    acc[classKey].push({ ...curr, roomName: getRoomName(curr), det });
+    acc[classKey].push({ ...curr, roomDisplay: formatRoomDisplay(curr), det });
     return acc;
   }, {});
 
@@ -353,7 +379,7 @@ const ExamAttendanceLists = () => {
         } else if (examCategory === 'sadece_ingilizce') {
           item['İng. Seviye'] = det.englishLevel;
         }
-        item['Salon Adı'] = getRoomName(st);
+        item['Sınav Salonu'] = formatRoomDisplay(st);
         item['Masa Sıra No'] = st.seatNumber || st.seat_number || '';
         return item;
       });
@@ -367,7 +393,7 @@ const ExamAttendanceLists = () => {
         const det = getStudentDetails(st);
         const item = {
           'Sıra No': index + 1,
-          'Salon Adı': getRoomName(st),
+          'Sınav Salonu': formatRoomDisplay(st),
           'Masa Sıra No': st.seatNumber || st.seat_number || '',
           'Öğrenci Adı Soyadı': det.fullName,
           'Sınıf/Şube': `${det.grade}-${det.className}`
@@ -476,7 +502,7 @@ const ExamAttendanceLists = () => {
         <h2>📑 Yoklama ve Sınav Listeleri</h2>
         <p style={{ color: '#666' }}>Sınav salon, kapı ve soyad sıralı listelerini yönetin ve bastırın.</p>
 
-        {/* GENEL ÖZET TABLOSU (Sınav seçildiğinde yukarısındaki genel özet) */}
+        {/* GENEL ÖZET TABLOSU */}
         {selectedExam && assignments.length > 0 && (
           <div style={{ background: '#fff', border: '1px solid #cbd5e1', padding: '1rem', borderRadius: '8px', marginBottom: '1.5rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
             <h3 style={{ margin: '0 0 0.8rem 0', fontSize: '1rem', color: '#1e293b', borderBottom: '2px solid #e2e8f0', paddingBottom: '0.4rem' }}>
@@ -494,6 +520,9 @@ const ExamAttendanceLists = () => {
                 <tbody>
                   {Object.keys(groupedByRoom).map((roomName) => {
                     const roomStudents = groupedByRoom[roomName];
+                    const sampleItem = roomStudents[0] || {};
+                    const roomDisplayStr = formatRoomDisplay(sampleItem);
+
                     let rCore = 0, rExt = 0;
                     const rLangTotals = {};
                     roomStudents.forEach(st => {
@@ -509,7 +538,7 @@ const ExamAttendanceLists = () => {
 
                     return (
                       <tr key={roomName}>
-                        <td style={{ border: '1px solid #cbd5e1', padding: '6px 8px', fontWeight: 'bold' }}>{roomName.toUpperCase()}</td>
+                        <td style={{ border: '1px solid #cbd5e1', padding: '6px 8px', fontWeight: 'bold' }}>{roomDisplayStr.toUpperCase()}</td>
                         <td style={{ border: '1px solid #cbd5e1', padding: '6px 8px', color: '#475569' }}>
                           {(examCategory === 'sadece_ingilizce' || examCategory === 'ingilizce_ve_ikinci_dil') && (rCore > 0 || rExt > 0) && (
                             <span>Core: {rCore}, Ext: {rExt}</span>
@@ -602,10 +631,14 @@ const ExamAttendanceLists = () => {
                 </select>
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', marginTop: '1.2rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', marginTop: '1.2rem', gap: '1.2rem' }}>
                 <label style={{ fontSize: '0.9rem', cursor: 'pointer', fontWeight: 'bold', color: '#2b6cb0' }}>
                   <input type="checkbox" checked={showTc} onChange={(e) => setShowTc(e.target.checked)} style={{ marginRight: '0.5rem' }} />
                   TC Kimlik No Göster
+                </label>
+                <label style={{ fontSize: '0.9rem', cursor: 'pointer', fontWeight: 'bold', color: '#16a34a' }}>
+                  <input type="checkbox" checked={showRoomCode} onChange={(e) => setShowRoomCode(e.target.checked)} style={{ marginRight: '0.5rem' }} />
+                  Salon Şube Kodunu Göster (Örn: Salon-50)
                 </label>
               </div>
 
@@ -688,6 +721,8 @@ const ExamAttendanceLists = () => {
               {Object.keys(groupedByRoom).map((roomName) => {
                 const students = groupedByRoom[roomName];
                 const gradeSummary = getGradeSummary(students);
+                const sampleItem = students[0] || {};
+                const roomDisplayStr = formatRoomDisplay(sampleItem);
 
                 let totalCore = 0;
                 let totalExt = 0;
@@ -736,11 +771,11 @@ const ExamAttendanceLists = () => {
                     
                     <div style={{ border: '2px solid #000', padding: '0.5rem', textAlign: 'center', marginBottom: '0.5rem', background: '#fafafa' }}>
                       <h1 style={{ margin: '0 0 0.2rem 0', fontSize: '12.5pt', fontWeight: 'bold', textTransform: 'uppercase' }}>
-                        {getHeaderTitle(roomName, gradeSummary)}
+                        {getHeaderTitle(roomDisplayStr, gradeSummary)}
                       </h1>
                       <div style={{ fontSize: '9.5pt', fontWeight: 'bold', display: 'flex', justifyContent: 'space-around', borderTop: '1px solid #000', paddingTop: '0.3rem', marginTop: '0.3rem' }}>
                         <span>TARİH: {selectedExam.date}</span>
-                        <span>{roomName.toUpperCase()}</span>
+                        <span>{roomDisplayStr.toUpperCase()}</span>
                       </div>
                     </div>
 
@@ -897,7 +932,7 @@ const ExamAttendanceLists = () => {
                           <th style={{ width: '8%', textAlign: 'center' }}>SIRA</th>
                           <th style={{ width: '15%', textAlign: 'center' }}>ÖĞR. NO</th>
                           <th>ÖĞRENCİ ADI SOYADI</th>
-                          <th style={{ width: '30%', textAlign: 'center', background: '#e2e8f0' }}>GİDECEĞİ SALON</th>
+                          <th style={{ width: '35%', textAlign: 'center', background: '#e2e8f0' }}>GİDECEĞİ SALON</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -907,7 +942,7 @@ const ExamAttendanceLists = () => {
                             <td style={{ textAlign: 'center', fontWeight: '600' }}>{st.det.studentNo}</td>
                             <td style={{ fontWeight: '500' }}>{st.det.fullName}</td>
                             <td style={{ textAlign: 'center', fontWeight: 'bold', color: '#1d4ed8', background: '#f8fafc', fontSize: '10pt' }}>
-                              {st.roomName.toUpperCase()}
+                              {st.roomDisplay.toUpperCase()}
                             </td>
                           </tr>
                         ))}
@@ -936,21 +971,21 @@ const ExamAttendanceLists = () => {
                     <th style={{ width: '6%', textAlign: 'center' }}>SIRA</th>
                     <th>ÖĞRENCİ SOYADI, ADI</th>
                     <th style={{ width: '15%', textAlign: 'center' }}>SINIF / ŞUBE</th>
-                    <th style={{ width: '25%', textAlign: 'center' }}>SINAV SALONU</th>
+                    <th style={{ width: '30%', textAlign: 'center' }}>SINAV SALONU</th>
                     <th style={{ width: '12%', textAlign: 'center' }}>SIRA NO</th>
                   </tr>
                 </thead>
                 <tbody>
                   {getSortedBySurname().map((st, idx) => {
                     const det = getStudentDetails(st);
-                    const roomName = getRoomName(st);
+                    const roomDisplay = formatRoomDisplay(st);
 
                     return (
                       <tr key={st.studentId || st.id || idx}>
                         <td style={{ textAlign: 'center', fontWeight: 'bold' }}>{idx + 1}</td>
                         <td style={{ fontWeight: 'bold' }}>{det.surnameFirstFormat}</td>
                         <td style={{ textAlign: 'center' }}>{det.grade}-{det.className}</td>
-                        <td style={{ textAlign: 'center', fontWeight: '500' }}>{roomName}</td>
+                        <td style={{ textAlign: 'center', fontWeight: '500' }}>{roomDisplay}</td>
                         <td style={{ textAlign: 'center', fontWeight: 'bold' }}>{st.seatNumber || st.seat_number || '-'}</td>
                       </tr>
                     );
