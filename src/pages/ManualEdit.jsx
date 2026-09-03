@@ -8,13 +8,14 @@ const ManualEdit = () => {
   const [seatingPlan, setSeatingPlan] = useState(null);
   const [assignments, setAssignments] = useState([]);
   const [rooms, setRooms] = useState([]);
-  const [allStudents, setAllStudents] = useState([]); // Ana öğrenci listesi için state
+  const [allStudents, setAllStudents] = useState([]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [editing, setEditing] = useState(false);
 
-  // Hangi salon için öğrenci ekleme modalının açık olduğunu tutar (salon ID veya adı)
+  // Salon bazlı ekleme state'leri
   const [activeAddRoom, setActiveAddRoom] = useState(null);
+  const [studentSearchTerm, setStudentSearchTerm] = useState(''); // Arama filtresi için
   const [selectedStudentToAdd, setSelectedStudentToAdd] = useState('');
   const [customSeatToAdd, setCustomSeatToAdd] = useState('');
 
@@ -284,14 +285,12 @@ const ManualEdit = () => {
       return;
     }
 
-    // Zaten bu planda var mı kontrolü
     const alreadyExists = assignments.some(a => isSameStudent(a, studentObj.id));
     if (alreadyExists) {
       alert('Bu öğrenci zaten oturma planında yer alıyor!');
       return;
     }
 
-    // Otomatik sıra numarası belirleme (o salondaki mevcut öğrenci sayısı + 1)
     const studentsInThisRoom = assignments.filter(a => String(a.roomId || a.room_id) === String(roomId));
     const defaultSeat = studentsInThisRoom.length + 1;
     const seatNum = parseInt(customSeatToAdd) || defaultSeat;
@@ -318,6 +317,7 @@ const ManualEdit = () => {
     setEditing(true);
     setActiveAddRoom(null);
     setSelectedStudentToAdd('');
+    setStudentSearchTerm('');
     setCustomSeatToAdd('');
     setMessage(`✅ ${newAssignmentItem.studentName} başarıyla salona eklendi. Kaydetmeyi unutmayın.`);
   };
@@ -417,6 +417,35 @@ const ManualEdit = () => {
   const isMiddleSchool = examType.includes('ortaokul') || (currentExamObj?.grade_levels || []).some(g => [5, 6, 7, 8].includes(Number(g)));
   const isLanguageExam = examType.includes('dil') || examType.includes('yabancı');
   const isAcademicHighSchool = examType.includes('akademik') || examType.includes('lise');
+
+  // ** SINIF SEVİYESİNE GÖRE FİLTRELEME MANTIĞI **
+  const examGrades = (currentExamObj?.grade_levels || currentExamObj?.gradeLevels || []).map(g => Number(g));
+
+  const filteredStudentsForAdd = allStudents.filter(st => {
+    // 1. Planda zaten var mı?
+    if (assignments.some(a => isSameStudent(a, st.id))) return false;
+
+    // 2. Sınavın sınıf seviyesine uyuyor mu? (Eğer sınavda sınıf seviyesi tanımlıysa)
+    if (examGrades.length > 0) {
+      const stGrade = Number(st.grade || st.sinif || 0);
+      if (!examGrades.includes(stGrade)) return false;
+    }
+
+    // 3. Arama kutusuna yazılan metne uyuyor mu? (İsim, soyisim veya okul no ile arama)
+    if (studentSearchTerm.trim()) {
+      const term = studentSearchTerm.trim().toLowerCase();
+      const sNo = String(st.student_no || st.school_number || st.no || '').toLowerCase();
+      const sName = String(st.first_name || st.ad || '').toLowerCase();
+      const sSurname = String(st.last_name || st.soyad || '').toLowerCase();
+      const fullName = `${sName} ${sSurname}`;
+
+      if (!sNo.includes(term) && !sName.includes(term) && !sSurname.includes(term) && !fullName.includes(term)) {
+        return false;
+      }
+    }
+
+    return true;
+  });
 
   return (
     <div style={{ padding: '1rem', maxWidth: '1400px', margin: '0 auto' }}>
@@ -588,7 +617,11 @@ const ManualEdit = () => {
                     <h4 style={{ margin: 0, color: '#2b6cb0' }}>🏫 {roomName} ({grouped[roomName].length} Öğrenci)</h4>
                     {roomId && (
                       <button
-                        onClick={() => setActiveAddRoom(isAddingHere ? null : roomId)}
+                        onClick={() => {
+                          setActiveAddRoom(isAddingHere ? null : roomId);
+                          setStudentSearchTerm('');
+                          setSelectedStudentToAdd('');
+                        }}
                         style={{
                           padding: '0.4rem 0.8rem',
                           background: '#007bff',
@@ -605,36 +638,55 @@ const ManualEdit = () => {
                     )}
                   </div>
 
-                  {/* Salonun Altındaki Öğrenci Ekleme Alanı / Formu */}
+                  {/* Salonun Altındaki Öğrenci Arama ve Ekleme Alanı */}
                   {isAddingHere && (
-                    <div style={{ background: '#e9ecef', padding: '0.8rem', borderRadius: '6px', marginBottom: '1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-                      <select
-                        value={selectedStudentToAdd}
-                        onChange={(e) => setSelectedStudentToAdd(e.target.value)}
-                        style={{ flex: 1, minWidth: '220px', padding: '0.4rem', borderRadius: '4px', border: '1px solid #ccc' }}
-                      >
-                        <option value="">-- Ana Listeden Öğrenci Seçin --</option>
-                        {allStudents
-                          .filter(st => !assignments.some(a => isSameStudent(a, st.id))) // Zaten planda olmayanlar
-                          .map(st => (
+                    <div style={{ background: '#e9ecef', padding: '0.8rem', borderRadius: '6px', marginBottom: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                        {/* Arama Çubuğu */}
+                        <input
+                          type="text"
+                          placeholder="🔍 İsim, soyisim veya okul no ile ara..."
+                          value={studentSearchTerm}
+                          onChange={(e) => setStudentSearchTerm(e.target.value)}
+                          style={{ flex: 1, minWidth: '200px', padding: '0.4rem', borderRadius: '4px', border: '1px solid #ccc' }}
+                        />
+
+                        {/* Sınıf Seviyesine Uygun Öğrenci Listesi */}
+                        <select
+                          value={selectedStudentToAdd}
+                          onChange={(e) => setSelectedStudentToAdd(e.target.value)}
+                          style={{ flex: 2, minWidth: '220px', padding: '0.4rem', borderRadius: '4px', border: '1px solid #ccc' }}
+                        >
+                          <option value="">
+                            {filteredStudentsForAdd.length > 0 
+                              ? `-- Öğrenci Seçin (${filteredStudentsForAdd.length} sonuç) --` 
+                              : '-- Eşleşen öğrenci bulunamadı --'}
+                          </option>
+                          {filteredStudentsForAdd.map(st => (
                             <option key={st.id} value={st.id}>
                               {st.student_no || st.school_number || st.no || 'No Yok'} - {st.first_name || st.ad} {st.last_name || st.soyad} ({st.grade || st.sinif || '-'}. Sınıf)
                             </option>
                           ))}
-                      </select>
-                      <input
-                        type="number"
-                        placeholder="Sıra No"
-                        value={customSeatToAdd}
-                        onChange={(e) => setCustomSeatToAdd(e.target.value)}
-                        style={{ width: '80px', padding: '0.4rem', borderRadius: '4px', border: '1px solid #ccc', textAlign: 'center' }}
-                      />
-                      <button
-                        onClick={() => handleAddStudentToRoom(roomId)}
-                        style={{ padding: '0.4rem 1rem', background: '#28a745', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}
-                      >
-                        Ekle
-                      </button>
+                        </select>
+
+                        <input
+                          type="number"
+                          placeholder="Sıra No"
+                          value={customSeatToAdd}
+                          onChange={(e) => setCustomSeatToAdd(e.target.value)}
+                          style={{ width: '80px', padding: '0.4rem', borderRadius: '4px', border: '1px solid #ccc', textAlign: 'center' }}
+                        />
+
+                        <button
+                          onClick={() => handleAddStudentToRoom(roomId)}
+                          style={{ padding: '0.4rem 1rem', background: '#28a745', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}
+                        >
+                          Ekle
+                        </button>
+                      </div>
+                      <small style={{ color: '#6c757d' }}>
+                        * Sadece bu sınavın seviyesine ({examGrades.length > 0 ? examGrades.join(', ') + '. sınıflar' : 'tüm sınıflar'}) ait ve henüz oturma planında olmayan öğrenciler gösterilmektedir.
+                      </small>
                     </div>
                   )}
 
