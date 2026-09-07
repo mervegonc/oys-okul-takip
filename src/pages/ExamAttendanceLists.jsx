@@ -1,9 +1,9 @@
+// ExamAttendanceLists.jsx
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabase';
 import * as XLSX from 'xlsx';
 import CryptoJS from 'crypto-js';
 
-// TC Şifre Çözme Yardımcı Fonksiyonu
 const decryptTC = (cipherText) => {
   if (!cipherText || typeof cipherText !== 'string') return '-';
 
@@ -27,7 +27,7 @@ const decryptTC = (cipherText) => {
         return decrypted.trim();
       }
     } catch (e) {
-      // Key eşleşmediyse sıradakini dene
+      // Key eşleşmediyse devam et
     }
   }
 
@@ -43,11 +43,10 @@ const ExamAttendanceLists = () => {
   const [examGrades, setExamGrades] = useState({});
   const [loading, setLoading] = useState(false);
 
-  // Sekme & Filtre Durumları
   const [activeTab, setActiveTab] = useState('attendance');
   const [showTc, setShowTc] = useState(true);
-  const [showRoomCode, setShowRoomCode] = useState(true); // Salon Şube Kodunu Göster/Gizle
-  const [examCategory, setExamCategory] = useState('akademik_lise'); // 'akademik_lise', 'akademik_lise_alansiz', 'sadece_ingilizce', 'sadece_ikinci_dil', 'ingilizce_ve_ikinci_dil', 'akademik_ortaokul_sozel', 'akademik_ortaokul_sayisal'
+  const [showRoomCode, setShowRoomCode] = useState(true);
+  const [examCategory, setExamCategory] = useState('akademik_lise');
   const [invigilators, setInvigilators] = useState({});
 
   useEffect(() => {
@@ -537,7 +536,6 @@ const ExamAttendanceLists = () => {
         <h2>📑 Yoklama ve Sınav Listeleri</h2>
         <p style={{ color: '#666' }}>Sınav salon, kapı, soyad ve isim sıralı listelerini yönetin ve bastırın.</p>
 
-        {/* GENEL ÖZET TABLOSU */}
         {selectedExam && assignments.length > 0 && (
           <div style={{ background: '#fff', border: '1px solid #cbd5e1', padding: '1rem', borderRadius: '8px', marginBottom: '1.5rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
             <h3 style={{ margin: '0 0 0.8rem 0', fontSize: '1rem', color: '#1e293b', borderBottom: '2px solid #e2e8f0', paddingBottom: '0.4rem' }}>
@@ -548,7 +546,7 @@ const ExamAttendanceLists = () => {
                 <thead>
                   <tr style={{ background: '#f1f5f9' }}>
                     <th style={{ border: '1px solid #cbd5e1', padding: '6px 8px', width: '30%' }}>Salon Adı</th>
-                    <th style={{ border: '1px solid #cbd5e1', padding: '6px 8px', width: '40%' }}>Detay / Dağılım (Core / Ext / 2. Dil vb.)</th>
+                    <th style={{ border: '1px solid #cbd5e1', padding: '6px 8px', width: '40%' }}>Detay / Dağılım</th>
                     <th style={{ border: '1px solid #cbd5e1', padding: '6px 8px', textAlign: 'center', width: '30%' }}>Öğrenci Sayısı</th>
                   </tr>
                 </thead>
@@ -581,8 +579,6 @@ const ExamAttendanceLists = () => {
                           {(examCategory === 'sadece_ikinci_dil' || examCategory === 'ingilizce_ve_ikinci_dil') && Object.keys(rLangTotals).length > 0 && (
                             <span>{Object.entries(rLangTotals).map(([l, c]) => `${l}: ${c}`).join(' | ')}</span>
                           )}
-                          {examCategory === 'akademik_lise' && <span>Alanlı Dağılım</span>}
-                          {examCategory === 'akademik_lise_alansiz' && <span>Standart Liste</span>}
                         </td>
                         <td style={{ border: '1px solid #cbd5e1', padding: '6px 8px', textAlign: 'center', fontWeight: 'bold', color: '#2563eb' }}>
                           {roomStudents.length}
@@ -673,7 +669,7 @@ const ExamAttendanceLists = () => {
                 </label>
                 <label style={{ fontSize: '0.9rem', cursor: 'pointer', fontWeight: 'bold', color: '#16a34a' }}>
                   <input type="checkbox" checked={showRoomCode} onChange={(e) => setShowRoomCode(e.target.checked)} style={{ marginRight: '0.5rem' }} />
-                  Salon Şube Kodunu Göster (Örn: Salon-50)
+                  Salon Şube Kodunu Göster
                 </label>
               </div>
 
