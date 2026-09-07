@@ -22,20 +22,23 @@ const ExcelUpload = ({ onUploadComplete }) => {
     englishLevel: false,
   });
 
+  // Esnek sütun eşleme tablosu (Farklı varyasyonları destekler)
   const columnMapping = {
-    'tcNo': 'tc_no',
+    'tcno': 'tc_no',
+    'tc kimlik numarası': 'tc_no',
     'okul numarası': 'student_no',
-    'Sınıf': 'grade',
-    'Şube': 'class',
-    'Adı': 'first_name',
-    'Soyadı': 'last_name',
-    'Öğrenim Alanı': 'field',
-    '2. Yab. Dil': 'second_lang',
-    'Telefon Numarası1': 'phone',
-    'Veli 1 Telefon Numarası': 'parent_phone',
-    'Veli 2 Telefon Numarası': 'parent_phone2',
-    'Cinsiyet': 'gender',
-    'İngilizce Seviyesi': 'english_level',
+    'sınıf': 'grade',
+    'şube': 'class',
+    'adı': 'first_name',
+    'soyadı': 'last_name',
+    'öğrenim alanı': 'field',
+    '2. yab. dil': 'second_lang',
+    'yabancı dil bilgisi': 'second_lang',
+    'telefon numarası1': 'phone',
+    'veli 1 telefon numarası': 'parent_phone',
+    'veli 2 telefon numarası': 'parent_phone2',
+    'cinsiyet': 'gender',
+    'ingilizce seviyesi': 'english_level',
   };
 
   const handleFileUpload = async (event) => {
@@ -59,14 +62,17 @@ const ExcelUpload = ({ onUploadComplete }) => {
           return;
         }
 
-        const headers = Object.keys(jsonData[0] || {});
-        const mappedHeaders = headers.map(h => columnMapping[h] || null);
-        const missingHeaders = headers.filter((h, i) => !mappedHeaders[i]);
-        if (missingHeaders.length > 0) {
-          setMessage(`Tanımlanamayan sütunlar: ${missingHeaders.join(', ')}`);
-          setUploading(false);
-          return;
-        }
+        // Satır verilerindeki anahtarları eşleştirmek için yardımcı fonksiyon
+        const getRowValue = (row, possibleKeys) => {
+          const rowKeys = Object.keys(row);
+          for (const key of rowKeys) {
+            const normalizedKey = key.trim().toLowerCase();
+            if (possibleKeys.includes(normalizedKey)) {
+              return row[key];
+            }
+          }
+          return '';
+        };
 
         let addedCount = 0;
         let updatedCount = 0;
@@ -76,19 +82,19 @@ const ExcelUpload = ({ onUploadComplete }) => {
           for (const row of jsonData) {
             try {
               const studentData = {
-                first_name: row['Adı'] || '',
-                last_name: row['Soyadı'] || '',
-                grade: row['Sınıf'] ? String(row['Sınıf']) : '',
-                class: row['Şube'] || '',
-                student_no: row['okul numarası'] ? String(row['okul numarası']) : '',
-                tc_no: encrypt(row['tcNo'] ? String(row['tcNo']) : ''),
-                phone: encrypt(row['Telefon Numarası1'] ? String(row['Telefon Numarası1']) : ''),
-                parent_phone: encrypt(row['Veli 1 Telefon Numarası'] ? String(row['Veli 1 Telefon Numarası']) : ''),
-                parent_phone2: encrypt(row['Veli 2 Telefon Numarası'] ? String(row['Veli 2 Telefon Numarası']) : ''),
-                field: row['Öğrenim Alanı'] || '',
-                second_lang: row['2. Yab. Dil'] || '',
-                gender: row['Cinsiyet'] || '',
-                english_level: row['İngilizce Seviyesi'] || 'Core',
+                first_name: getRowValue(row, ['adı', 'ad']),
+                last_name: getRowValue(row, ['soyadı', 'soyad']),
+                grade: String(getRowValue(row, ['sınıf']) || ''),
+                class: String(getRowValue(row, ['şube']) || ''),
+                student_no: String(getRowValue(row, ['okul numarası', 'okul no']) || ''),
+                tc_no: encrypt(String(getRowValue(row, ['tcno', 'tc kimlik numarası', 'tc']) || '')),
+                phone: encrypt(String(getRowValue(row, ['telefon numarası1', 'telefon numarası', 'telefon']) || '')),
+                parent_phone: encrypt(String(getRowValue(row, ['veli 1 telefon numarası', 'veli telefon']) || '')),
+                parent_phone2: encrypt(String(getRowValue(row, ['veli 2 telefon numarası']) || '')),
+                field: getRowValue(row, ['öğrenim alanı', 'alan']),
+                second_lang: getRowValue(row, ['2. yab. dil', 'yabancı dil bilgisi', 'ikinci dil']),
+                gender: getRowValue(row, ['cinsiyet']),
+                english_level: getRowValue(row, ['ingilizce seviyesi']) || 'Core',
                 created_at: new Date().toISOString()
               };
 
@@ -112,7 +118,7 @@ const ExcelUpload = ({ onUploadComplete }) => {
         } else if (mode === 'update') {
           for (const row of jsonData) {
             try {
-              const tcNo = row['tcNo'] ? String(row['tcNo']) : '';
+              const tcNo = String(getRowValue(row, ['tcno', 'tc kimlik numarası', 'tc']) || '');
               if (!tcNo) {
                 errorCount++;
                 continue;
@@ -134,17 +140,17 @@ const ExcelUpload = ({ onUploadComplete }) => {
               const studentDoc = existingStudents[0];
               const updateData = {};
 
-              if (updateFields.firstName) updateData.first_name = row['Adı'] || '';
-              if (updateFields.lastName) updateData.last_name = row['Soyadı'] || '';
-              if (updateFields.grade) updateData.grade = row['Sınıf'] ? String(row['Sınıf']) : '';
-              if (updateFields.class) updateData.class = row['Şube'] || '';
-              if (updateFields.field) updateData.field = row['Öğrenim Alanı'] || '';
-              if (updateFields.secondLang) updateData.second_lang = row['2. Yab. Dil'] || '';
-              if (updateFields.phone) updateData.phone = encrypt(row['Telefon Numarası1'] ? String(row['Telefon Numarası1']) : '');
-              if (updateFields.parentPhone) updateData.parent_phone = encrypt(row['Veli 1 Telefon Numarası'] ? String(row['Veli 1 Telefon Numarası']) : '');
-              if (updateFields.parentPhone2) updateData.parent_phone2 = encrypt(row['Veli 2 Telefon Numarası'] ? String(row['Veli 2 Telefon Numarası']) : '');
-              if (updateFields.gender) updateData.gender = row['Cinsiyet'] || '';
-              if (updateFields.englishLevel) updateData.english_level = row['İngilizce Seviyesi'] || 'Core';
+              if (updateFields.firstName) updateData.first_name = getRowValue(row, ['adı', 'ad']);
+              if (updateFields.lastName) updateData.last_name = getRowValue(row, ['soyadı', 'soyad']);
+              if (updateFields.grade) updateData.grade = String(getRowValue(row, ['sınıf']) || '');
+              if (updateFields.class) updateData.class = String(getRowValue(row, ['şube']) || '');
+              if (updateFields.field) updateData.field = getRowValue(row, ['öğrenim alanı', 'alan']);
+              if (updateFields.secondLang) updateData.second_lang = getRowValue(row, ['2. yab. dil', 'yabancı dil bilgisi', 'ikinci dil']);
+              if (updateFields.phone) updateData.phone = encrypt(String(getRowValue(row, ['telefon numarası1', 'telefon numarası']) || ''));
+              if (updateFields.parentPhone) updateData.parent_phone = encrypt(String(getRowValue(row, ['veli 1 telefon numarası']) || ''));
+              if (updateFields.parentPhone2) updateData.parent_phone2 = encrypt(String(getRowValue(row, ['veli 2 telefon numarası']) || ''));
+              if (updateFields.gender) updateData.gender = getRowValue(row, ['cinsiyet']);
+              if (updateFields.englishLevel) updateData.english_level = getRowValue(row, ['ingilizce seviyesi']) || 'Core';
 
               if (Object.keys(updateData).length === 0) {
                 errorCount++;
@@ -218,9 +224,9 @@ const ExcelUpload = ({ onUploadComplete }) => {
 
       {message && <p style={{ marginTop: '0.5rem', color: message.includes('hata') ? 'orange' : 'green' }}>{message}</p>}
       <details style={{ marginTop: '0.5rem' }}>
-        <summary style={{ cursor: 'pointer', fontSize: '0.9rem', color: '#666' }}>✅ Geçerli sütun başlıkları</summary>
+        <summary style={{ cursor: 'pointer', fontSize: '0.9rem', color: '#666' }}>✅ Desteklenen sütun başlıkları</summary>
         <p style={{ fontSize: '0.8rem', marginTop: '0.3rem' }}>
-          tcNo, okul numarası, Sınıf, Şube, Adı, Soyadı, Öğrenim Alanı, 2. Yab. Dil, Telefon Numarası1, Veli 1 Telefon Numarası, Veli 2 Telefon Numarası, Cinsiyet, İngilizce Seviyesi (opsiyonel)
+          TC Kimlik Numarası / tcNo, Okul Numarası, Sınıf, Şube, Adı, Soyadı, Öğrenim Alanı, Yabancı Dil Bilgisi / 2. Yab. Dil, Telefon Numarası1, Veli 1 Telefon Numarası, Veli 2 Telefon Numarası, Cinsiyet, İngilizce Seviyesi
         </p>
       </details>
     </div>
