@@ -1,234 +1,86 @@
+// ExcelUpload.jsx
 import React, { useState } from 'react';
-import * as XLSX from 'xlsx';
 import { supabase } from '../supabase';
-import { encrypt } from '../utils/encryption';
+import * as XLSX from 'xlsx';
 
 const ExcelUpload = ({ onUploadComplete }) => {
-  const [uploading, setUploading] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [uploadType, setUploadType] = useState('students'); // 'students', 'exams', 'grades'
   const [message, setMessage] = useState('');
-  const [mode, setMode] = useState('add');
 
-  const [updateFields, setUpdateFields] = useState({
-    grade: false,
-    class: false,
-    firstName: false,
-    lastName: false,
-    field: false,
-    secondLang: false,
-    phone: false,
-    parentPhone: false,
-    parentPhone2: false,
-    gender: false,
-    englishLevel: false,
-  });
-
-  // Esnek sütun eşleme tablosu (Farklı varyasyonları destekler)
-  const columnMapping = {
-    'tcno': 'tc_no',
-    'tc kimlik numarası': 'tc_no',
-    'okul numarası': 'student_no',
-    'sınıf': 'grade',
-    'şube': 'class',
-    'adı': 'first_name',
-    'soyadı': 'last_name',
-    'öğrenim alanı': 'field',
-    '2. yab. dil': 'second_lang',
-    'yabancı dil bilgisi': 'second_lang',
-    'telefon numarası1': 'phone',
-    'veli 1 telefon numarası': 'parent_phone',
-    'veli 2 telefon numarası': 'parent_phone2',
-    'cinsiyet': 'gender',
-    'ingilizce seviyesi': 'english_level',
-  };
-
-  const handleFileUpload = async (event) => {
-    const file = event.target.files[0];
+  const handleFileUpload = (e) => {
+    const file = e.target.files[0];
     if (!file) return;
 
-    setUploading(true);
+    setLoading(true);
     setMessage('');
 
     const reader = new FileReader();
-    reader.onload = async (e) => {
+    reader.onload = async (evt) => {
       try {
-        const data = new Uint8Array(e.target.result);
-        const workbook = XLSX.read(data, { type: 'array' });
-        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-        const jsonData = XLSX.utils.sheet_to_json(firstSheet, { defval: '' });
+        const bstr = evt.target.result;
+        const workbook = XLSX.read(bstr, { type: 'binary' });
+        const wsname = workbook.SheetNames[0];
+        const ws = workbook.Sheets[wsname];
+        const data = XLSX.utils.sheet_to_json(ws);
 
-        if (jsonData.length === 0) {
-          setMessage('Excel dosyası boş.');
-          setUploading(false);
-          return;
-        }
+        if (uploadType === 'students') {
+          const formattedStudents = data.map(row => ({
+            student_no: String(row['Öğrenci No'] || row['student_no'] || '').trim(),
+            tc_no: String(row['TC Kimlik No'] || row['tc_no'] || '').trim(),
+            first_name: String(row['Adı'] || row['first_name'] || '').trim(),
+            last_name: String(row['Soyadı'] || row['last_name'] || '').trim(),
+            grade: String(row['Sınıf'] || row['grade'] || '').trim(),
+            class: String(row['Şube'] || row['class'] || '').trim(),
+            field: String(row['Alan'] || row['field'] || '').trim(),
+            english_level: String(row['İngilizce Seviye'] || row['english_level'] || '').trim(),
+            second_lang: String(row['2. Yabancı Dil'] || row['second_lang'] || '').trim()
+          }));
 
-        // Satır verilerindeki anahtarları eşleştirmek için yardımcı fonksiyon
-        const getRowValue = (row, possibleKeys) => {
-          const rowKeys = Object.keys(row);
-          for (const key of rowKeys) {
-            const normalizedKey = key.trim().toLowerCase();
-            if (possibleKeys.includes(normalizedKey)) {
-              return row[key];
-            }
-          }
-          return '';
-        };
+          const { error } = await supabase.from('students').upsert(formattedStudents, { onConflict: 'student_no' });
+          if (error) throw error;
+          setMessage(`Başarıyla ${formattedStudents.length} öğrenci yüklendi!`);
+        } else if (uploadType === 'exams') {
+          const formattedExams = data.map(row => ({
+            title: String(row['Sınav Adı'] || row['title'] || '').trim(),
+            date: String(row['Tarih'] || row['date'] || '').trim(),
+            description: String(row['Açıklama'] || row['description'] || '').trim()
+          }));
 
-        let addedCount = 0;
-        let updatedCount = 0;
-        let errorCount = 0;
-
-        if (mode === 'add') {
-          for (const row of jsonData) {
-            try {
-              const studentData = {
-                first_name: getRowValue(row, ['adı', 'ad']),
-                last_name: getRowValue(row, ['soyadı', 'soyad']),
-                grade: String(getRowValue(row, ['sınıf']) || ''),
-                class: String(getRowValue(row, ['şube']) || ''),
-                student_no: String(getRowValue(row, ['okul numarası', 'okul no']) || ''),
-                tc_no: encrypt(String(getRowValue(row, ['tcno', 'tc kimlik numarası', 'tc']) || '')),
-                phone: encrypt(String(getRowValue(row, ['telefon numarası1', 'telefon numarası', 'telefon']) || '')),
-                parent_phone: encrypt(String(getRowValue(row, ['veli 1 telefon numarası', 'veli telefon']) || '')),
-                parent_phone2: encrypt(String(getRowValue(row, ['veli 2 telefon numarası']) || '')),
-                field: getRowValue(row, ['öğrenim alanı', 'alan']),
-                second_lang: getRowValue(row, ['2. yab. dil', 'yabancı dil bilgisi', 'ikinci dil']),
-                gender: getRowValue(row, ['cinsiyet']),
-                english_level: getRowValue(row, ['ingilizce seviyesi']) || 'Core',
-                created_at: new Date().toISOString()
-              };
-
-              if (!studentData.first_name || !studentData.last_name || !studentData.grade) {
-                errorCount++;
-                continue;
-              }
-
-              const { error } = await supabase
-                .from('students')
-                .insert(studentData);
-              
-              if (error) throw error;
-              addedCount++;
-            } catch (err) {
-              console.error('Öğrenci eklenirken hata:', err);
-              errorCount++;
-            }
-          }
-          setMessage(`${addedCount} öğrenci başarıyla eklendi. ${errorCount} hata oluştu.`);
-        } else if (mode === 'update') {
-          for (const row of jsonData) {
-            try {
-              const tcNo = String(getRowValue(row, ['tcno', 'tc kimlik numarası', 'tc']) || '');
-              if (!tcNo) {
-                errorCount++;
-                continue;
-              }
-
-              const encryptedTc = encrypt(tcNo);
-              const { data: existingStudents, error: fetchError } = await supabase
-                .from('students')
-                .select('*')
-                .eq('tc_no', encryptedTc);
-
-              if (fetchError) throw fetchError;
-
-              if (!existingStudents || existingStudents.length === 0) {
-                errorCount++;
-                continue;
-              }
-
-              const studentDoc = existingStudents[0];
-              const updateData = {};
-
-              if (updateFields.firstName) updateData.first_name = getRowValue(row, ['adı', 'ad']);
-              if (updateFields.lastName) updateData.last_name = getRowValue(row, ['soyadı', 'soyad']);
-              if (updateFields.grade) updateData.grade = String(getRowValue(row, ['sınıf']) || '');
-              if (updateFields.class) updateData.class = String(getRowValue(row, ['şube']) || '');
-              if (updateFields.field) updateData.field = getRowValue(row, ['öğrenim alanı', 'alan']);
-              if (updateFields.secondLang) updateData.second_lang = getRowValue(row, ['2. yab. dil', 'yabancı dil bilgisi', 'ikinci dil']);
-              if (updateFields.phone) updateData.phone = encrypt(String(getRowValue(row, ['telefon numarası1', 'telefon numarası']) || ''));
-              if (updateFields.parentPhone) updateData.parent_phone = encrypt(String(getRowValue(row, ['veli 1 telefon numarası']) || ''));
-              if (updateFields.parentPhone2) updateData.parent_phone2 = encrypt(String(getRowValue(row, ['veli 2 telefon numarası']) || ''));
-              if (updateFields.gender) updateData.gender = getRowValue(row, ['cinsiyet']);
-              if (updateFields.englishLevel) updateData.english_level = getRowValue(row, ['ingilizce seviyesi']) || 'Core';
-
-              if (Object.keys(updateData).length === 0) {
-                errorCount++;
-                continue;
-              }
-
-              const { error: updateError } = await supabase
-                .from('students')
-                .update(updateData)
-                .eq('id', studentDoc.id);
-
-              if (updateError) throw updateError;
-              updatedCount++;
-            } catch (err) {
-              console.error('Güncelleme hatası:', err);
-              errorCount++;
-            }
-          }
-          setMessage(`${updatedCount} öğrenci güncellendi. ${errorCount} hata oluştu.`);
+          const { error } = await supabase.from('exams').insert(formattedExams);
+          if (error) throw error;
+          setMessage(`Başarıyla ${formattedExams.length} sınav eklendi!`);
         }
 
         if (onUploadComplete) onUploadComplete();
       } catch (err) {
-        setMessage('Dosya okunamadı: ' + err.message);
+        console.error('Excel yükleme hatası:', err);
+        setMessage(`Hata oluştu: ${err.message}`);
       } finally {
-        setUploading(false);
-        event.target.value = '';
+        setLoading(false);
       }
     };
-
-    reader.readAsArrayBuffer(file);
-  };
-
-  const handleCheckboxChange = (e) => {
-    setUpdateFields({
-      ...updateFields,
-      [e.target.name]: e.target.checked,
-    });
+    reader.readAsBinaryString(file);
   };
 
   return (
-    <div style={{ margin: '1rem 0', padding: '1rem', border: '1px solid #ddd', borderRadius: '8px', background: '#f9f9f9' }}>
-      <h4>📤 Excel ile Öğrenci İşlemleri</h4>
-      <div style={{ marginBottom: '1rem' }}>
-        <label style={{ marginRight: '1rem' }}>
-          <input type="radio" value="add" checked={mode === 'add'} onChange={() => setMode('add')} /> Yeni Öğrenci Ekle
-        </label>
-        <label>
-          <input type="radio" value="update" checked={mode === 'update'} onChange={() => setMode('update')} /> Varolanları Güncelle (TC'ye göre)
-        </label>
-      </div>
-
-      {mode === 'update' && (
-        <div style={{ marginBottom: '1rem', display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-          <span style={{ fontWeight: 'bold', marginRight: '0.5rem' }}>Güncellenecek alanlar:</span>
-          {Object.keys(updateFields).map((field) => (
-            <label key={field} style={{ marginRight: '0.5rem', fontSize: '0.9rem' }}>
-              <input type="checkbox" name={field} checked={updateFields[field]} onChange={handleCheckboxChange} /> {field}
-            </label>
-          ))}
+    <div style={{ background: '#fff', padding: '1.5rem', borderRadius: '8px', border: '1px solid #cbd5e1', marginBottom: '1.5rem' }}>
+      <h3 style={{ margin: '0 0 1rem 0', color: '#1e293b' }}>📂 Excel İle Veri Yükleme</h3>
+      <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap', marginBottom: '1rem' }}>
+        <div>
+          <label style={{ display: 'block', fontWeight: 'bold', fontSize: '0.85rem', marginBottom: '0.3rem' }}>Yükleme Türü:</label>
+          <select value={uploadType} onChange={(e) => setUploadType(e.target.value)} style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #cbd5e1' }}>
+            <option value="students">Öğrenci Listesi</option>
+            <option value="exams">Sınav Listesi</option>
+          </select>
         </div>
-      )}
-
-      <div>
-        <label htmlFor="excel-upload" style={{ display: 'inline-block', padding: '0.5rem 1rem', background: '#007bff', color: 'white', borderRadius: '4px', cursor: 'pointer', marginRight: '1rem' }}>
-          📂 Dosya Seç
-        </label>
-        <input id="excel-upload" type="file" accept=".xlsx,.xls,.csv" onChange={handleFileUpload} disabled={uploading} style={{ display: 'none' }} />
-        {uploading && <span>Yükleniyor...</span>}
+        <div>
+          <label style={{ display: 'block', fontWeight: 'bold', fontSize: '0.85rem', marginBottom: '0.3rem' }}>Excel Dosyası Seç (.xlsx):</label>
+          <input type="file" accept=".xlsx, .xls" onChange={handleFileUpload} disabled={loading} style={{ fontSize: '0.9rem' }} />
+        </div>
       </div>
-
-      {message && <p style={{ marginTop: '0.5rem', color: message.includes('hata') ? 'orange' : 'green' }}>{message}</p>}
-      <details style={{ marginTop: '0.5rem' }}>
-        <summary style={{ cursor: 'pointer', fontSize: '0.9rem', color: '#666' }}>✅ Desteklenen sütun başlıkları</summary>
-        <p style={{ fontSize: '0.8rem', marginTop: '0.3rem' }}>
-          TC Kimlik Numarası / tcNo, Okul Numarası, Sınıf, Şube, Adı, Soyadı, Öğrenim Alanı, Yabancı Dil Bilgisi / 2. Yab. Dil, Telefon Numarası1, Veli 1 Telefon Numarası, Veli 2 Telefon Numarası, Cinsiyet, İngilizce Seviyesi
-        </p>
-      </details>
+      {loading && <p style={{ color: '#2563eb', fontWeight: '500' }}>Dosya işleniyor ve veritabanına aktarılıyor...</p>}
+      {message && <p style={{ color: message.includes('Hata') ? '#dc2626' : '#16a34a', fontWeight: 'bold' }}>{message}</p>}
     </div>
   );
 };
