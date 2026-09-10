@@ -177,7 +177,7 @@ const DisciplineReports = () => {
     }, {});
   const dressLeaderList = Object.values(dressLeaders).sort((a, b) => b.count - a.count).slice(0, 5);
 
-  const exportCSV = () => {
+const exportCSV = () => {
     if (filteredRecords.length === 0) return alert('Dışa aktarılacak veri yok.');
     
     const headers = ['Öğrenci', 'Sınıf', 'Tür', 'Not', 'Tarih', 'Saat'];
@@ -193,7 +193,8 @@ const DisciplineReports = () => {
       ];
     });
 
-    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map((row) => row.join(','))].join('\n');
+    // Virgül yerine noktalı virgül (;) kullanıldı
+    const csvContent = '\uFEFF' + [headers.join(';'), ...rows.map((row) => row.join(';'))].join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
