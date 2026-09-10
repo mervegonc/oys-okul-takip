@@ -236,7 +236,7 @@ const ExamAttendanceLists = () => {
 
     const grade = dbSt.grade || st.grade || st.sinif || '';
     const className = dbSt.class || st.className || st.sube || '';
-    const rawField = dbSt.field || st.field || st.alan || st.track || st.department || '';
+    const rawField = dbSt.field || dbSt.track || dbSt.alan || dbSt.department || st.field || st.track || st.alan || st.department || '';
     
     const englishLevel = dbSt.english_level || dbSt.ingilizce_seviye || st.englishLevel || st.ing_seviye || '-';
     const secondLanguage = dbSt.second_lang || dbSt.second_language || dbSt.ikinci_yabanci_dil || st.secondLanguage || st.ikinci_dil || '-';
