@@ -179,20 +179,22 @@ const DisciplineReports = () => {
 
   const exportCSV = () => {
     if (filteredRecords.length === 0) return alert('Dışa aktarılacak veri yok.');
+    
     const headers = ['Öğrenci', 'Sınıf', 'Tür', 'Not', 'Tarih', 'Saat'];
     const rows = filteredRecords.map((r) => {
       const date = r.createdAt instanceof Date ? r.createdAt : new Date(r.createdAt);
       return [
-        r.studentName,
-        `${r.grade}-${r.class}`,
-        r.type === 'late' ? 'Geç Kaldı' : r.type === 'dress' ? 'Kıyafet İhlali' : 'Her İkisi',
-        r.note || '-',
-        format(date, 'dd.MM.yyyy'),
-        format(date, 'HH:mm'),
+        `"${r.studentName || ''}"`,
+        `"${r.grade}-${r.class || ''}"`,
+        `"${r.type === 'late' ? 'Geç Kaldı' : r.type === 'dress' ? 'Kıyafet İhlali' : 'Her İkisi'}"`,
+        `"${(r.note || '-').replace(/"/g, '""')}"`,
+        `"${format(date, 'dd.MM.yyyy')}"`,
+        `"${format(date, 'HH:mm')}"`,
       ];
     });
-    const csv = [headers.join(','), ...rows.map((row) => row.join(','))].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
+
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map((row) => row.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
     link.download = `rapor_${format(new Date(), 'yyyyMMdd')}.csv`;
