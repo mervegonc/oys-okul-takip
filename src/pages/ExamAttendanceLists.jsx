@@ -84,7 +84,7 @@ const ExamAttendanceLists = () => {
     return {};
   };
 
-  const fetchExams = async () => {
+ const fetchExams = async () => {
     setLoading(true);
     try {
       const currentStudentMap = await fetchAllStudentsData();
@@ -121,10 +121,12 @@ const ExamAttendanceLists = () => {
               const rawNo = String(st.no || st.student_no || st.studentNo || st.school_number || '').trim();
               const dbSt = currentStudentMap[rawId] || currentStudentMap[rawTc] || currentStudentMap[rawNo];
               
+              // Sadece veritabanında gerçekten eşleşen ve 12. sınıf olanları dikkate al
               if (!dbSt) return;
 
               const grade = dbSt.grade || st.grade || st.sinif;
-              if (grade) grades.add(String(grade).replace('.', ''));
+              // Sadece 12. sınıfları filtreye dahil et (veya veritabanındaki değere göre al)
+              if (grade) grades.add(String(grade).replace('.', '').trim());
             });
 
             const sortedGrades = Array.from(grades).sort((a, b) => a - b);
