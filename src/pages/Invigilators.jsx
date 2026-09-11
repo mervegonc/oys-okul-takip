@@ -6,22 +6,19 @@ const Invigilators = () => {
 
   return (
     <div style={{ padding: '2rem', maxWidth: '1200px', margin: '0 auto' }}>
-      {/* Kesin Çözüm: Yazdırma (Print) Stilleri */}
       <style>{`
         @media print {
-          /* Genel gizlenecekler */
           .no-print, nav, header, aside, .sidebar {
             display: none !important;
           }
           body {
             background: white !important;
             color: black !important;
-            font-size: 11pt !important;
+            font-size: 10pt !important;
           }
-          /* Sayfa boyutu ve tek sayfaya sığdırma optimizasyonu */
           @page {
             size: A4 portrait;
-            margin: 8mm;
+            margin: 6mm;
           }
           div {
             box-shadow: none !important;
@@ -29,17 +26,15 @@ const Invigilators = () => {
             padding: 0 !important;
             margin: 0 !important;
           }
-          /* Tabloların sayfaya sığması için kompakt yapı */
           table {
-            font-size: 10pt !important;
+            font-size: 9.5pt !important;
           }
           th, td {
-            padding: 5px 8px !important;
+            padding: 4px 6px !important;
           }
         }
       `}</style>
 
-      {/* Üst Sekme Butonları */}
       <div style={{ display: 'flex', gap: '1rem', borderBottom: '2px solid #dee2e6', paddingBottom: '1rem', marginBottom: '1.5rem' }} className="no-print">
         <button
           onClick={() => setActiveTab('management')}
@@ -223,10 +218,12 @@ const InvigilatorManagement = () => {
 
   return (
     <div>
-      <h2>Sınav Gözetmen Yönetimi</h2>
-      <p style={{ color: '#666' }}>Sınav seçerek salonlara gözetmen ve not ekleyebilir, tek tıkla kaydedebilirsiniz.</p>
+      <div className="no-print">
+        <h2>Sınav Gözetmen Yönetimi</h2>
+        <p style={{ color: '#666' }}>Sınav seçerek salonlara gözetmen ve not ekleyebilir, tek tıkla kaydedebilirsiniz.</p>
+      </div>
 
-      <div style={{ margin: '1.5rem 0' }}>
+      <div style={{ margin: '1.5rem 0' }} className="no-print">
         <label style={{ fontWeight: 'bold', marginRight: '1rem' }}>Sınav Seçin:</label>
         <select 
           value={selectedExamId} 
@@ -285,7 +282,7 @@ const InvigilatorManagement = () => {
               </tbody>
             </table>
 
-            <div style={{ marginTop: '1.5rem', textAlign: 'right' }}>
+            <div style={{ marginTop: '1.5rem', textAlign: 'right' }} className="no-print">
               <button 
                 onClick={handleSaveAll}
                 disabled={saving}
@@ -430,8 +427,10 @@ const InvigilatorPayrollReport = () => {
 
   return (
     <div>
-      <h2>Gözetmen İmza ve Ücret Tutanağı</h2>
-      <p style={{ color: '#666' }}>Bu sayfadan sınav ücret tutanağını listeleyebilir ve doğrudan yazdırabilirsiniz.</p>
+      <div className="no-print">
+        <h2>Gözetmen İmza ve Ücret Tutanağı</h2>
+        <p style={{ color: '#666' }}>Bu sayfadan sınav ücret tutanağını listeleyebilir ve doğrudan yazdırabilirsiniz.</p>
+      </div>
 
       <div style={{ margin: '1.5rem 0', display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }} className="no-print">
         <div>
@@ -476,24 +475,24 @@ const InvigilatorPayrollReport = () => {
       {loading ? (
         <p>Yükleniyor...</p>
       ) : selectedExamId ? (
-        <div style={{ background: '#fff', padding: '2rem', border: '1px solid #ddd', borderRadius: '6px' }}>
-          <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
-            <h3>GÖZETMEN İMZA VE ÜCRET TUTANAĞI</h3>
-            <p style={{ fontSize: '1.1rem', fontWeight: 'bold', marginTop: '5px' }}>
+        <div style={{ background: '#fff', padding: '1rem', border: '1px solid #ddd', borderRadius: '6px' }}>
+          <div style={{ textAlign: 'center', marginBottom: '1rem' }}>
+            <h3 style={{ margin: '0 0 5px 0' }}>GÖZETMEN İMZA VE ÜCRET TUTANAĞI</h3>
+            <p style={{ fontSize: '1rem', fontWeight: 'bold', margin: 0 }}>
               Sınav Adı: {examDetails?.name || examDetails?.title} | Tarih: {examDetails?.date}
             </p>
           </div>
 
-          <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '1.5rem' }} border="1">
+          <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '1rem' }} border="1">
             <thead>
               <tr style={{ background: '#f8f9fa', textAlign: 'left' }}>
-                <th style={{ padding: '10px', width: '50px' }}>Sıra</th>
-                <th style={{ padding: '10px' }}>Salon Adı</th>
-                <th style={{ padding: '10px' }}>Gözetmen Adı Soyadı</th>
-                <th style={{ padding: '10px', width: '100px' }} className="no-print">Seans</th>
-                <th style={{ padding: '10px', width: '120px' }} className="no-print">Seans Ücreti</th>
-                <th style={{ padding: '10px', width: '125px' }}>Toplam Tutar</th>
-                <th style={{ padding: '10px', width: '150px' }}>İmza</th>
+                <th style={{ padding: '8px', width: '40px' }}>Sıra</th>
+                <th style={{ padding: '8px' }}>Salon Adı</th>
+                <th style={{ padding: '8px' }}>Gözetmen Adı Soyadı</th>
+                <th style={{ padding: '8px', width: '80px' }} className="no-print">Seans</th>
+                <th style={{ padding: '8px', width: '100px' }} className="no-print">Seans Ücreti</th>
+                <th style={{ padding: '8px', width: '100px' }}>Toplam Tutar</th>
+                <th style={{ padding: '8px', width: '120px' }}>İmza</th>
               </tr>
             </thead>
             <tbody>
@@ -501,10 +500,10 @@ const InvigilatorPayrollReport = () => {
                 const rowTotal = (parseFloat(item.sessions) || 0) * (parseFloat(item.feePerSession) || 0);
                 return (
                   <tr key={idx}>
-                    <td style={{ padding: '8px', textAlign: 'center' }}>{item.no}</td>
-                    <td style={{ padding: '8px' }}>{item.roomName}</td>
-                    <td style={{ padding: '8px', fontWeight: '500' }}>{item.invigilator || 'Atanmamış'}</td>
-                    <td style={{ padding: '8px' }} className="no-print">
+                    <td style={{ padding: '6px', textAlign: 'center' }}>{item.no}</td>
+                    <td style={{ padding: '6px' }}>{item.roomName}</td>
+                    <td style={{ padding: '6px', fontWeight: '500' }}>{item.invigilator || 'Atanmamış'}</td>
+                    <td style={{ padding: '6px' }} className="no-print">
                       <input 
                         type="number" 
                         min="1"
@@ -513,7 +512,7 @@ const InvigilatorPayrollReport = () => {
                         style={{ width: '100%', padding: '4px' }}
                       />
                     </td>
-                    <td style={{ padding: '8px' }} className="no-print">
+                    <td style={{ padding: '6px' }} className="no-print">
                       <input 
                         type="number" 
                         min="0"
@@ -523,19 +522,17 @@ const InvigilatorPayrollReport = () => {
                         style={{ width: '100%', padding: '4px' }}
                       />
                     </td>
-                    <td style={{ padding: '8px', fontWeight: 'bold', textAlign: 'right' }}>
+                    <td style={{ padding: '6px', fontWeight: 'bold', textAlign: 'right' }}>
                       {rowTotal.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL
                     </td>
-                    <td style={{ padding: '8px', textAlign: 'center', height: '35px' }}>
-                      {/* Yazdırma esnasında imza atılabilsin diye boşluk bırakıldı */}
-                    </td>
+                    <td style={{ padding: '6px', textAlign: 'center', height: '28px' }}></td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
 
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1rem' }} className="no-print">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }} className="no-print">
             <button 
               onClick={handleSave} 
               disabled={saving}
@@ -545,16 +542,16 @@ const InvigilatorPayrollReport = () => {
             </button>
           </div>
 
-          <div style={{ fontSize: '1.2rem', fontWeight: 'bold', textAlign: 'right', marginTop: '1rem' }}>
+          <div style={{ fontSize: '1.1rem', fontWeight: 'bold', textAlign: 'right', marginBottom: '1.5rem' }}>
             Genel Toplam Tutar: {grandTotal.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL
           </div>
 
           {/* Müdür İmza Alanı */}
-          <div style={{ marginTop: '2rem', display: 'flex', justifyContent: 'flex-end', pageBreakInside: 'avoid' }}>
-            <div style={{ textAlign: 'center', width: '200px' }}>
-              <p style={{ margin: '0 0 30px 0', fontWeight: 'bold' }}>ONAYLAYAN</p>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', pageBreakInside: 'avoid' }}>
+            <div style={{ textAlign: 'center', width: '180px' }}>
+              <p style={{ margin: '0 0 20px 0', fontWeight: 'bold' }}>ONAYLAYAN</p>
               <p style={{ margin: 0, fontWeight: 'bold' }}>Hülya ERTEN</p>
-              <p style={{ margin: 0, fontSize: '0.9rem', color: '#555' }}>Okul Müdürü</p>
+              <p style={{ margin: 0, fontSize: '0.85rem', color: '#555' }}>Okul Müdürü</p>
             </div>
           </div>
         </div>
@@ -636,8 +633,10 @@ const InvigilatorAttendanceReport = () => {
 
   return (
     <div>
-      <h2>Gözetmen Yoklama Listesi</h2>
-      <p style={{ color: '#666' }}>Bu sayfadan sınav gözetmen yoklama çizelgesini alabilirsiniz.</p>
+      <div className="no-print">
+        <h2>Gözetmen Yoklama Listesi</h2>
+        <p style={{ color: '#666' }}>Bu sayfadan sınav gözetmen yoklama çizelgesini alabilirsiniz.</p>
+      </div>
 
       <div style={{ margin: '1.5rem 0', display: 'flex', gap: '1rem', alignItems: 'center' }} className="no-print">
         <label style={{ fontWeight: 'bold' }}>Sınav Seçin:</label>
@@ -667,10 +666,10 @@ const InvigilatorAttendanceReport = () => {
       {loading ? (
         <p>Yükleniyor...</p>
       ) : selectedExamId ? (
-        <div style={{ background: '#fff', padding: '2rem', border: '1px solid #ddd', borderRadius: '6px' }}>
-          <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
-            <h3>GÖZETMEN YOKLAMA LİSTESİ</h3>
-            <p style={{ fontSize: '1.1rem', fontWeight: 'bold', marginTop: '5px' }}>
+        <div style={{ background: '#fff', padding: '1rem', border: '1px solid #ddd', borderRadius: '6px' }}>
+          <div style={{ textAlign: 'center', marginBottom: '1rem' }}>
+            <h3 style={{ margin: '0 0 5px 0' }}>GÖZETMEN YOKLAMA LİSTESİ</h3>
+            <p style={{ fontSize: '1rem', fontWeight: 'bold', margin: 0 }}>
               Sınav Adı: {examDetails?.name || examDetails?.title} | Tarih: {examDetails?.date}
             </p>
           </div>
@@ -678,19 +677,19 @@ const InvigilatorAttendanceReport = () => {
           <table style={{ width: '100%', borderCollapse: 'collapse' }} border="1">
             <thead>
               <tr style={{ background: '#f8f9fa', textAlign: 'left' }}>
-                <th style={{ padding: '10px', width: '50px' }}>Sıra</th>
-                <th style={{ padding: '10px' }}>Salon</th>
-                <th style={{ padding: '10px' }}>Gözetmen Adı Soyadı</th>
-                <th style={{ padding: '10px', width: '120px', textAlign: 'center' }}>+ / -</th>
+                <th style={{ padding: '8px', width: '40px' }}>Sıra</th>
+                <th style={{ padding: '8px' }}>Salon</th>
+                <th style={{ padding: '8px' }}>Gözetmen Adı Soyadı</th>
+                <th style={{ padding: '8px', width: '100px', textAlign: 'center' }}>+ / -</th>
               </tr>
             </thead>
             <tbody>
               {reportData.map((item, idx) => (
                 <tr key={idx}>
-                  <td style={{ padding: '10px', textAlign: 'center' }}>{item.no}</td>
-                  <td style={{ padding: '10px' }}>{item.roomName}</td>
-                  <td style={{ padding: '10px', fontWeight: '500' }}>{item.invigilator || 'Atanmamış'}</td>
-                  <td style={{ padding: '10px', textAlign: 'center', height: '35px' }}>
+                  <td style={{ padding: '6px', textAlign: 'center' }}>{item.no}</td>
+                  <td style={{ padding: '6px' }}>{item.roomName}</td>
+                  <td style={{ padding: '6px', fontWeight: '500' }}>{item.invigilator || 'Atanmamış'}</td>
+                  <td style={{ padding: '6px', textAlign: 'center', height: '28px' }}>
                     [ &nbsp; &nbsp; &nbsp; &nbsp; ]
                   </td>
                 </tr>
