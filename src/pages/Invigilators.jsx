@@ -69,7 +69,6 @@ const Invigilators = () => {
         setExamRooms([]);
       }
 
-      // Kaydedilmiş gözetmenleri çekelim (Sadece veritabanındaki mevcut sütunlar kullanılıyor)
       const { data: invData, error: invError } = await supabase
         .from('exam_invigilators')
         .select('*')
@@ -99,12 +98,10 @@ const Invigilators = () => {
     if (!selectedExamId) return;
     setSaving(true);
 
-    // Tüm salonlar için kayıt objelerini hazırlayalım
     const recordsToUpsert = examRooms.map(roomName => ({
       exam_id: selectedExamId,
       room_name: roomName,
-      invigilator_name: invigilatorsData[roomName] || '',
-      updated_at: new Date()
+      invigilator_name: invigilatorsData[roomName] || ''
     }));
 
     const { error } = await supabase
