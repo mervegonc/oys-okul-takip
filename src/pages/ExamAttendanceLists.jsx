@@ -1144,7 +1144,7 @@ const ExamAttendanceLists = () => {
                   <tr style={{ background: '#eee' }}>
                     <th style={{ width: '6%', textAlign: 'center' }}>SIRA</th>
                     <th>ÖĞRENCİ ADI SOYADI</th>
-                    <th style={{ width: '15%', textAlign: 'center'}}, SINIF / ŞUBE</th>
+                    <th style={{ width: '15%', textAlign: 'center' }}>SINIF / ŞUBE</th>
                     <th style={{ width: '25%', textAlign: 'center' }}>SINAV SALONU</th>
                     <th style={{ width: '12%', textAlign: 'center' }}>SIRA NO</th>
                   </tr>
