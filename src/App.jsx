@@ -14,7 +14,8 @@ import ConflictGroups from './pages/ConflictGroups';
 import ManualEdit from './pages/ManualEdit';
 import AttendanceModule from './pages/AttendanceModule';
 import ExamAttendanceLists from './pages/ExamAttendanceLists';
-import StudentMatrix from './pages/StudentMatrix'; // 1. Bileşeni içe aktar (dosya yoluna göre düzenleyebilirsin, örn: ./components/StudentMatrix)
+import StudentMatrix from './pages/StudentMatrix';
+import Invigilators from './pages/Invigilators'; // Yeni Gözetmenler sayfası
 
 function App() {
   const [user, setUser] = useState(null);
@@ -81,7 +82,9 @@ function App() {
                   <Route path="/attendance-lists" element={
                     hasPermission(userEmail, 'exam') ? <ExamAttendanceLists /> : <Navigate to="/" />
                   } />
-                  {/* 2. Matris sayfası için Route eklendi */}
+                  <Route path="/invigilators" element={
+                    hasPermission(userEmail, 'exam') ? <Invigilators /> : <Navigate to="/" />
+                  } />
                   <Route path="/student-matrix" element={
                     hasPermission(userEmail, 'exam') ? <StudentMatrix /> : <Navigate to="/" />
                   } />
