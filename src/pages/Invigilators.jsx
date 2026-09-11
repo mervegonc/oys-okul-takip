@@ -98,20 +98,33 @@ const Invigilators = () => {
     if (!selectedExamId) return;
     setSaving(true);
 
-    const recordsToUpsert = examRooms.map(roomName => ({
+    // 1. Önce bu sınava ait eski gözetmen kayıtlarını temizleyelim
+    const { error: deleteError } = await supabase
+      .from('exam_invigilators')
+      .delete()
+      .eq('exam_id', selectedExamId);
+
+    if (deleteError) {
+      setSaving(false);
+      alert('Kaydedilirken hata oluştu: ' + deleteError.message);
+      return;
+    }
+
+    // 2. Güncel listeyi toplu olarak ekleyelim
+    const recordsToInsert = examRooms.map(roomName => ({
       exam_id: selectedExamId,
       room_name: roomName,
       invigilator_name: invigilatorsData[roomName] || ''
     }));
 
-    const { error } = await supabase
+    const { error: insertError } = await supabase
       .from('exam_invigilators')
-      .upsert(recordsToUpsert, { onConflict: 'exam_id,room_name' });
+      .insert(recordsToInsert);
 
     setSaving(false);
 
-    if (error) {
-      alert('Kaydedilirken hata oluştu: ' + error.message);
+    if (insertError) {
+      alert('Kaydedilirken hata oluştu: ' + insertError.message);
     } else {
       alert('Tüm gözetmen bilgileri başarıyla kaydedildi.');
     }
