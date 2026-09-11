@@ -5,7 +5,7 @@ const Invigilators = () => {
   const [exams, setExams] = useState([]);
   const [selectedExamId, setSelectedExamId] = useState('');
   const [examRooms, setExamRooms] = useState([]);
-  const [invigilatorsData, setInvigilatorsData] = useState({});
+  const [invigilatorsData, setInvigilatorsData] = useState({}); // { roomName: { invigilator, notes } }
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -77,7 +77,10 @@ const Invigilators = () => {
       if (!invError && invData) {
         const map = {};
         invData.forEach(item => {
-          map[item.room_name] = item.invigilator_name || '';
+          map[item.room_name] = {
+            invigilator: item.invigilator_name || '',
+            notes: item.notes || ''
+          };
         });
         setInvigilatorsData(map);
       }
@@ -87,10 +90,13 @@ const Invigilators = () => {
     setLoading(false);
   };
 
-  const handleInputChange = (roomName, value) => {
+  const handleInputChange = (roomName, field, value) => {
     setInvigilatorsData(prev => ({
       ...prev,
-      [roomName]: value
+      [roomName]: {
+        ...(prev[roomName] || { invigilator: '', notes: '' }),
+        [field]: value
+      }
     }));
   };
 
@@ -98,7 +104,7 @@ const Invigilators = () => {
     if (!selectedExamId) return;
     setSaving(true);
 
-    // 1. Önce bu sınava ait eski gözetmen kayıtlarını temizleyelim
+    // 1. Önce bu sınava ait eski kayıtları temizleyelim
     const { error: deleteError } = await supabase
       .from('exam_invigilators')
       .delete()
@@ -110,12 +116,16 @@ const Invigilators = () => {
       return;
     }
 
-    // 2. Güncel listeyi toplu olarak ekleyelim
-    const recordsToInsert = examRooms.map(roomName => ({
-      exam_id: selectedExamId,
-      room_name: roomName,
-      invigilator_name: invigilatorsData[roomName] || ''
-    }));
+    // 2. Güncel listeyi (gözetmen ve notlar ile birlikte) toplu ekleyelim
+    const recordsToInsert = examRooms.map(roomName => {
+      const roomData = invigilatorsData[roomName] || { invigilator: '', notes: '' };
+      return {
+        exam_id: selectedExamId,
+        room_name: roomName,
+        invigilator_name: roomData.invigilator,
+        notes: roomData.notes
+      };
+    });
 
     const { error: insertError } = await supabase
       .from('exam_invigilators')
@@ -126,14 +136,14 @@ const Invigilators = () => {
     if (insertError) {
       alert('Kaydedilirken hata oluştu: ' + insertError.message);
     } else {
-      alert('Tüm gözetmen bilgileri başarıyla kaydedildi.');
+      alert('Tüm gözetmen bilgileri ve notlar başarıyla kaydedildi.');
     }
   };
 
   return (
     <div style={{ padding: '2rem', maxWidth: '1200px', margin: '0 auto' }}>
       <h2>Sınav Gözetmen Yönetimi</h2>
-      <p style={{ color: '#666' }}>Sınav seçerek salonlara gözetmen atayabilir ve tek tıkla tüm listeyi kaydedebilirsiniz.</p>
+      <p style={{ color: '#666' }}>Sınav seçerek salonlara gözetmen ve not ekleyebilir, tek tıkla tüm listeyi kaydedebilirsiniz.</p>
 
       <div style={{ margin: '1.5rem 0' }}>
         <label style={{ fontWeight: 'bold', marginRight: '1rem' }}>Sınav Seçin:</label>
@@ -161,11 +171,12 @@ const Invigilators = () => {
                 <tr style={{ background: '#f8f9fa', borderBottom: '2px solid #dee2e6', textAlign: 'left' }}>
                   <th style={{ padding: '12px' }}>Salon Adı</th>
                   <th style={{ padding: '12px' }}>Gözetmen(ler)</th>
+                  <th style={{ padding: '12px' }}>Gözetmenlik Notu / Açıklama</th>
                 </tr>
               </thead>
               <tbody>
                 {examRooms.map((roomName, index) => {
-                  const invigilatorName = invigilatorsData[roomName] || '';
+                  const currentData = invigilatorsData[roomName] || { invigilator: '', notes: '' };
                   return (
                     <tr key={index} style={{ borderBottom: '1px solid #eee' }}>
                       <td style={{ padding: '12px', fontWeight: '500' }}>{roomName}</td>
@@ -173,8 +184,17 @@ const Invigilators = () => {
                         <input 
                           type="text" 
                           placeholder="Gözetmen Adı Soyadı"
-                          value={invigilatorName}
-                          onChange={(e) => handleInputChange(roomName, e.target.value)}
+                          value={currentData.invigilator}
+                          onChange={(e) => handleInputChange(roomName, 'invigilator', e.target.value)}
+                          style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }}
+                        />
+                      </td>
+                      <td style={{ padding: '12px' }}>
+                        <input 
+                          type="text" 
+                          placeholder="Notlar (Örn: Geç kaldı vb.)"
+                          value={currentData.notes}
+                          onChange={(e) => handleInputChange(roomName, 'notes', e.target.value)}
                           style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }}
                         />
                       </td>
