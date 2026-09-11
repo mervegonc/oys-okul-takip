@@ -2,23 +2,39 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabase';
 
 const Invigilators = () => {
-  const [activeTab, setActiveTab] = useState('management'); // 'management', 'payroll', 'attendance'
+  const [activeTab, setActiveTab] = useState('management');
 
   return (
     <div style={{ padding: '2rem', maxWidth: '1200px', margin: '0 auto' }}>
-      {/* Yazdırma (Print) için CSS Stilleri - Sayfa yapısının bozulmasını engeller */}
+      {/* Kesin Çözüm: Yazdırma (Print) Stilleri */}
       <style>{`
         @media print {
-          .no-print {
+          /* Genel gizlenecekler */
+          .no-print, nav, header, aside, .sidebar {
             display: none !important;
           }
           body {
             background: white !important;
             color: black !important;
+            font-size: 11pt !important;
+          }
+          /* Sayfa boyutu ve tek sayfaya sığdırma optimizasyonu */
+          @page {
+            size: A4 portrait;
+            margin: 8mm;
           }
           div {
             box-shadow: none !important;
             border: none !important;
+            padding: 0 !important;
+            margin: 0 !important;
+          }
+          /* Tabloların sayfaya sığması için kompakt yapı */
+          table {
+            font-size: 10pt !important;
+          }
+          th, td {
+            padding: 5px 8px !important;
           }
         }
       `}</style>
@@ -72,7 +88,6 @@ const Invigilators = () => {
         </button>
       </div>
 
-      {/* Sekme İçerikleri */}
       {activeTab === 'management' && <InvigilatorManagement />}
       {activeTab === 'payroll' && <InvigilatorPayrollReport />}
       {activeTab === 'attendance' && <InvigilatorAttendanceReport />}
@@ -290,13 +305,13 @@ const InvigilatorManagement = () => {
   );
 };
 
-// 2. ALT BİLEŞEN: İmza ve Ücret Tutanağı (Ayrı Sekme)
+// 2. ALT BİLEŞEN: İmza ve Ücret Tutanağı
 const InvigilatorPayrollReport = () => {
   const [exams, setExams] = useState([]);
   const [selectedExamId, setSelectedExamId] = useState('');
   const [examDetails, setExamDetails] = useState(null);
   const [reportData, setReportData] = useState([]);
-  const [globalFee, setGlobalFee] = useState(''); // Ortak ücret alanı
+  const [globalFee, setGlobalFee] = useState('');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -367,7 +382,6 @@ const InvigilatorPayrollReport = () => {
     setLoading(false);
   };
 
-  // Ortak ücret girildiğinde tüm satırlara tek seferde yansıt
   const handleGlobalFeeChange = (value) => {
     setGlobalFee(value);
     const numericValue = parseFloat(value) || 0;
@@ -512,8 +526,8 @@ const InvigilatorPayrollReport = () => {
                     <td style={{ padding: '8px', fontWeight: 'bold', textAlign: 'right' }}>
                       {rowTotal.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL
                     </td>
-                    <td style={{ padding: '8px', textAlign: 'center' }}>
-                      ...................
+                    <td style={{ padding: '8px', textAlign: 'center', height: '35px' }}>
+                      {/* Yazdırma esnasında imza atılabilsin diye boşluk bırakıldı */}
                     </td>
                   </tr>
                 );
@@ -536,9 +550,9 @@ const InvigilatorPayrollReport = () => {
           </div>
 
           {/* Müdür İmza Alanı */}
-          <div style={{ marginTop: '3rem', display: 'flex', justifyContent: 'flex-end' }}>
+          <div style={{ marginTop: '2rem', display: 'flex', justifyContent: 'flex-end', pageBreakInside: 'avoid' }}>
             <div style={{ textAlign: 'center', width: '200px' }}>
-              <p style={{ margin: '0 0 40px 0', fontWeight: 'bold' }}>ONAYLAYAN</p>
+              <p style={{ margin: '0 0 30px 0', fontWeight: 'bold' }}>ONAYLAYAN</p>
               <p style={{ margin: 0, fontWeight: 'bold' }}>Hülya ERTEN</p>
               <p style={{ margin: 0, fontSize: '0.9rem', color: '#555' }}>Okul Müdürü</p>
             </div>
@@ -551,7 +565,7 @@ const InvigilatorPayrollReport = () => {
   );
 };
 
-// 3. ALT BİLEŞEN: Gözetmen Yoklama Listesi (Ayrı Sekme)
+// 3. ALT BİLEŞEN: Gözetmen Yoklama Listesi
 const InvigilatorAttendanceReport = () => {
   const [exams, setExams] = useState([]);
   const [selectedExamId, setSelectedExamId] = useState('');
@@ -673,11 +687,10 @@ const InvigilatorAttendanceReport = () => {
             <tbody>
               {reportData.map((item, idx) => (
                 <tr key={idx}>
-                  <td style={{ padding: '12px', textAlign: 'center' }}>{item.no}</td>
-                  <td style={{ padding: '12px' }}>{item.roomName}</td>
-                  <td style={{ padding: '12px', fontWeight: '500' }}>{item.invigilator || 'Atanmamış'}</td>
-                  <td style={{ padding: '12px', textAlign: 'center' }}>
-                    {/* Kutucuklar içerisindeki yazılar kaldırıldı, istenen sade yapı */}
+                  <td style={{ padding: '10px', textAlign: 'center' }}>{item.no}</td>
+                  <td style={{ padding: '10px' }}>{item.roomName}</td>
+                  <td style={{ padding: '10px', fontWeight: '500' }}>{item.invigilator || 'Atanmamış'}</td>
+                  <td style={{ padding: '10px', textAlign: 'center', height: '35px' }}>
                     [ &nbsp; &nbsp; &nbsp; &nbsp; ]
                   </td>
                 </tr>
