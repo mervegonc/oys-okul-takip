@@ -14,11 +14,11 @@ const Invigilators = () => {
           body {
             background: white !important;
             color: #1a1a1a !important;
-            font-size: 10pt !important;
+            font-size: 9.5pt !important;
           }
           @page {
             size: A4 portrait;
-            margin: 10mm;
+            margin: 8mm;
           }
           .print-container {
             box-shadow: none !important;
@@ -27,11 +27,11 @@ const Invigilators = () => {
             margin: 0 !important;
           }
           table {
-            font-size: 9.5pt !important;
+            font-size: 9pt !important;
             border-color: #333 !important;
           }
           th, td {
-            padding: 6px 8px !important;
+            padding: 4px 6px !important;
           }
         }
       `}</style>
@@ -482,24 +482,24 @@ const InvigilatorPayrollReport = () => {
       {loading ? (
         <p style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>Yükleniyor...</p>
       ) : selectedExamId ? (
-        <div className="print-container" style={{ background: '#fff', padding: '2.5rem', border: '1px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
-          <div style={{ textAlign: 'center', marginBottom: '2rem', borderBottom: '2px solid #1e293b', paddingBottom: '1rem' }}>
-            <h3 style={{ margin: '0 0 5px 0', fontSize: '1.25rem', fontWeight: '800', letterSpacing: '0.05em', color: '#0f172a' }}>GÖZETMEN İMZA VE ÜCRET TUTANAĞI</h3>
-            <p style={{ fontSize: '1rem', fontWeight: '600', color: '#475569', margin: 0 }}>
+        <div className="print-container" style={{ background: '#fff', padding: '2rem', border: '1px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
+          <div style={{ textAlign: 'center', marginBottom: '1.5rem', borderBottom: '2px solid #1e293b', paddingBottom: '0.75rem' }}>
+            <h3 style={{ margin: '0 0 4px 0', fontSize: '1.15rem', fontWeight: '800', letterSpacing: '0.05em', color: '#0f172a' }}>GÖZETMEN İMZA VE ÜCRET TUTANAĞI</h3>
+            <p style={{ fontSize: '0.9rem', fontWeight: '600', color: '#475569', margin: 0 }}>
               Sınav Adı: {examDetails?.name || examDetails?.title} &nbsp;|&nbsp; Tarih: {examDetails?.date}
             </p>
           </div>
 
-          <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '1.5rem' }} border="1">
+          <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '1.25rem' }} border="1">
             <thead>
-              <tr style={{ background: '#f8fafc', textAlign: 'left', color: '#334155', fontSize: '0.9rem' }}>
-                <th style={{ padding: '10px', width: '45px', textAlign: 'center' }}>Sıra</th>
-                <th style={{ padding: '10px' }}>Salon Adı</th>
-                <th style={{ padding: '10px' }}>Gözetmen Adı Soyadı</th>
-                <th style={{ padding: '10px', width: '75px', textAlign: 'center' }}>Seans</th>
-                <th style={{ padding: '10px', width: '100px', textAlign: 'right' }}>Seans Ücreti</th>
-                <th style={{ padding: '10px', width: '110px', textAlign: 'right' }}>Toplam Tutar</th>
-                <th style={{ padding: '10px', width: '130px', textAlign: 'center' }}>İmza</th>
+              <tr style={{ background: '#f8fafc', textAlign: 'left', color: '#334155', fontSize: '0.85rem' }}>
+                <th style={{ padding: '6px 8px', width: '35px', textAlign: 'center' }}>Sıra</th>
+                <th style={{ padding: '6px 8px', width: '75px' }}>Salon</th>
+                <th style={{ padding: '6px 8px' }}>Gözetmen Adı Soyadı</th>
+                <th style={{ padding: '6px 8px', width: '50px', textAlign: 'center' }}>Seans</th>
+                <th style={{ padding: '6px 8px', width: '85px', textAlign: 'right' }}>Seans Ücreti</th>
+                <th style={{ padding: '6px 8px', width: '95px', textAlign: 'right' }}>Toplam</th>
+                <th style={{ padding: '6px 8px', width: '110px', textAlign: 'center' }}>İmza</th>
               </tr>
             </thead>
             <tbody>
@@ -507,22 +507,22 @@ const InvigilatorPayrollReport = () => {
                 const rowTotal = (parseFloat(item.sessions) || 0) * (parseFloat(item.feePerSession) || 0);
                 return (
                   <tr key={idx} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                    <td style={{ padding: '8px', textAlign: 'center', color: '#64748b' }}>{item.no}</td>
-                    <td style={{ padding: '8px', fontWeight: '500', color: '#1e293b' }}>{item.roomName}</td>
-                    <td style={{ padding: '8px', fontWeight: '600', color: '#0f172a' }}>{item.invigilator || 'Atanmamış'}</td>
-                    <td style={{ padding: '8px', textAlign: 'center' }}>
+                    <td style={{ padding: '5px 8px', textAlign: 'center', color: '#64748b', fontSize: '0.9rem' }}>{item.no}</td>
+                    <td style={{ padding: '5px 8px', fontWeight: '600', color: '#1e293b', fontSize: '0.85rem', whiteSpace: 'nowrap' }}>{item.roomName}</td>
+                    <td style={{ padding: '5px 8px', fontWeight: '600', color: '#0f172a', fontSize: '0.9rem', whiteSpace: 'nowrap' }}>{item.invigilator || 'Atanmamış'}</td>
+                    <td style={{ padding: '5px 8px', textAlign: 'center' }}>
                       <span className="no-print" style={{ display: 'inline-block', width: '100%' }}>
                         <input 
                           type="number" 
                           min="1"
                           value={item.sessions}
                           onChange={(e) => handleFieldChange(idx, 'sessions', e.target.value)}
-                          style={{ width: '50px', padding: '4px', textAlign: 'center', borderRadius: '4px', border: '1px solid #cbd5e1' }}
+                          style={{ width: '40px', padding: '3px', textAlign: 'center', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.9rem' }}
                         />
                       </span>
                       <span style={{ display: 'none' }} className="print-only">{item.sessions}</span>
                     </td>
-                    <td style={{ padding: '8px', textAlign: 'right' }}>
+                    <td style={{ padding: '5px 8px', textAlign: 'right' }}>
                       <span className="no-print" style={{ display: 'inline-block', width: '100%' }}>
                         <input 
                           type="number" 
@@ -530,22 +530,22 @@ const InvigilatorPayrollReport = () => {
                           step="0.01"
                           value={item.feePerSession}
                           onChange={(e) => handleFieldChange(idx, 'feePerSession', e.target.value)}
-                          style={{ width: '80px', padding: '4px', textAlign: 'right', borderRadius: '4px', border: '1px solid #cbd5e1' }}
+                          style={{ width: '70px', padding: '3px', textAlign: 'right', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.9rem' }}
                         />
                       </span>
                       <span style={{ display: 'none' }} className="print-only">{Number(item.feePerSession).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL</span>
                     </td>
-                    <td style={{ padding: '8px', fontWeight: '700', textAlign: 'right', color: '#0f172a' }}>
+                    <td style={{ padding: '5px 8px', fontWeight: '700', textAlign: 'right', color: '#0f172a', fontSize: '0.9rem', whiteSpace: 'nowrap' }}>
                       {rowTotal.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL
                     </td>
-                    <td style={{ padding: '8px', textAlign: 'center', height: '32px' }}></td>
+                    <td style={{ padding: '5px 8px', textAlign: 'center', height: '26px' }}></td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
 
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }} className="no-print">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }} className="no-print">
             <button 
               onClick={handleSave} 
               disabled={saving}
@@ -555,16 +555,16 @@ const InvigilatorPayrollReport = () => {
             </button>
           </div>
 
-          <div style={{ fontSize: '1.2rem', fontWeight: '800', textAlign: 'right', marginBottom: '2.5rem', color: '#0f172a' }}>
+          <div style={{ fontSize: '1.1rem', fontWeight: '800', textAlign: 'right', marginBottom: '2rem', color: '#0f172a' }}>
             Genel Toplam Tutar: {grandTotal.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL
           </div>
 
           {/* Müdür İmza Alanı */}
           <div style={{ display: 'flex', justifyContent: 'flex-end', pageBreakInside: 'avoid' }}>
-            <div style={{ textAlign: 'center', width: '180px' }}>
-              <p style={{ margin: '0 0 35px 0', fontWeight: '700', fontSize: '0.9rem', color: '#475569', letterSpacing: '0.05em' }}>ONAYLAYAN</p>
-              <p style={{ margin: 0, fontWeight: '700', fontSize: '1rem', color: '#0f172a' }}>Hülya ERTEN</p>
-              <p style={{ margin: '2px 0 0 0', fontSize: '0.85rem', color: '#64748b' }}>Okul Müdürü</p>
+            <div style={{ textAlign: 'center', width: '160px' }}>
+              <p style={{ margin: '0 0 25px 0', fontWeight: '700', fontSize: '0.85rem', color: '#475569', letterSpacing: '0.05em' }}>ONAYLAYAN</p>
+              <p style={{ margin: 0, fontWeight: '700', fontSize: '0.95rem', color: '#0f172a' }}>Hülya ERTEN</p>
+              <p style={{ margin: '2px 0 0 0', fontSize: '0.8rem', color: '#64748b' }}>Okul Müdürü</p>
             </div>
           </div>
         </div>
@@ -679,30 +679,30 @@ const InvigilatorAttendanceReport = () => {
       {loading ? (
         <p style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>Yükleniyor...</p>
       ) : selectedExamId ? (
-        <div className="print-container" style={{ background: '#fff', padding: '2.5rem', border: '1px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
-          <div style={{ textAlign: 'center', marginBottom: '2rem', borderBottom: '2px solid #1e293b', paddingBottom: '1rem' }}>
-            <h3 style={{ margin: '0 0 5px 0', fontSize: '1.25rem', fontWeight: '800', letterSpacing: '0.05em', color: '#0f172a' }}>GÖZETMEN YOKLAMA LİSTESİ</h3>
-            <p style={{ fontSize: '1rem', fontWeight: '600', color: '#475569', margin: 0 }}>
+        <div className="print-container" style={{ background: '#fff', padding: '2rem', border: '1px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
+          <div style={{ textAlign: 'center', marginBottom: '1.5rem', borderBottom: '2px solid #1e293b', paddingBottom: '0.75rem' }}>
+            <h3 style={{ margin: '0 0 4px 0', fontSize: '1.15rem', fontWeight: '800', letterSpacing: '0.05em', color: '#0f172a' }}>GÖZETMEN YOKLAMA LİSTESİ</h3>
+            <p style={{ fontSize: '0.9rem', fontWeight: '600', color: '#475569', margin: 0 }}>
               Sınav Adı: {examDetails?.name || examDetails?.title} &nbsp;|&nbsp; Tarih: {examDetails?.date}
             </p>
           </div>
 
           <table style={{ width: '100%', borderCollapse: 'collapse' }} border="1">
             <thead>
-              <tr style={{ background: '#f8fafc', textAlign: 'left', color: '#334155', fontSize: '0.9rem' }}>
-                <th style={{ padding: '10px', width: '45px', textAlign: 'center' }}>Sıra</th>
-                <th style={{ padding: '10px' }}>Salon</th>
-                <th style={{ padding: '10px' }}>Gözetmen Adı Soyadı</th>
-                <th style={{ padding: '10px', width: '100px', textAlign: 'center' }}>Katıldı (+/-)</th>
+              <tr style={{ background: '#f8fafc', textAlign: 'left', color: '#334155', fontSize: '0.85rem' }}>
+                <th style={{ padding: '6px 8px', width: '35px', textAlign: 'center' }}>Sıra</th>
+                <th style={{ padding: '6px 8px', width: '85px' }}>Salon</th>
+                <th style={{ padding: '6px 8px' }}>Gözetmen Adı Soyadı</th>
+                <th style={{ padding: '6px 8px', width: '90px', textAlign: 'center' }}>Katıldı (+/-)</th>
               </tr>
             </thead>
             <tbody>
               {reportData.map((item, idx) => (
                 <tr key={idx} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                  <td style={{ padding: '10px', textAlign: 'center', color: '#64748b' }}>{item.no}</td>
-                  <td style={{ padding: '10px', fontWeight: '500', color: '#1e293b' }}>{item.roomName}</td>
-                  <td style={{ padding: '10px', fontWeight: '600', color: '#0f172a' }}>{item.invigilator || 'Atanmamış'}</td>
-                  <td style={{ padding: '10px', textAlign: 'center', height: '35px', color: '#64748b' }}>
+                  <td style={{ padding: '6px 8px', textAlign: 'center', color: '#64748b', fontSize: '0.9rem' }}>{item.no}</td>
+                  <td style={{ padding: '6px 8px', fontWeight: '600', color: '#1e293b', fontSize: '0.85rem', whiteSpace: 'nowrap' }}>{item.roomName}</td>
+                  <td style={{ padding: '6px 8px', fontWeight: '600', color: '#0f172a', fontSize: '0.9rem', whiteSpace: 'nowrap' }}>{item.invigilator || 'Atanmamış'}</td>
+                  <td style={{ padding: '6px 8px', textAlign: 'center', height: '30px', color: '#64748b', fontSize: '0.9rem' }}>
                     [ &nbsp; &nbsp; &nbsp; &nbsp; ]
                   </td>
                 </tr>
