@@ -31,7 +31,7 @@ const Invigilators = () => {
             border-color: #333 !important;
           }
           th, td {
-            padding: 5px 6px !important;
+            padding: 6px 8px !important;
           }
           input {
             border: none !important;
@@ -488,7 +488,6 @@ const InvigilatorPayrollReport = () => {
 
     setReportData(combined);
     
-    // Eğer veritabanından gelen ilk kayıtta ücret varsa ortak ücrete yansıt
     if (combined.length > 0 && combined[0].feePerSession > 0) {
       setGlobalFee(combined[0].feePerSession);
     }
@@ -546,7 +545,7 @@ const InvigilatorPayrollReport = () => {
     <div>
       <div className="no-print" style={{ marginBottom: '1.5rem' }}>
         <h2 style={{ fontSize: '1.5rem', fontWeight: '700', color: '#1e293b', marginBottom: '0.25rem' }}>Gözetmen İmza ve Ücret Tutanağı</h2>
-        <p style={{ color: '#64748b', fontSize: '0.95rem' }}>Sınav ücret tutanağını listeleyebilir, seans ve ortak ücret belirleyip yazdırabilirsiniz.</p>
+        <p style={{ color: '#64748b', fontSize: '0.95rem' }}>Sınav ücret tutanağını listeleyebilir, ortak seans ücreti belirleyip yazdırabilirsiniz.</p>
       </div>
 
       <div style={{ margin: '1.5rem 0', display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap', background: '#fff', padding: '1.25rem', borderRadius: '12px', border: '1px solid #e2e8f0' }} className="no-print">
@@ -604,12 +603,11 @@ const InvigilatorPayrollReport = () => {
             <thead>
               <tr style={{ background: '#f8fafc', textAlign: 'left', color: '#334155', fontSize: '0.85rem' }}>
                 <th style={{ padding: '6px 8px', width: '35px', textAlign: 'center' }}>Sıra</th>
-                <th style={{ padding: '6px 8px', width: '100px' }}>Salon / Görev</th>
+                <th style={{ padding: '6px 8px', width: '110px' }}>Salon / Görev</th>
                 <th style={{ padding: '6px 8px' }}>Görevli Adı Soyadı</th>
-                <th style={{ padding: '6px 8px', width: '60px', textAlign: 'center' }}>Seans</th>
-                <th style={{ padding: '6px 8px', width: '90px', textAlign: 'right' }}>Seans Ücreti</th>
-                <th style={{ padding: '6px 8px', width: '100px', textAlign: 'right' }}>Toplam</th>
-                <th style={{ padding: '6px 8px', width: '110px', textAlign: 'center' }}>İmza</th>
+                <th style={{ padding: '6px 8px', width: '75px', textAlign: 'center' }}>Seans</th>
+                <th style={{ padding: '6px 8px', width: '120px', textAlign: 'right' }}>Toplam</th>
+                <th style={{ padding: '6px 8px', width: '120px', textAlign: 'center' }}>İmza</th>
               </tr>
             </thead>
             <tbody>
@@ -628,11 +626,8 @@ const InvigilatorPayrollReport = () => {
                         min="1"
                         value={item.sessions}
                         onChange={(e) => handleFieldChange(idx, 'sessions', e.target.value)}
-                        style={{ width: '45px', padding: '3px', textAlign: 'center', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.9rem' }}
+                        style={{ width: '50px', padding: '3px', textAlign: 'center', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.9rem' }}
                       />
-                    </td>
-                    <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: '600', color: '#334155', fontSize: '0.9rem' }}>
-                      {f.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL
                     </td>
                     <td style={{ padding: '6px 8px', fontWeight: '700', textAlign: 'right', color: '#0f172a', fontSize: '0.9rem', whiteSpace: 'nowrap' }}>
                       {rowTotal.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL
@@ -793,7 +788,7 @@ const InvigilatorAttendanceReport = () => {
             <thead>
               <tr style={{ background: '#f8fafc', textAlign: 'left', color: '#334155', fontSize: '0.85rem' }}>
                 <th style={{ padding: '6px 8px', width: '35px', textAlign: 'center' }}>Sıra</th>
-                <th style={{ padding: '6px 8px', width: '105px' }}>Salon / Görev</th>
+                <th style={{ padding: '6px 8px', width: '110px' }}>Salon / Görev</th>
                 <th style={{ padding: '6px 8px' }}>Görevli Adı Soyadı</th>
                 <th style={{ padding: '6px 8px', width: '90px', textAlign: 'center' }}>Katıldı (+/-)</th>
               </tr>
