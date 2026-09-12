@@ -31,7 +31,14 @@ const Invigilators = () => {
             border-color: #333 !important;
           }
           th, td {
-            padding: 4px 6px !important;
+            padding: 5px 6px !important;
+          }
+          input {
+            border: none !important;
+            background: transparent !important;
+            padding: 0 !important;
+            font-size: 9pt !important;
+            text-align: center !important;
           }
         }
       `}</style>
@@ -100,7 +107,6 @@ const InvigilatorManagement = () => {
   const [exams, setExams] = useState([]);
   const [selectedExamId, setSelectedExamId] = useState('');
   const [examRooms, setExamRooms] = useState([]);
-  const [extraStaff, setExtraStaff] = useState([]); // Kat görevlileri vb. için
   const [newStaffRoom, setNewStaffRoom] = useState('K.G.');
   const [newStaffName, setNewStaffName] = useState('');
   const [newStaffNotes, setNewStaffNotes] = useState('');
@@ -117,7 +123,6 @@ const InvigilatorManagement = () => {
       fetchExamRoomsAndInvigilators(selectedExamId);
     } else {
       setExamRooms([]);
-      setExtraStaff([]);
       setInvigilatorsData({});
     }
   }, [selectedExamId]);
@@ -130,86 +135,54 @@ const InvigilatorManagement = () => {
   const fetchExamRoomsAndInvigilators = async (examId) => {
     setLoading(true);
     
-    const { data: seatingData, error: seatingError } = await supabase
+    const { data: seatingData } = await supabase
       .from('seating_plans')
       .select('assignments')
       .eq('exam_id', examId);
 
-    if (!seatingError && seatingData && seatingData.length > 0) {
-      const roomIds = new Set();
+    const roomIds = new Set();
+    if (seatingData) {
       seatingData.forEach(row => {
-        const assignments = row.assignments;
-        if (Array.isArray(assignments)) {
-          assignments.forEach(item => {
+        if (Array.isArray(row.assignments)) {
+          row.assignments.forEach(item => {
             if (item.room_id) roomIds.add(item.room_id);
           });
         }
       });
+    }
 
-      const roomIdList = Array.from(roomIds);
-
-      if (roomIdList.length > 0) {
-        const { data: roomsData, error: roomsError } = await supabase
-          .from('rooms')
-          .select('*')
-          .in('id', roomIdList);
-
-        if (!roomsError && roomsData) {
-          const roomMap = {};
-          roomsData.forEach(r => {
-            roomMap[r.id] = r.name || r.room_name || r.title || `Salon ${r.id.slice(0, 4)}`;
-          });
-
-          const uniqueRoomNames = [...new Set(roomIdList.map(id => roomMap[id]).filter(Boolean))];
-          setExamRooms(uniqueRoomNames);
-        } else {
-          setExamRooms([]);
-        }
-      } else {
-        setExamRooms([]);
-      }
-
-      const { data: invData, error: invError } = await supabase
-        .from('exam_invigilators')
-        .select('*')
-        .eq('exam_id', examId);
-
-      if (!invError && invData) {
-        const map = {};
-        const extras = [];
-        invData.forEach(item => {
-          // Eğer salon listesinde yoksa ama DB'de varsa, bu kat görevlisi/özel görevlidir
-          map[item.room_name] = {
-            invigilator: item.invigilator_name || '',
-            notes: item.notes || '',
-            sessions: item.sessions ?? 1,
-            feePerSession: item.fee_per_session ?? 0
-          };
+    const roomIdList = Array.from(roomIds);
+    let roomNamesList = [];
+    if (roomIdList.length > 0) {
+      const { data: roomsData } = await supabase.from('rooms').select('*').in('id', roomIdList);
+      if (roomsData) {
+        const roomMap = {};
+        roomsData.forEach(r => {
+          roomMap[r.id] = r.name || r.room_name || r.title || `Salon ${r.id.slice(0, 4)}`;
         });
-        setInvigilatorsData(map);
+        roomNamesList = [...new Set(roomIdList.map(id => roomMap[id]).filter(Boolean))];
       }
+    }
+    setExamRooms(roomNamesList);
+
+    const { data: invData } = await supabase.from('exam_invigilators').select('*').eq('exam_id', examId);
+    if (invData) {
+      const map = {};
+      invData.forEach(item => {
+        map[item.room_name] = {
+          invigilator: item.invigilator_name || '',
+          notes: item.notes || '',
+          sessions: item.sessions ?? 1,
+          feePerSession: item.fee_per_session ?? 0
+        };
+      });
+      setInvigilatorsData(map);
     } else {
-      setExamRooms([]);
-      // Sadece salon olmasa bile kat görevlisi kaydedilmiş olabilir
-      const { data: invData } = await supabase.from('exam_invigilators').select('*').eq('exam_id', examId);
-      if (invData) {
-        const map = {};
-        invData.forEach(item => {
-          map[item.room_name] = {
-            invigilator: item.invigilator_name || '',
-            notes: item.notes || '',
-            sessions: item.sessions ?? 1,
-            feePerSession: item.fee_per_session ?? 0
-          };
-        });
-        setInvigilatorsData(map);
-      }
+      setInvigilatorsData({});
     }
     setLoading(false);
   };
 
-  // Veritabanından gelen veya eklenen tüm satırları birleştirme (Salonlar + Kat Görevlileri)
-  // Kat görevlilerini ve özel eklenenleri ayırt etmek için invigilatorsData içindeki key'lerden salon listesinde olmayanları extraStaff olarak tutabiliriz
   const allAssignedRoomNames = Object.keys(invigilatorsData);
   const pureExtras = allAssignedRoomNames.filter(name => !examRooms.includes(name));
 
@@ -261,11 +234,10 @@ const InvigilatorManagement = () => {
 
     await supabase.from('exam_invigilators').delete().eq('exam_id', selectedExamId);
 
-    // Tüm salonlar ve kat görevlilerini tek seferde kaydet
     const allKeys = [...new Set([...examRooms, ...Object.keys(invigilatorsData)])];
     const recordsToInsert = allKeys.map(roomName => {
       const roomData = invigilatorsData[roomName] || { invigilator: '', notes: '', sessions: 1, feePerSession: 0 };
-      if (!roomData.invigilator && !roomData.notes && examRooms.includes(roomName)) return null; // Boş salonları atla
+      if (!roomData.invigilator && !roomData.notes && examRooms.includes(roomName)) return null;
 
       return {
         exam_id: selectedExamId,
@@ -294,12 +266,12 @@ const InvigilatorManagement = () => {
         <p style={{ color: '#64748b', fontSize: '0.95rem' }}>Sınav salonlarına gözetmen atayabilir, salon dışı kat görevlisi (K.G.) ekleyebilirsiniz.</p>
       </div>
 
-      <div style={{ margin: '1.5rem 0', display: 'flex', alignItems: 'center', gap: '1rem', background: '#fff', padding: '1.25rem', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }} className="no-print">
+      <div style={{ margin: '1.5rem 0', display: 'flex', alignItems: 'center', gap: '1rem', background: '#fff', padding: '1.25rem', borderRadius: '12px', border: '1px solid #e2e8f0' }} className="no-print">
         <label style={{ fontWeight: '600', color: '#334155' }}>Sınav Seçin:</label>
         <select 
           value={selectedExamId} 
           onChange={(e) => setSelectedExamId(e.target.value)}
-          style={{ padding: '0.65rem 1rem', width: '350px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.95rem', outline: 'none', background: '#f8fafc' }}
+          style={{ padding: '0.65rem 1rem', width: '350px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.95rem', background: '#f8fafc' }}
         >
           <option value="">-- Sınav Seçiniz --</option>
           {exams.map(exam => (
@@ -314,7 +286,6 @@ const InvigilatorManagement = () => {
         <p style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>Yükleniyor...</p>
       ) : selectedExamId ? (
         <div>
-          {/* Kat Görevlisi / Ek Personel Ekleme Paneli */}
           <div style={{ background: '#f8fafc', padding: '1rem 1.25rem', borderRadius: '12px', border: '1px solid #e2e8f0', marginBottom: '1.5rem', display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }} className="no-print">
             <span style={{ fontWeight: '600', fontSize: '0.9rem', color: '#334155', width: '100%' }}>Kat Görevlisi / Salon Dışı Personel Ekle:</span>
             <input 
@@ -346,10 +317,10 @@ const InvigilatorManagement = () => {
             </button>
           </div>
 
-          <div style={{ background: '#fff', borderRadius: '12px', border: '1px solid #e2e8f0', overflow: 'hidden', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
+          <div style={{ background: '#fff', borderRadius: '12px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
               <thead>
-                <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', color: '#475569', fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', color: '#475569', fontSize: '0.9rem', textTransform: 'uppercase' }}>
                   <th style={{ padding: '1rem', width: '180px' }}>Salon / Görev Yeri</th>
                   <th style={{ padding: '1rem' }}>Görevli Adı Soyadı</th>
                   <th style={{ padding: '1rem' }}>Not / Açıklama</th>
@@ -357,7 +328,6 @@ const InvigilatorManagement = () => {
                 </tr>
               </thead>
               <tbody>
-                {/* Salonlar */}
                 {examRooms.map((roomName, index) => {
                   const currentData = invigilatorsData[roomName] || { invigilator: '', notes: '' };
                   return (
@@ -386,7 +356,6 @@ const InvigilatorManagement = () => {
                   );
                 })}
 
-                {/* Eklenen Kat Görevlileri / Özel Görevliler */}
                 {pureExtras.map((roomName, index) => {
                   const currentData = invigilatorsData[roomName] || { invigilator: '', notes: '' };
                   return (
@@ -427,7 +396,7 @@ const InvigilatorManagement = () => {
             <button 
               onClick={handleSaveAll}
               disabled={saving}
-              style={{ padding: '0.75rem 2rem', background: '#16a34a', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '1rem', fontWeight: '600', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}
+              style={{ padding: '0.75rem 2rem', background: '#16a34a', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '1rem', fontWeight: '600' }}
             >
               {saving ? 'Kaydediliyor...' : 'Tüm Görevlileri Kaydet'}
             </button>
@@ -507,7 +476,6 @@ const InvigilatorPayrollReport = () => {
       });
     }
 
-    // Salonları ve kayıtlı olan ekstra yerleri (K.G. vb.) birleştir
     const combinedNames = [...new Set([...roomNames, ...allAssignedNames])];
 
     const combined = combinedNames.map((roomName, index) => ({
@@ -519,6 +487,12 @@ const InvigilatorPayrollReport = () => {
     }));
 
     setReportData(combined);
+    
+    // Eğer veritabanından gelen ilk kayıtta ücret varsa ortak ücrete yansıt
+    if (combined.length > 0 && combined[0].feePerSession > 0) {
+      setGlobalFee(combined[0].feePerSession);
+    }
+
     setLoading(false);
   };
 
@@ -572,16 +546,16 @@ const InvigilatorPayrollReport = () => {
     <div>
       <div className="no-print" style={{ marginBottom: '1.5rem' }}>
         <h2 style={{ fontSize: '1.5rem', fontWeight: '700', color: '#1e293b', marginBottom: '0.25rem' }}>Gözetmen İmza ve Ücret Tutanağı</h2>
-        <p style={{ color: '#64748b', fontSize: '0.95rem' }}>Sınav ücret tutanağını listeleyebilir, seans ve ücretleri düzenleyip yazdırabilirsiniz.</p>
+        <p style={{ color: '#64748b', fontSize: '0.95rem' }}>Sınav ücret tutanağını listeleyebilir, seans ve ortak ücret belirleyip yazdırabilirsiniz.</p>
       </div>
 
-      <div style={{ margin: '1.5rem 0', display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap', background: '#fff', padding: '1.25rem', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }} className="no-print">
+      <div style={{ margin: '1.5rem 0', display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap', background: '#fff', padding: '1.25rem', borderRadius: '12px', border: '1px solid #e2e8f0' }} className="no-print">
         <div>
           <label style={{ fontWeight: '600', marginRight: '0.5rem', color: '#334155' }}>Sınav Seçin:</label>
           <select 
             value={selectedExamId} 
             onChange={(e) => setSelectedExamId(e.target.value)}
-            style={{ padding: '0.65rem 1rem', width: '250px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.95rem', outline: 'none', background: '#f8fafc' }}
+            style={{ padding: '0.65rem 1rem', width: '250px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.95rem', background: '#f8fafc' }}
           >
             <option value="">-- Sınav Seçiniz --</option>
             {exams.map(exam => (
@@ -597,7 +571,7 @@ const InvigilatorPayrollReport = () => {
             <label style={{ fontWeight: '600', fontSize: '0.9rem', color: '#334155' }}>Ortak Seans Ücreti (TL):</label>
             <input 
               type="number" 
-              placeholder="Örn: 250"
+              placeholder="Örn: 500"
               value={globalFee}
               onChange={(e) => handleGlobalFeeChange(e.target.value)}
               style={{ padding: '6px 10px', width: '100px', borderRadius: '6px', border: '1px solid #cbd5e1', background: '#fff' }}
@@ -608,7 +582,7 @@ const InvigilatorPayrollReport = () => {
         {selectedExamId && (
           <button 
             onClick={() => window.print()}
-            style={{ padding: '0.65rem 1.25rem', background: '#2563eb', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', marginLeft: 'auto', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}
+            style={{ padding: '0.65rem 1.25rem', background: '#2563eb', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', marginLeft: 'auto' }}
           >
             Yazdır / PDF Al
           </button>
@@ -618,7 +592,7 @@ const InvigilatorPayrollReport = () => {
       {loading ? (
         <p style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>Yükleniyor...</p>
       ) : selectedExamId ? (
-        <div className="print-container" style={{ background: '#fff', padding: '2rem', border: '1px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
+        <div className="print-container" style={{ background: '#fff', padding: '2rem', border: '1px solid #e2e8f0', borderRadius: '12px' }}>
           <div style={{ textAlign: 'center', marginBottom: '1.5rem', borderBottom: '2px solid #1e293b', paddingBottom: '0.75rem' }}>
             <h3 style={{ margin: '0 0 4px 0', fontSize: '1.15rem', fontWeight: '800', letterSpacing: '0.05em', color: '#0f172a' }}>GÖZETMEN İMZA VE ÜCRET TUTANAĞI</h3>
             <p style={{ fontSize: '0.9rem', fontWeight: '600', color: '#475569', margin: 0 }}>
@@ -630,51 +604,40 @@ const InvigilatorPayrollReport = () => {
             <thead>
               <tr style={{ background: '#f8fafc', textAlign: 'left', color: '#334155', fontSize: '0.85rem' }}>
                 <th style={{ padding: '6px 8px', width: '35px', textAlign: 'center' }}>Sıra</th>
-                <th style={{ padding: '6px 8px', width: '95px' }}>Salon / Görev</th>
+                <th style={{ padding: '6px 8px', width: '100px' }}>Salon / Görev</th>
                 <th style={{ padding: '6px 8px' }}>Görevli Adı Soyadı</th>
-                <th style={{ padding: '6px 8px', width: '50px', textAlign: 'center' }}>Seans</th>
-                <th style={{ padding: '6px 8px', width: '85px', textAlign: 'right' }}>Seans Ücreti</th>
-                <th style={{ padding: '6px 8px', width: '95px', textAlign: 'right' }}>Toplam</th>
+                <th style={{ padding: '6px 8px', width: '60px', textAlign: 'center' }}>Seans</th>
+                <th style={{ padding: '6px 8px', width: '90px', textAlign: 'right' }}>Seans Ücreti</th>
+                <th style={{ padding: '6px 8px', width: '100px', textAlign: 'right' }}>Toplam</th>
                 <th style={{ padding: '6px 8px', width: '110px', textAlign: 'center' }}>İmza</th>
               </tr>
             </thead>
             <tbody>
               {reportData.map((item, idx) => {
-                const rowTotal = (parseFloat(item.sessions) || 0) * (parseFloat(item.feePerSession) || 0);
+                const s = parseFloat(item.sessions) || 0;
+                const f = parseFloat(item.feePerSession) || 0;
+                const rowTotal = s * f;
                 return (
                   <tr key={idx} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                    <td style={{ padding: '5px 8px', textAlign: 'center', color: '#64748b', fontSize: '0.9rem' }}>{idx + 1}</td>
-                    <td style={{ padding: '5px 8px', fontWeight: '600', color: '#1e293b', fontSize: '0.85rem', whiteSpace: 'nowrap' }}>{item.roomName}</td>
-                    <td style={{ padding: '5px 8px', fontWeight: '600', color: '#0f172a', fontSize: '0.9rem', whiteSpace: 'nowrap' }}>{item.invigilator || 'Atanmamış'}</td>
-                    <td style={{ padding: '5px 8px', textAlign: 'center' }}>
-                      <span className="no-print" style={{ display: 'inline-block', width: '100%' }}>
-                        <input 
-                          type="number" 
-                          min="1"
-                          value={item.sessions}
-                          onChange={(e) => handleFieldChange(idx, 'sessions', e.target.value)}
-                          style={{ width: '40px', padding: '3px', textAlign: 'center', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.9rem' }}
-                        />
-                      </span>
-                      <span style={{ display: 'none' }} className="print-only">{item.sessions}</span>
+                    <td style={{ padding: '6px 8px', textAlign: 'center', color: '#64748b', fontSize: '0.9rem' }}>{idx + 1}</td>
+                    <td style={{ padding: '6px 8px', fontWeight: '600', color: '#1e293b', fontSize: '0.85rem', whiteSpace: 'nowrap' }}>{item.roomName}</td>
+                    <td style={{ padding: '6px 8px', fontWeight: '600', color: '#0f172a', fontSize: '0.9rem', whiteSpace: 'nowrap' }}>{item.invigilator || 'Atanmamış'}</td>
+                    <td style={{ padding: '6px 8px', textAlign: 'center' }}>
+                      <input 
+                        type="number" 
+                        min="1"
+                        value={item.sessions}
+                        onChange={(e) => handleFieldChange(idx, 'sessions', e.target.value)}
+                        style={{ width: '45px', padding: '3px', textAlign: 'center', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.9rem' }}
+                      />
                     </td>
-                    <td style={{ padding: '5px 8px', textAlign: 'right' }}>
-                      <span className="no-print" style={{ display: 'inline-block', width: '100%' }}>
-                        <input 
-                          type="number" 
-                          min="0"
-                          step="0.01"
-                          value={item.feePerSession}
-                          onChange={(e) => handleFieldChange(idx, 'feePerSession', e.target.value)}
-                          style={{ width: '70px', padding: '3px', textAlign: 'right', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.9rem' }}
-                        />
-                      </span>
-                      <span style={{ display: 'none' }} className="print-only">{Number(item.feePerSession).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL</span>
+                    <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: '600', color: '#334155', fontSize: '0.9rem' }}>
+                      {f.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL
                     </td>
-                    <td style={{ padding: '5px 8px', fontWeight: '700', textAlign: 'right', color: '#0f172a', fontSize: '0.9rem', whiteSpace: 'nowrap' }}>
+                    <td style={{ padding: '6px 8px', fontWeight: '700', textAlign: 'right', color: '#0f172a', fontSize: '0.9rem', whiteSpace: 'nowrap' }}>
                       {rowTotal.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL
                     </td>
-                    <td style={{ padding: '5px 8px', textAlign: 'center', height: '26px' }}></td>
+                    <td style={{ padding: '6px 8px', textAlign: 'center', height: '30px' }}></td>
                   </tr>
                 );
               })}
@@ -685,7 +648,7 @@ const InvigilatorPayrollReport = () => {
             <button 
               onClick={handleSave} 
               disabled={saving}
-              style={{ padding: '0.6rem 1.5rem', background: '#16a34a', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}
+              style={{ padding: '0.6rem 1.5rem', background: '#16a34a', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600' }}
             >
               {saving ? 'Kaydediliyor...' : 'Değişiklikleri Kaydet'}
             </button>
@@ -695,7 +658,6 @@ const InvigilatorPayrollReport = () => {
             Genel Toplam Tutar: {grandTotal.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL
           </div>
 
-          {/* Müdür İmza Alanı */}
           <div style={{ display: 'flex', justifyContent: 'flex-end', pageBreakInside: 'avoid' }}>
             <div style={{ textAlign: 'center', width: '160px' }}>
               <p style={{ margin: '0 0 25px 0', fontWeight: '700', fontSize: '0.85rem', color: '#475569', letterSpacing: '0.05em' }}>ONAYLAYAN</p>
@@ -791,12 +753,12 @@ const InvigilatorAttendanceReport = () => {
         <p style={{ color: '#64748b', fontSize: '0.95rem' }}>Sınav salonları ve kat görevlileri için yoklama çizelgesini görüntüleyebilir ve yazdırabilirsiniz.</p>
       </div>
 
-      <div style={{ margin: '1.5rem 0', display: 'flex', gap: '1rem', alignItems: 'center', background: '#fff', padding: '1.25rem', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }} className="no-print">
+      <div style={{ margin: '1.5rem 0', display: 'flex', gap: '1rem', alignItems: 'center', background: '#fff', padding: '1.25rem', borderRadius: '12px', border: '1px solid #e2e8f0' }} className="no-print">
         <label style={{ fontWeight: '600', color: '#334155' }}>Sınav Seçin:</label>
         <select 
           value={selectedExamId} 
           onChange={(e) => setSelectedExamId(e.target.value)}
-          style={{ padding: '0.65rem 1rem', width: '350px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.95rem', outline: 'none', background: '#f8fafc' }}
+          style={{ padding: '0.65rem 1rem', width: '350px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.95rem', background: '#f8fafc' }}
         >
           <option value="">-- Sınav Seçiniz --</option>
           {exams.map(exam => (
@@ -809,7 +771,7 @@ const InvigilatorAttendanceReport = () => {
         {selectedExamId && (
           <button 
             onClick={() => window.print()}
-            style={{ padding: '0.65rem 1.25rem', background: '#2563eb', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', marginLeft: 'auto', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}
+            style={{ padding: '0.65rem 1.25rem', background: '#2563eb', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', marginLeft: 'auto' }}
           >
             Yazdır / PDF Al
           </button>
@@ -819,7 +781,7 @@ const InvigilatorAttendanceReport = () => {
       {loading ? (
         <p style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>Yükleniyor...</p>
       ) : selectedExamId ? (
-        <div className="print-container" style={{ background: '#fff', padding: '2rem', border: '1px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
+        <div className="print-container" style={{ background: '#fff', padding: '2rem', border: '1px solid #e2e8f0', borderRadius: '12px' }}>
           <div style={{ textAlign: 'center', marginBottom: '1.5rem', borderBottom: '2px solid #1e293b', paddingBottom: '0.75rem' }}>
             <h3 style={{ margin: '0 0 4px 0', fontSize: '1.15rem', fontWeight: '800', letterSpacing: '0.05em', color: '#0f172a' }}>GÖZETMEN YOKLAMA LİSTESİ</h3>
             <p style={{ fontSize: '0.9rem', fontWeight: '600', color: '#475569', margin: 0 }}>
