@@ -435,7 +435,7 @@ const DisciplineReports = () => {
 
         {/* Şube Düzeyi (11/C şeklinde birleştirilmiş) */}
         <div style={{ background: 'white', borderRadius: '16px', padding: '1.5rem', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
-          <h4 style={{ margin: '0 0 1rem 0', fontSize: '1.1rem', fontWeight: '700', color: '#1e293b' }}>Şubeye Göre Dağılım (Örn: 11/C)</h4>
+          <h4 style={{ margin: '0 0 1rem 0', fontSize: '1.1rem', fontWeight: '700', color: '#1e293b' }}>Şubeye Göre Dağılım</h4>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
             <thead>
               <tr style={{ borderBottom: '2px solid #f1f5f9', color: '#64748b', textAlign: 'left' }}>
