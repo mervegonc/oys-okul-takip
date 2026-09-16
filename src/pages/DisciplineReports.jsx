@@ -119,18 +119,23 @@ const DisciplineReports = () => {
     };
   });
 
-  const classStats = classes.filter((c) => c !== 'all').map((cls) => {
-    const items = filteredRecords.filter((r) => r.class === cls);
-    // Sınıf seviyesini de bularak '11/C' formatına getirelim
-    const sampleGrade = items.length > 0 ? items[0].grade : '';
-    return {
-      classKey: cls,
-      displayClass: sampleGrade ? `${sampleGrade}/${cls}` : cls,
-      late: new Set(items.filter((r) => r.type === 'late' || r.type === 'both').map(r => r.student_id || r.studentName)).size,
-      dress: new Set(items.filter((r) => r.type === 'dress' || r.type === 'both').map(r => r.student_id || r.studentName)).size,
-      total: new Set(items.map(r => r.student_id || r.studentName)).size,
-    };
-  });
+ // Sınıf seviyesi boş veya tanımsız olanları (örneğin sadece 'C' gelenleri) hariç tutarak temiz bir liste elde edelim
+  const classStats = classes
+    .filter((c) => c !== 'all')
+    .map((cls) => {
+      const items = filteredRecords.filter((r) => r.class === cls);
+      const sampleGrade = items.length > 0 ? items[0].grade : '';
+      return {
+        classKey: cls,
+        // Eğer grade yoksa veya boşsa bu satırı tamamen filtrelemek için bir flag koyabiliriz
+        isValid: Boolean(sampleGrade && sampleGrade.trim() !== ''),
+        displayClass: sampleGrade ? `${sampleGrade}/${cls}` : cls,
+        late: new Set(items.filter((r) => r.type === 'late' || r.type === 'both').map(r => r.student_id || r.studentName)).size,
+        dress: new Set(items.filter((r) => r.type === 'dress' || r.type === 'both').map(r => r.student_id || r.studentName)).size,
+        total: new Set(items.map(r => r.student_id || r.studentName)).size,
+      };
+    })
+    .filter(stat => stat.isValid); // Sadece sınıf seviyesi tam olanları göster (tek başına 'C' yazanları engelle)
 
   const hourStats = Array(24).fill(0);
   filteredRecords.forEach((r) => {
