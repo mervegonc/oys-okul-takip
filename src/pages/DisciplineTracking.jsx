@@ -45,78 +45,69 @@ const DisciplineTracking = () => {
       .replace(/ç/g, 'Ç');
   };
 
-  // 3. Server-side Türkçe Harf Uyumlu Arama
- // 🔍 Server-side Türkçe Harf / Aksan Duyarsız Arama
-// 🔍 Server-Side Çoklu İsim ve Parçalı Kelime Arama
-useEffect(() => {
-  const searchStudents = async () => {
-    const term = searchTerm.trim();
-    
-    if (term.length < 2) {
-      setSearchResults([]);
-      return;
-    }
+  // 3. Server-Side Çoklu İsim ve Parçalı Kelime Arama
+  useEffect(() => {
+    const searchStudents = async () => {
+      const term = searchTerm.trim();
+      
+      if (term.length < 2) {
+        setSearchResults([]);
+        return;
+      }
 
-    setSearching(true);
-    try {
-      // 1. Arama metnini boşluklara göre kelimelerine ayır
-      const words = term.split(/\s+/).filter(w => w.length > 0);
+      setSearching(true);
+      try {
+        const words = term.split(/\s+/).filter(w => w.length > 0);
 
-      // 2. Her bir kelime için Türkçe büyük/küçük harf varyasyonları üret
-      let query = supabase.from('students').select('*');
+        let query = supabase.from('students').select('*');
 
-      words.forEach((word) => {
-        const original = word;
-        const upperTr = word.toLocaleUpperCase('tr-TR');
-        const lowerTr = word.toLocaleLowerCase('tr-TR');
-        const alt = original
-          .replace(/i/g, 'İ')
-          .replace(/ı/g, 'I')
-          .replace(/I/g, 'ı')
-          .replace(/İ/g, 'i');
+        words.forEach((word) => {
+          const original = word;
+          const upperTr = word.toLocaleUpperCase('tr-TR');
+          const lowerTr = word.toLocaleLowerCase('tr-TR');
+          const alt = original
+            .replace(/i/g, 'İ')
+            .replace(/ı/g, 'I')
+            .replace(/I/g, 'ı')
+            .replace(/İ/g, 'i');
 
-        // Her bir kelime; Adında, Soyadında veya Okul Nosunda var mı?
-        const wordSearchPattern = [
-          `first_name.ilike.%${original}%`,
-          `first_name.ilike.%${upperTr}%`,
-          `first_name.ilike.%${lowerTr}%`,
-          `first_name.ilike.%${alt}%`,
-          `last_name.ilike.%${original}%`,
-          `last_name.ilike.%${upperTr}%`,
-          `last_name.ilike.%${lowerTr}%`,
-          `last_name.ilike.%${alt}%`,
-          `student_no.ilike.%${original}%`,
-          `tc_no.ilike.%${original}%`
-        ].join(',');
+          const wordSearchPattern = [
+            `first_name.ilike.%${original}%`,
+            `first_name.ilike.%${upperTr}%`,
+            `first_name.ilike.%${lowerTr}%`,
+            `first_name.ilike.%${alt}%`,
+            `last_name.ilike.%${original}%`,
+            `last_name.ilike.%${upperTr}%`,
+            `last_name.ilike.%${lowerTr}%`,
+            `last_name.ilike.%${alt}%`,
+            `student_no.ilike.%${original}%`,
+            `tc_no.ilike.%${original}%`
+          ].join(',');
 
-        // .or() zinciri ekleyerek tüm kelimelerin eşleşmesini sağlıyoruz (AND mantığı)
-        query = query.or(wordSearchPattern);
-      });
+          query = query.or(wordSearchPattern);
+        });
 
-      const { data, error } = await query.limit(100);
+        const { data, error } = await query.limit(100);
 
-      if (error) throw error;
+        if (error) throw error;
 
-      console.log(`🔍 [ÇOKLU İSİM ARAMASI] '${term}' ifadesi ${words.length} kelimeye bölünerek arandı.`);
-      console.log(`✅ [SONUÇ] Bulunan öğrenci sayısı: ${data?.length || 0}`);
+        console.log(`🔍 [ÇOKLU İSİM ARAMASI] '${term}' ifadesi ${words.length} kelimeye bölünerek arandı.`);
+        console.log(`✅ [SONUÇ] Bulunan öğrenci sayısı: ${data?.length || 0}`);
 
-      setSearchResults(data || []);
-    } catch (error) {
-      console.error('Öğrenci arama hatası:', error);
-    } finally {
-      setSearching(false);
-    }
-  };
+        setSearchResults(data || []);
+      } catch (error) {
+        console.error('Öğrenci arama hatası:', error);
+      } finally {
+        setSearching(false);
+      }
+    };
 
-  const delayDebounceFn = setTimeout(() => {
-    searchStudents();
-  }, 300);
+    const delayDebounceFn = setTimeout(() => {
+      searchStudents();
+    }, 300);
 
-  return () => clearTimeout(delayDebounceFn);
-}, [searchTerm]);
-
-
-
+    return () => clearTimeout(delayDebounceFn);
+  }, [searchTerm]);
 
   const handleSelectStudent = (student) => {
     setSelectedStudent(student);
@@ -143,6 +134,29 @@ useEffect(() => {
 
     setLoading(true);
     try {
+      // BUGÜNÜN KONTROLÜ İÇİN TARİH ARALIĞI HESAPLAMA (00:00:00 - 23:59:59)
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+      
+      const todayEnd = new Date();
+      todayEnd.setHours(23, 59, 59, 999);
+
+      // Öğrencinin bugün daha önce kaydı var mı kontrol et
+      const { data: existingRecords, error: checkError } = await supabase
+        .from('discipline')
+        .select('*')
+        .eq('student_id', selectedStudent.id)
+        .gte('created_at', todayStart.toISOString())
+        .lte('created_at', todayEnd.toISOString());
+
+      if (checkError) throw checkError;
+
+      if (existingRecords && existingRecords.length > 0) {
+        setMessage(`⚠️ Uyarı: Bu öğrenci (${selectedStudent.first_name} ${selectedStudent.last_name}) için bugün zaten bir kayıt girilmiş! Aynı gün içinde tekrar kayıt yapılamaz.`);
+        setLoading(false);
+        return;
+      }
+
       const types = [];
       if (selectedTypes.late) types.push('late');
       if (selectedTypes.dress) types.push('dress');
@@ -163,7 +177,7 @@ useEffect(() => {
 
       if (error) throw error;
 
-      setMessage(`${selectedStudent.first_name} ${selectedStudent.last_name} kaydedildi.`);
+      setMessage(`${selectedStudent.first_name} ${selectedStudent.last_name} başarıyla kaydedildi.`);
       handleClosePanel();
       setSearchTerm('');
     } catch (error) {
@@ -201,7 +215,6 @@ useEffect(() => {
         )}
       </div>
 
-      {/* Ekrandan da kaç öğrenci arasından arandığını takip edebileceğin bilgi etiketi */}
       <div style={{ fontSize: '0.85rem', color: '#666', marginBottom: '1rem', textAlign: 'right' }}>
         Sistemdeki Toplam Öğrenci: <strong>{totalStudentCount}</strong>
       </div>
@@ -313,7 +326,7 @@ useEffect(() => {
             </button>
           </div>
 
-          {message && <p style={{ marginTop: '0.5rem', color: message.includes('hata') ? 'red' : 'green' }}>{message}</p>}
+          {message && <p style={{ marginTop: '0.5rem', color: message.includes('hata') || message.includes('Uyarı') ? 'red' : 'green' }}>{message}</p>}
         </div>
       )}
     </div>
