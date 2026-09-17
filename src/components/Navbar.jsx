@@ -1,10 +1,6 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { 
-  FaUsers, FaClock, FaChartBar, FaCalendarAlt, 
-  FaUserPlus, FaBook, FaLanguage, FaBuilding, 
-  FaChair, FaBan, FaEdit, FaClipboardCheck, FaUserShield, FaSignOutAlt
-} from 'react-icons/fa';
+
 import { supabase } from '../supabase';
 import { hasPermission } from '../utils/permissions';
 import './Navbar.css'; // Stil dosyasını dahil ettik
@@ -13,22 +9,22 @@ const Navbar = ({ userEmail }) => {
   const location = useLocation();
 
   const menuItems = [
-    { path: '/students', label: 'Öğrenciler', icon: <FaUsers />, module: 'admin' },
-    { path: '/discipline', label: 'Geç Kalan Kayıt', icon: <FaClock />, module: 'attendance' },
-    { path: '/discipline-reports', label: 'İstatistik', icon: <FaChartBar />, module: 'attendance' },
-    { path: '/exams', label: 'Sınavlar', icon: <FaBook />, module: 'exam' },
-    { path: '/rooms', label: 'Salonlar', icon: <FaBuilding />, module: 'seating' },
-    { path: '/seating', label: 'Karma Dağıtım', icon: <FaChair />, module: 'seating' },
-    { path: '/conflict-groups', label: 'Çakışma', icon: <FaBan />, module: 'seating' },
-    { path: '/manual-edit', label: 'Manuel Düzenle', icon: <FaEdit />, module: 'seating' },
-    { path: '/attendance-module', label: 'Sınav Yoklama', icon: <FaClipboardCheck />, module: 'exam' },
-    { path: '/attendance-lists', label: 'Yoklama Listesi', icon: <FaClipboardCheck />, module: 'exam' },
-    { path: '/invigilators', label: 'Gözetmenler', icon: <FaUserShield />, module: 'exam' },
-    { path: '/student-matrix', label: 'Matris', icon: <FaClipboardCheck />, module: 'exam' }, 
-    { path: '/daily-attendance-list', label: 'Günlük Yoklama', icon: <FaClipboardCheck />, module: 'exam' },
-    { path: '/calendar', label: 'Takvim', icon: <FaCalendarAlt />, module: 'calendar' },
-    { path: '/candidates', label: 'Adaylar', icon: <FaUserPlus />, module: 'candidates' },
-    { path: '/yds', label: 'YDS', icon: <FaLanguage />, module: 'exam' },
+    { path: '/students', label: 'Öğrenciler', module: 'admin' },
+    { path: '/discipline', label: 'Geç Kalan Kayıt', module: 'attendance' },
+    { path: '/discipline-reports', label: 'İstatistik', module: 'attendance' },
+    { path: '/exams', label: 'Sınavlar', module: 'exam' },
+    { path: '/rooms', label: 'Salonlar', module: 'seating' },
+    { path: '/seating', label: 'Karma Dağıtım', module: 'seating' },
+    { path: '/conflict-groups', label: 'Çakışma', module: 'seating' },
+    { path: '/manual-edit', label: 'Manuel Düzenle', module: 'seating' },
+    { path: '/attendance-module', label: 'Sınav Yoklama', module: 'exam' },
+    { path: '/attendance-lists', label: 'Yoklama Listesi', module: 'exam' },
+    { path: '/invigilators', label: 'Gözetmenler', module: 'exam' },
+    { path: '/student-matrix', label: 'Matris',  module: 'exam' }, 
+    { path: '/daily-attendance-list', label: 'Günlük Yoklama', module: 'exam' },
+    { path: '/calendar', label: 'Takvim', module: 'calendar' },
+    { path: '/candidates', label: 'Adaylar',module: 'candidates' },
+    { path: '/yds', label: 'YDS',  module: 'exam' },
   ];
 
   const visibleMenu = menuItems.filter(item =>
