@@ -1,6 +1,10 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-
+import { 
+  FaUsers, FaClock, FaChartBar, FaCalendarAlt, 
+  FaUserPlus, FaBook, FaLanguage, FaBuilding, 
+  FaChair, FaBan, FaEdit, FaClipboardCheck, FaUserShield
+} from 'react-icons/fa';
 import { supabase } from '../supabase';
 import { hasPermission } from '../utils/permissions';
 import './Navbar.css'; // Stil dosyasını dahil ettik
