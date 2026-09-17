@@ -1,11 +1,11 @@
-/* Navbar Renk Sabitleri ve Stilleri */
+/* Arka planlar ve genel yapı için en açık ton olan Tumbleweed tabanlı yaklaşım */
 .navbar-wrapper {
-  background: #ffffff;
-  border-bottom: 2px solid #EAAC8B; /* Tumbleweed */
-  box-shadow: 0 4px 12px rgba(53, 80, 112, 0.08);
+  background: #EAAC8B;
+  border-bottom: 3px solid #355070;
+  box-shadow: 0 4px 12px rgba(53, 80, 112, 0.2);
   position: sticky;
   top: 0;
-  zIndex: 1000;
+  z-index: 1000;
 }
 
 .navbar-top {
@@ -13,22 +13,22 @@
   justify-content: space-between;
   align-items: center;
   padding: 0.8rem 2rem;
-  border-bottom: 1px solid #f0f0f0;
-  background: #fcf8f5;
+  border-bottom: 2px solid #6D597A;
+  background: #EAAC8B;
 }
 
 .navbar-brand {
   font-weight: 800;
   font-size: 1.4rem;
-  color: #355070; /* Police Blue */
+  color: #355070;
   text-decoration: none;
   letter-spacing: 0.5px;
 }
 
 .navbar-brand span {
   font-size: 0.85rem;
-  font-weight: 500;
-  color: #B56576; /* China Rose */
+  font-weight: 600;
+  color: #B56576;
 }
 
 .navbar-user-area {
@@ -39,27 +39,24 @@
 
 .navbar-email {
   font-size: 0.9rem;
-  color: #6D597A; /* Chinese Violet */
-  font-weight: 500;
+  color: #355070;
+  font-weight: 600;
 }
 
 .navbar-logout-btn {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
   padding: 0.4rem 1rem;
-  background: #E56B6F; /* Light Coral */
-  color: white;
+  background: #E56B6F;
+  color: #EAAC8B;
   border: none;
   border-radius: 6px;
   cursor: pointer;
-  font-weight: 600;
+  font-weight: 700;
   font-size: 0.85rem;
-  transition: background 0.2s;
+  transition: opacity 0.2s;
 }
 
 .navbar-logout-btn:hover {
-  background: #d9534f;
+  opacity: 0.85;
 }
 
 .navbar-menu {
@@ -68,34 +65,31 @@
   padding: 0.6rem 1.5rem;
   overflow-x: auto;
   white-space: nowrap;
-  background: #ffffff;
+  background: #EAAC8B;
 }
 
 .navbar-item {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
   padding: 0.5rem 0.9rem;
-  borderRadius: 6px;
+  border-radius: 6px;
   text-decoration: none;
   color: #355070;
   background: transparent;
-  font-weight: 500;
+  font-weight: 600;
   font-size: 0.9rem;
   transition: all 0.2s ease;
 }
 
+/* Aktif Sekme: Police Blue arka plan, Tumbleweed yazı */
 .navbar-item.active {
-  color: #ffffff;
-  background: #355070;
-  font-weight: 600;
-}
-
-.navbar-item.active span {
   color: #EAAC8B;
+  background: #355070;
+  font-weight: 700;
 }
 
+/* Aktif olmayan sekmelerin üzerine gelince */
 .navbar-item:not(.active):hover {
-  background: rgba(53, 80, 112, 0.08);
-  color: #B56576;
+  background: #6D597A;
+  color: #EAAC8B;
 }
