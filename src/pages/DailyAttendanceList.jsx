@@ -266,7 +266,7 @@ const DailyAttendanceList = () => {
             </tr>
             {/* MEVCUT SATIRI */}
             <tr style={{ background: '#f1f5f9', textAlign: 'center', fontWeight: '700', color: '#0f172a' }}>
-              <td style={{ borderBottom: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0', padding: '0.75rem', background: '#e2e8f0' }}>MEVCUT (DİNAMİK)</td>
+              <td style={{ borderBottom: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0', padding: '0.75rem', background: '#e2e8f0' }}>MEVCUT ÖĞRENCİ</td>
               <td style={{ borderBottom: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0', padding: '0.75rem' }}>-</td>
               <td style={{ borderBottom: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0', padding: '0.75rem' }}>{totals[9]}</td>
               <td style={{ borderBottom: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0', padding: '0.75rem' }}>{totals[10]}</td>
