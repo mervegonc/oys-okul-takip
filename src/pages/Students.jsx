@@ -4,7 +4,7 @@ import ExcelUpload from '../components/ExcelUpload';
 import { encrypt, decrypt } from '../utils/encryption';
 import { FaTrash, FaUserPlus, FaSort, FaSortUp, FaSortDown, FaFilter, FaFileExcel } from 'react-icons/fa';
 import * as XLSX from 'xlsx'; // Excel dışa aktarımı için SheetJS kütüphanesi
-
+import '../styles/Students.css';
 const Students = () => {
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
