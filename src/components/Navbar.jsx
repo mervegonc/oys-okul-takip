@@ -24,6 +24,7 @@ const Navbar = ({ userEmail }) => {
     { path: '/attendance-lists', label: 'Yoklama Listesi', icon: <FaClipboardCheck />, module: 'exam' },
     { path: '/invigilators', label: 'Gözetmenler', icon: <FaUserShield />, module: 'exam' }, // Gözetmenler sayfası eklendi
     { path: '/student-matrix', label: 'Öğrenci Sınav Matrisi', icon: <FaClipboardCheck />, module: 'exam' }, 
+    { path: '/daily-attendance-list', label: 'Günlük Yoklama Listesi', icon: <FaClipboardCheck />, module: 'exam' },
     { path: '/calendar', label: 'Takvim', icon: <FaCalendarAlt />, module: 'calendar' },
     { path: '/candidates', label: 'Adaylar', icon: <FaUserPlus />, module: 'candidates' },
     { path: '/yds', label: 'YDS', icon: <FaLanguage />, module: 'exam' },
