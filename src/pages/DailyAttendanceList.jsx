@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabase';
-import { FaCalendarPlus, FaEye, FaEyeSlash, FaSave, FaTrash, FaCamera } from 'react-icons/fa';
+import { FaCalendarPlus, FaEye, FaEyeSlash, FaSave, FaTrash } from 'react-icons/fa';
 import { format } from 'date-fns';
 import { tr } from 'date-fns/locale';
 
@@ -8,11 +8,9 @@ const DailyAttendanceList = () => {
   const [attendanceRecords, setAttendanceRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   
-  // Dinamik Mevcut Sayıları (Öğrenciler tablosundan çekilecek)
   const [totals, setTotals] = useState({ 9: 0, 10: 0, 11: 0, 12: 0 });
   const totalMevcut = totals[9] + totals[10] + totals[11] + totals[12];
 
-  // Yeni Gün Ekleme Form State'leri
   const [selectedDate, setSelectedDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [absent9, setAbsent9] = useState('');
   const [absent10, setAbsent10] = useState('');
@@ -29,7 +27,6 @@ const DailyAttendanceList = () => {
     try {
       setLoading(true);
       
-      // 1. Öğrenciler tablosundan sınıflarına göre mevcut sayılarını hesapla
       const { data: studentsData, error: studentsError } = await supabase
         .from('students')
         .select('grade');
@@ -47,7 +44,6 @@ const DailyAttendanceList = () => {
       }
       setTotals(counts);
 
-      // 2. Günlük yoklama verilerini çek
       const { data: attData, error: attError } = await supabase
         .from('daily_attendance')
         .select('*')
@@ -70,7 +66,6 @@ const DailyAttendanceList = () => {
     const a11 = parseInt(absent11) || 0;
     const a12 = parseInt(absent12) || 0;
 
-    // Sınır kontrolü (Mevcuttan fazla gelmeyen olamaz)
     if (a9 > totals[9] || a10 > totals[10] || a11 > totals[11] || a12 > totals[12]) {
       alert('Hata: Girilen gelmeyen öğrenci sayısı o sınıfın toplam mevcut sayısından büyük olamaz!');
       return;
@@ -133,10 +128,25 @@ const DailyAttendanceList = () => {
   return (
     <div style={{ padding: '2rem', maxWidth: '1400px', margin: '0 auto', fontFamily: 'Inter, system-ui, sans-serif', color: '#1e293b', background: '#f8fafc', minHeight: '100vh' }}>
       
-      {/* Özel CSS Stili: Ekran Görüntüsü / Yazdırma Sırasında Butonları Gizlemek İçin */}
+      {/* KESİN ÇÖZÜM: Yazdırma / PDF anında Navbar, Formlar, İşlem Sütunu ve Gizlenen Satırlar Tamamen Yok Olur */}
       <style>{`
         @media print {
-          .no-print { display: none !important; }
+          /* Navbar'ı gizle (nav veya header etiketleri) */
+          nav, header, aside {
+            display: none !important;
+          }
+          /* .no-print sınıfına sahip her şeyi gizle */
+          .no-print {
+            display: none !important;
+          }
+          /* Gizlenmiş (pasif) satırları yazdırmada tamamen yok et */
+          .inactive-row {
+            display: none !important;
+          }
+          body {
+            background: white !important;
+            padding: 0 !important;
+          }
         }
       `}</style>
 
@@ -170,8 +180,8 @@ const DailyAttendanceList = () => {
         </div>
       </div>
 
-      {/* Yeni Gün Ekleme Kartı (Ekran Görüntüsünde Çıkmaz) */}
-      <div className="no-print" style={{ background: '#ffffff', padding: '1.75rem', borderRadius: '20px', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.05), 0 4px 6px -4px rgba(0,0,0,0.05)', marginBottom: '2.5rem', border: '1px solid #e2e8f0' }}>
+      {/* Yeni Gün Ekleme Kartı */}
+      <div className="no-print" style={{ background: '#ffffff', padding: '1.75rem', borderRadius: '20px', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.05)', marginBottom: '2.5rem', border: '1px solid #e2e8f0' }}>
         <h3 style={{ fontSize: '1.15rem', fontWeight: '700', color: '#0f172a', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <FaCalendarPlus style={{ color: '#6366f1', fontSize: '1.3rem' }} /> Yeni Günlük Gelmeyen Verisi Ekle
         </h3>
@@ -232,7 +242,7 @@ const DailyAttendanceList = () => {
         </form>
       </div>
 
-      {/* Modernleştirilmiş Şık Tablo Alanı (Ekran Görüntüsü İçin Mükemmel Tasarım) */}
+      {/* Tablo Alanı */}
       <div style={{ background: '#ffffff', padding: '2rem', borderRadius: '20px', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.05)', overflowX: 'auto', border: '1px solid #e2e8f0' }}>
         
         <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
@@ -288,8 +298,8 @@ const DailyAttendanceList = () => {
 
               return (
                 <React.Fragment key={item.id}>
-                  {/* GELMEYEN SATIRI */}
-                  <tr style={{ opacity: isActive ? 1 : 0.35, background: rowBg }}>
+                  {/* GELMEYEN SATIRI - Eğer pasifse 'inactive-row' sınıfı eklenir ve yazdırırken gizlenir */}
+                  <tr className={!isActive ? 'inactive-row' : ''} style={{ opacity: isActive ? 1 : 0.35, background: rowBg }}>
                     <td rowSpan="2" style={{ borderBottom: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0', padding: '0.85rem', fontWeight: '600', textAlign: 'center', verticalAlign: 'middle', background: '#f8fafc' }}>
                       {dateFormatted}
                       {!isActive && <div style={{ fontSize: '0.7rem', color: '#ef4444', fontWeight: 'bold', marginTop: '2px' }}>(Gizlendi)</div>}
@@ -324,7 +334,7 @@ const DailyAttendanceList = () => {
                   </tr>
 
                   {/* GELEN SATIRI */}
-                  <tr style={{ opacity: isActive ? 1 : 0.35, background: rowBg }}>
+                  <tr className={!isActive ? 'inactive-row' : ''} style={{ opacity: isActive ? 1 : 0.35, background: rowBg }}>
                     <td style={{ borderBottom: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0', padding: '0.6rem', background: '#dcfce7', color: '#166534', fontWeight: '700', textAlign: 'center', fontSize: '0.85rem' }}>
                       GELEN
                     </td>
