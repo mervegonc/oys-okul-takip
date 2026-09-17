@@ -1,13 +1,8 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { 
-  FaUsers, FaClock, FaChartBar, FaCalendarAlt, 
-  FaUserPlus, FaBook, FaLanguage, FaBuilding, 
-  FaChair, FaBan, FaEdit, FaClipboardCheck, FaUserShield
-} from 'react-icons/fa';
 import { supabase } from '../supabase';
 import { hasPermission } from '../utils/permissions';
-import './Navbar.css'; // Stil dosyasını dahil ettik
+import './Navbar.css';
 
 const Navbar = ({ userEmail }) => {
   const location = useLocation();
@@ -24,11 +19,11 @@ const Navbar = ({ userEmail }) => {
     { path: '/attendance-module', label: 'Sınav Yoklama', module: 'exam' },
     { path: '/attendance-lists', label: 'Yoklama Listesi', module: 'exam' },
     { path: '/invigilators', label: 'Gözetmenler', module: 'exam' },
-    { path: '/student-matrix', label: 'Matris',  module: 'exam' }, 
+    { path: '/student-matrix', label: 'Matris', module: 'exam' }, 
     { path: '/daily-attendance-list', label: 'Günlük Yoklama', module: 'exam' },
     { path: '/calendar', label: 'Takvim', module: 'calendar' },
-    { path: '/candidates', label: 'Adaylar',module: 'candidates' },
-    { path: '/yds', label: 'YDS',  module: 'exam' },
+    { path: '/candidates', label: 'Adaylar', module: 'candidates' },
+    { path: '/yds', label: 'YDS', module: 'exam' },
   ];
 
   const visibleMenu = menuItems.filter(item =>
@@ -42,7 +37,7 @@ const Navbar = ({ userEmail }) => {
   return (
     <nav className="navbar-wrapper">
       <div className="navbar-top">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
+        <div className="navbar-brand-container">
           <Link to="/" className="navbar-brand">
             OYS <span>Yıldızlar Kampüsü</span>
           </Link>
@@ -51,7 +46,7 @@ const Navbar = ({ userEmail }) => {
         <div className="navbar-user-area">
           <span className="navbar-email">{userEmail}</span>
           <button onClick={handleLogout} className="navbar-logout-btn">
-            <FaSignOutAlt /> Çıkış
+            Çıkış
           </button>
         </div>
       </div>
@@ -65,9 +60,6 @@ const Navbar = ({ userEmail }) => {
               to={item.path}
               className={`navbar-item ${isActive ? 'active' : ''}`}
             >
-              <span style={{ color: isActive ? '#EAAC8B' : '#6D597A' }}>
-                {item.icon}
-              </span>
               {item.label}
             </Link>
           );
