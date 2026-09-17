@@ -1,0 +1,101 @@
+/* Navbar Renk Sabitleri ve Stilleri */
+.navbar-wrapper {
+  background: #ffffff;
+  border-bottom: 2px solid #EAAC8B; /* Tumbleweed */
+  box-shadow: 0 4px 12px rgba(53, 80, 112, 0.08);
+  position: sticky;
+  top: 0;
+  zIndex: 1000;
+}
+
+.navbar-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.8rem 2rem;
+  border-bottom: 1px solid #f0f0f0;
+  background: #fcf8f5;
+}
+
+.navbar-brand {
+  font-weight: 800;
+  font-size: 1.4rem;
+  color: #355070; /* Police Blue */
+  text-decoration: none;
+  letter-spacing: 0.5px;
+}
+
+.navbar-brand span {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #B56576; /* China Rose */
+}
+
+.navbar-user-area {
+  display: flex;
+  align-items: center;
+  gap: 1.2rem;
+}
+
+.navbar-email {
+  font-size: 0.9rem;
+  color: #6D597A; /* Chinese Violet */
+  font-weight: 500;
+}
+
+.navbar-logout-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 1rem;
+  background: #E56B6F; /* Light Coral */
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.85rem;
+  transition: background 0.2s;
+}
+
+.navbar-logout-btn:hover {
+  background: #d9534f;
+}
+
+.navbar-menu {
+  display: flex;
+  gap: 0.4rem;
+  padding: 0.6rem 1.5rem;
+  overflow-x: auto;
+  white-space: nowrap;
+  background: #ffffff;
+}
+
+.navbar-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 0.9rem;
+  borderRadius: 6px;
+  text-decoration: none;
+  color: #355070;
+  background: transparent;
+  font-weight: 500;
+  font-size: 0.9rem;
+  transition: all 0.2s ease;
+}
+
+.navbar-item.active {
+  color: #ffffff;
+  background: #355070;
+  font-weight: 600;
+}
+
+.navbar-item.active span {
+  color: #EAAC8B;
+}
+
+.navbar-item:not(.active):hover {
+  background: rgba(53, 80, 112, 0.08);
+  color: #B56576;
+}
