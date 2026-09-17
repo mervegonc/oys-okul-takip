@@ -1,8 +1,7 @@
-/* Arka planlar ve genel yapı için en açık ton olan Tumbleweed tabanlı yaklaşım */
 .navbar-wrapper {
-  background: #EAAC8B;
-  border-bottom: 3px solid #355070;
-  box-shadow: 0 4px 12px rgba(53, 80, 112, 0.2);
+  background: #FAFDD6;
+  border-bottom: 3px solid #647FBC;
+  box-shadow: 0 4px 12px rgba(100, 127, 188, 0.15);
   position: sticky;
   top: 0;
   z-index: 1000;
@@ -13,14 +12,14 @@
   justify-content: space-between;
   align-items: center;
   padding: 0.8rem 2rem;
-  border-bottom: 2px solid #6D597A;
-  background: #EAAC8B;
+  border-bottom: 2px solid #AED6CF;
+  background: #FAFDD6;
 }
 
 .navbar-brand {
   font-weight: 800;
   font-size: 1.4rem;
-  color: #355070;
+  color: #647FBC;
   text-decoration: none;
   letter-spacing: 0.5px;
 }
@@ -28,7 +27,7 @@
 .navbar-brand span {
   font-size: 0.85rem;
   font-weight: 600;
-  color: #B56576;
+  color: #91ADC8;
 }
 
 .navbar-user-area {
@@ -39,14 +38,14 @@
 
 .navbar-email {
   font-size: 0.9rem;
-  color: #355070;
+  color: #647FBC;
   font-weight: 600;
 }
 
 .navbar-logout-btn {
   padding: 0.4rem 1rem;
-  background: #E56B6F;
-  color: #EAAC8B;
+  background: #F62440; /* İstediğin dikkat çekici kırmızı */
+  color: #FAFDD6;
   border: none;
   border-radius: 6px;
   cursor: pointer;
@@ -65,7 +64,7 @@
   padding: 0.6rem 1.5rem;
   overflow-x: auto;
   white-space: nowrap;
-  background: #EAAC8B;
+  background: #FAFDD6;
 }
 
 .navbar-item {
@@ -74,22 +73,22 @@
   padding: 0.5rem 0.9rem;
   border-radius: 6px;
   text-decoration: none;
-  color: #355070;
+  color: #647FBC;
   background: transparent;
   font-weight: 600;
   font-size: 0.9rem;
   transition: all 0.2s ease;
 }
 
-/* Aktif Sekme: Police Blue arka plan, Tumbleweed yazı */
+/* Aktif Sekme */
 .navbar-item.active {
-  color: #EAAC8B;
-  background: #355070;
+  color: #FAFDD6;
+  background: #647FBC;
   font-weight: 700;
 }
 
-/* Aktif olmayan sekmelerin üzerine gelince */
+/* Hover Efekti */
 .navbar-item:not(.active):hover {
-  background: #6D597A;
-  color: #EAAC8B;
+  background: #AED6CF;
+  color: #647FBC;
 }
