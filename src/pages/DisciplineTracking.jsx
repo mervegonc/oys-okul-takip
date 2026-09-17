@@ -33,19 +33,7 @@ const DisciplineTracking = () => {
     fetchTotalCount();
   }, []);
 
-  // 2. Türkçe Büyük/Küçük Harf Dönüştürücü Yardımcı Fonksiyon
-  const normalizeText = (text) => {
-    return text
-      .replace(/i/g, 'İ')
-      .replace(/ı/g, 'I')
-      .replace(/ş/g, 'Ş')
-      .replace(/ğ/g, 'Ğ')
-      .replace(/ü/g, 'Ü')
-      .replace(/ö/g, 'Ö')
-      .replace(/ç/g, 'Ç');
-  };
-
-  // 3. Server-Side Çoklu İsim ve Parçalı Kelime Arama
+  // 2. Server-Side Çoklu İsim ve Parçalı Kelime Arama + Bugün Kayıt Kontrolü
   useEffect(() => {
     const searchStudents = async () => {
       const term = searchTerm.trim();
@@ -87,14 +75,42 @@ const DisciplineTracking = () => {
           query = query.or(wordSearchPattern);
         });
 
-        const { data, error } = await query.limit(100);
+        const { data: studentsData, error } = await query.limit(100);
 
         if (error) throw error;
 
-        console.log(`🔍 [ÇOKLU İSİM ARAMASI] '${term}' ifadesi ${words.length} kelimeye bölünerek arandı.`);
-        console.log(`✅ [SONUÇ] Bulunan öğrenci sayısı: ${data?.length || 0}`);
+        // Öğrenciler geldikten sonra bugün bu öğrencilerin disiplin kaydı olup olmadığını kontrol edelim
+        if (studentsData && studentsData.length > 0) {
+          const todayStart = new Date();
+          todayStart.setHours(0, 0, 0, 0);
+          
+          const todayEnd = new Date();
+          todayEnd.setHours(23, 59, 59, 999);
 
-        setSearchResults(data || []);
+          const studentIds = studentsData.map(s => s.id);
+
+          const { data: disciplineData, error: discError } = await supabase
+            .from('discipline')
+            .select('student_id')
+            .in('student_id', studentIds)
+            .gte('created_at', todayStart.toISOString())
+            .lte('created_at', todayEnd.toISOString());
+
+          if (!discError && disciplineData) {
+            const recordedIds = new Set(disciplineData.map(d => d.student_id));
+            // Her öğrenci objesine hasRecordedToday alanı ekleyelim
+            const enrichedStudents = studentsData.map(student => ({
+              ...student,
+              hasRecordedToday: recordedIds.has(student.id)
+            }));
+            setSearchResults(enrichedStudents);
+          } else {
+            setSearchResults(studentsData);
+          }
+        } else {
+          setSearchResults([]);
+        }
+
       } catch (error) {
         console.error('Öğrenci arama hatası:', error);
       } finally {
@@ -110,6 +126,10 @@ const DisciplineTracking = () => {
   }, [searchTerm]);
 
   const handleSelectStudent = (student) => {
+    if (student.hasRecordedToday) {
+      setMessage(`⚠️ Bu öğrenci (${student.first_name} ${student.last_name}) için bugün zaten kayıt girilmiş!`);
+      return;
+    }
     setSelectedStudent(student);
     setNote('');
     setSelectedTypes({ late: false, dress: false });
@@ -134,29 +154,6 @@ const DisciplineTracking = () => {
 
     setLoading(true);
     try {
-      // BUGÜNÜN KONTROLÜ İÇİN TARİH ARALIĞI HESAPLAMA (00:00:00 - 23:59:59)
-      const todayStart = new Date();
-      todayStart.setHours(0, 0, 0, 0);
-      
-      const todayEnd = new Date();
-      todayEnd.setHours(23, 59, 59, 999);
-
-      // Öğrencinin bugün daha önce kaydı var mı kontrol et
-      const { data: existingRecords, error: checkError } = await supabase
-        .from('discipline')
-        .select('*')
-        .eq('student_id', selectedStudent.id)
-        .gte('created_at', todayStart.toISOString())
-        .lte('created_at', todayEnd.toISOString());
-
-      if (checkError) throw checkError;
-
-      if (existingRecords && existingRecords.length > 0) {
-        setMessage(`⚠️ Uyarı: Bu öğrenci (${selectedStudent.first_name} ${selectedStudent.last_name}) için bugün zaten bir kayıt girilmiş! Aynı gün içinde tekrar kayıt yapılamaz.`);
-        setLoading(false);
-        return;
-      }
-
       const types = [];
       if (selectedTypes.late) types.push('late');
       if (selectedTypes.dress) types.push('dress');
@@ -219,6 +216,12 @@ const DisciplineTracking = () => {
         Sistemdeki Toplam Öğrenci: <strong>{totalStudentCount}</strong>
       </div>
 
+      {message && !selectedStudent && (
+        <p style={{ marginTop: '0.5rem', marginBottom: '1rem', color: message.includes('⚠️') ? '#d9534f' : 'green', fontWeight: '500' }}>
+          {message}
+        </p>
+      )}
+
       {searchTerm.trim().length >= 2 && searchResults.length === 0 && !searching && !selectedStudent && (
         <p style={{ color: '#888', fontStyle: 'italic' }}>Öğrenci bulunamadı.</p>
       )}
@@ -232,16 +235,30 @@ const DisciplineTracking = () => {
               style={{
                 padding: '0.6rem 1rem',
                 borderBottom: '1px solid #eee',
-                cursor: 'pointer',
+                cursor: student.hasRecordedToday ? 'not-allowed' : 'pointer',
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
+                background: student.hasRecordedToday ? '#fcf8e3' : 'transparent',
               }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = '#f5f5f5')}
-              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+              onMouseEnter={(e) => {
+                if (!student.hasRecordedToday) e.currentTarget.style.background = '#f5f5f5';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = student.hasRecordedToday ? '#fcf8e3' : 'transparent';
+              }}
             >
-              <span><strong>{student.first_name} {student.last_name}</strong></span>
-              <span style={{ fontSize: '0.9rem', color: '#666' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span style={{ color: student.hasRecordedToday ? '#8a6d3b' : 'inherit' }}>
+                  <strong>{student.first_name} {student.last_name}</strong>
+                </span>
+                {student.hasRecordedToday && (
+                  <span style={{ fontSize: '0.75rem', background: '#f0ad4e', color: 'white', padding: '0.1rem 0.4rem', borderRadius: '4px', fontWeight: 'bold' }}>
+                    ⚠️ Bugün Kaydedildi
+                  </span>
+                )}
+              </div>
+              <span style={{ fontSize: '0.9rem', color: student.hasRecordedToday ? '#8a6d3b' : '#666' }}>
                 No: {student.student_no} - {student.grade}. Sınıf / {student.class}
               </span>
             </div>
@@ -326,7 +343,7 @@ const DisciplineTracking = () => {
             </button>
           </div>
 
-          {message && <p style={{ marginTop: '0.5rem', color: message.includes('hata') || message.includes('Uyarı') ? 'red' : 'green' }}>{message}</p>}
+          {message && <p style={{ marginTop: '0.5rem', color: message.includes('hata') ? 'red' : 'green' }}>{message}</p>}
         </div>
       )}
     </div>
