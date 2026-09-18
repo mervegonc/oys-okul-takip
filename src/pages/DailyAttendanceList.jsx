@@ -257,10 +257,10 @@ const DailyAttendanceList = () => {
             <tr style={{ background: '#f8fafc', color: '#334155', textAlign: 'center', fontWeight: '700' }}>
               <th style={{ borderBottom: '2px solid #e2e8f0', borderRight: '1px solid #e2e8f0', padding: '1rem', width: '220px' }}>TARİH</th>
               <th style={{ borderBottom: '2px solid #e2e8f0', borderRight: '1px solid #e2e8f0', padding: '1rem' }}>DURUM</th>
-              <th style={{ borderBottom: '2px solid #e2e8f0', borderRight: '1px solid #e2e8f0', padding: '1rem', background: '#eff6ff', color: '#1e40af' }}>9</th>
-              <th style={{ borderBottom: '2px solid #e2e8f0', borderRight: '1px solid #e2e8f0', padding: '1rem', background: '#eff6ff', color: '#1e40af' }}>10</th>
-              <th style={{ borderBottom: '2px solid #e2e8f0', borderRight: '1px solid #e2e8f0', padding: '1rem', background: '#eff6ff', color: '#1e40af' }}>11</th>
-              <th style={{ borderBottom: '2px solid #e2e8f0', borderRight: '1px solid #e2e8f0', padding: '1rem', background: '#eff6ff', color: '#1e40af' }}>12</th>
+              <th style={{ borderBottom: '2px solid #e2e8f0', borderRight: '1px solid #e2e8f0', padding: '1rem', background: '#eff6ff', color: '#1e40af' }}>9.Sınıf</th>
+              <th style={{ borderBottom: '2px solid #e2e8f0', borderRight: '1px solid #e2e8f0', padding: '1rem', background: '#eff6ff', color: '#1e40af' }}>10.Sınıf</th>
+              <th style={{ borderBottom: '2px solid #e2e8f0', borderRight: '1px solid #e2e8f0', padding: '1rem', background: '#eff6ff', color: '#1e40af' }}>11.Sınıf</th>
+              <th style={{ borderBottom: '2px solid #e2e8f0', borderRight: '1px solid #e2e8f0', padding: '1rem', background: '#eff6ff', color: '#1e40af' }}>12.Sınıf</th>
               <th style={{ borderBottom: '2px solid #e2e8f0', borderRight: '1px solid #e2e8f0', padding: '1rem', background: '#e0e7ff', color: '#3730a3' }}>TOPLAM</th>
               <th className="no-print" style={{ borderBottom: '2px solid #e2e8f0', padding: '1rem', width: '90px' }}>İŞLEM</th>
             </tr>
