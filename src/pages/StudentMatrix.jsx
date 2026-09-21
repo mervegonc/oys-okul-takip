@@ -136,7 +136,6 @@ const StudentMatrix = () => {
                 <th style={{ padding: '0.8rem', borderBottom: '1px solid #ddd' }}>Sınıf</th>
                 <th style={{ padding: '0.8rem', borderBottom: '1px solid #ddd' }}>Yabancı Dil / Alan</th>
                 
-                {/* Her sınav için yatayda ikişer sütun açıyoruz (Salon ve Sıra) */}
                 {exams.map(exam => (
                   <th key={exam.id} colSpan="2" style={{ padding: '0.8rem', borderLeft: '2px solid #fff', textAlign: 'center', background: '#1a365d' }}>
                     {exam.title} <br />
@@ -177,16 +176,13 @@ const StudentMatrix = () => {
                       <td style={{ padding: '0.6rem', textAlign: 'center' }}>{studentGrade}-{studentClass}</td>
                       <td style={{ padding: '0.6rem', color: '#4a5568' }}>{studentLang}</td>
 
-                      {/* Her sınav için bu öğrencinin atandığı salon ve sırayı bul */}
                       {exams.map(exam => {
-                        // İlgili sınavın oturma planını bul
                         const plan = seatingPlans.find(p => String(p.exam_id) === String(exam.id));
                         let assignments = plan ? plan.assignments : [];
                         if (typeof assignments === 'string') {
                           try { assignments = JSON.parse(assignments); } catch (e) { assignments = []; }
                         }
 
-                        // Bu öğrencinin atamasını bul
                         const assignment = assignments.find(a => isSameStudent(a, student));
 
                         let roomName = '-';
