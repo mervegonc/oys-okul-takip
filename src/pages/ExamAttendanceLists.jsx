@@ -109,6 +109,7 @@ const ExamAttendanceLists = () => {
   const fetchAllStudentsData = async () => {
     try {
       const { data, error } = await supabase.from('students').select('*');
+      console.log("🔍 [LOG] Students Tablosundan Çekilen Ham Veri:", data);
 
       if (!error && data) {
         const map = {};
@@ -118,7 +119,10 @@ const ExamAttendanceLists = () => {
           if (st.student_no) map[String(st.student_no).trim()] = st;
         });
         setStudentMap(map);
+        console.log("🔍 [LOG] Oluşturulan StudentMap:", map);
         return map;
+      } else if (error) {
+        console.error("❌ [LOG] Students tablosu hatası:", error);
       }
     } catch (err) {
       console.error('Öğrenciler tablosundan veri çekilemedi:', err);
@@ -190,7 +194,7 @@ const ExamAttendanceLists = () => {
     setSelectedExam(exam);
     setLoading(true);
     try {
-      await fetchAllStudentsData();
+      const currentMap = await fetchAllStudentsData();
 
       const { data, error } = await supabase
         .from('seating_plans')
@@ -202,6 +206,8 @@ const ExamAttendanceLists = () => {
       if (error) throw error;
 
       const plan = data && data.length > 0 ? data[0] : null;
+      console.log("🔍 [LOG] Seçilen Sınav İçin Bulunan Oturma Planı:", plan);
+      
       let parsedAssignments = [];
 
       if (plan) {
@@ -211,6 +217,9 @@ const ExamAttendanceLists = () => {
           parsedAssignments = plan.assignments;
         }
         plan.assignments = parsedAssignments;
+        console.log("🔍 [LOG] Parse Edilen Assignments (Atamalar):", parsedAssignments);
+      } else {
+        console.warn("⚠️ [LOG] Bu sınav için seating_plans tablosunda kayıt bulunamadı!");
       }
       setSeatingPlan(plan);
 
@@ -390,25 +399,38 @@ const ExamAttendanceLists = () => {
   const rawAssignments = seatingPlan?.assignments || [];
   const targetGradeStr = String(selectedExam?.grade || selectedExam?.sinif || '').replace(/\D/g, '');
 
+  console.log("🔍 [LOG] Filtreleme Öncesi Ham Atama Sayısı:", rawAssignments.length);
+  console.log("🔍 [LOG] Hedef Sınıf Filtresi (targetGradeStr):", targetGradeStr);
+
   const assignments = rawAssignments.filter(st => {
     const rawId = String(st.studentId || st.student_id || st.id || '').trim();
     const rawTc = String(st.tc || st.tc_no || st.tcNo || '').trim();
     const rawNo = String(st.no || st.student_no || st.studentNo || st.school_number || '').trim();
     
     const dbSt = studentMap[rawId] || studentMap[rawTc] || studentMap[rawNo];
-    if (!dbSt) return false;
+    if (!dbSt) {
+      console.log("⚠️ [LOG] Öğrenci Map'te Bulunamadı:", { rawId, rawTc, rawNo });
+      return false;
+    }
+    
     const resolvedTc = decryptTC(dbSt.tc_no || st.tc_no || st.tc);
-    if (!resolvedTc || resolvedTc === '-') return false;
+    if (!resolvedTc || resolvedTc === '-') {
+      console.log("⚠️ [LOG] TC Çözülemedi veya Boş:", dbSt);
+      return false;
+    }
     
     if (targetGradeStr) {
       const studentGrade = String(dbSt.grade || st.grade || st.sinif || '').replace(/\D/g, '');
       if (studentGrade && studentGrade !== targetGradeStr) {
+        console.log("⚠️ [LOG] Sınıf Uyuşmazlığı Nedeniyle Elendi:", { studentGrade, targetGradeStr, student: dbSt });
         return false;
       }
     }
     
     return true;
   });
+
+  console.log("🔍 [LOG] Filtreleme Sonrası Ekranda Görünecek 'assignments' Sayısı:", assignments.length);
 
   const groupedByRoom = assignments.reduce((acc, curr) => {
     const roomName = getRoomName(curr);
@@ -1197,4 +1219,4 @@ const ExamAttendanceLists = () => {
   );
 };
 
-export default ExamAttendanceLists;
+export data export default ExamAttendanceLists;
