@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import * as XLSX from 'xlsx';
 import { supabase } from '../supabase';
-import { encrypt, decrypt } from '../utils/encryption';
 
 const ExcelUpload = ({ onUploadComplete }) => {
   const [uploading, setUploading] = useState(false);
@@ -28,26 +27,18 @@ const ExcelUpload = ({ onUploadComplete }) => {
           return;
         }
 
-        // 1. Veritabanındaki mevcut tüm öğrencileri çek (TC karşılaştırması için)
+        // 1. Veritabanındaki mevcut tüm öğrencileri çek (Öğrenci Numarası karşılaştırması için)
         const { data: dbStudents, error: fetchError } = await supabase
           .from('students')
           .select('*');
 
         if (fetchError) throw fetchError;
 
-        // Mevcut verileri çözülmüş TC anahtarlı bir Map yapısına atalım
+        // Mevcut verileri okul numarası anahtarlı bir Map yapısına atalım
         const dbMap = new Map();
         (dbStudents || []).forEach((st) => {
-          try {
-            let decryptedTc = st.tc_no;
-            if (decryptedTc && decryptedTc.length > 20) {
-              decryptedTc = decrypt(decryptedTc);
-            }
-            if (decryptedTc) {
-              dbMap.set(String(decryptedTc).trim(), st);
-            }
-          } catch (err) {
-            console.warn('TC çözme hatası:', err);
+          if (st.student_no) {
+            dbMap.set(String(st.student_no).trim(), st);
           }
         });
 
@@ -55,20 +46,20 @@ const ExcelUpload = ({ onUploadComplete }) => {
         let updatedCount = 0;
         let deletedCount = 0;
 
-        const excelTcSet = new Set();
+        const excelStudentNoSet = new Set();
         const operations = [];
 
         // 2. Excel'deki satırları dön (Ekleme veya Güncelleme)
         for (const row of jsonData) {
-          const rawTc = row['TC Kimlik Numarası'] ? String(row['TC Kimlik Numarası']).trim() : '';
-          if (!rawTc) continue;
+          const rawStudentNo = row['Okul Numarası'] ? String(row['Okul Numarası']).trim() : '';
+          if (!rawStudentNo) continue;
 
-          excelTcSet.add(rawTc);
+          excelStudentNoSet.add(rawStudentNo);
 
           let gradeVal = row['Sınıf'] ? String(row['Sınıf']).trim() : '';
           let classVal = row['Şube'] ? String(row['Şube']).trim() : '';
 
-          // Ekran görüntüsündeki gibi şube hücresinde "8 A" şeklinde birleşik yazılmışsa ayır
+          // Şube hücresinde "8 A" şeklinde birleşik yazılmışsa ayır
           if (!gradeVal && classVal.includes(' ')) {
             const parts = classVal.split(' ');
             gradeVal = parts[0];
@@ -80,21 +71,19 @@ const ExcelUpload = ({ onUploadComplete }) => {
             last_name: row['Soyadı'] ? String(row['Soyadı']).trim() : '',
             grade: gradeVal,
             class: classVal,
-            student_no: row['Okul Numarası'] ? String(row['Okul Numarası']).trim() : '',
+            student_no: rawStudentNo,
             field: row['Alan'] || '',
             gender: row['Cinsiyet'] || '',
             second_lang: row['Yabancı Dil Bilgisi'] || '',
           };
 
-          const existingStudent = dbMap.get(rawTc);
+          const existingStudent = dbMap.get(rawStudentNo);
 
           if (!existingStudent) {
             // Sistemde yoksa -> EKLE
-            const encryptedTc = encrypt(rawTc);
             operations.push(
               supabase.from('students').insert({
                 ...incomingData,
-                tc_no: encryptedTc,
                 created_at: new Date().toISOString(),
               })
             );
@@ -106,7 +95,6 @@ const ExcelUpload = ({ onUploadComplete }) => {
               String(existingStudent.class || '') !== String(incomingData.class) ||
               String(existingStudent.first_name || '') !== String(incomingData.first_name) ||
               String(existingStudent.last_name || '') !== String(incomingData.last_name) ||
-              String(existingStudent.student_no || '') !== String(incomingData.student_no) ||
               String(existingStudent.field || '') !== String(incomingData.field) ||
               String(existingStudent.gender || '') !== String(incomingData.gender) ||
               String(existingStudent.second_lang || '') !== String(incomingData.second_lang);
@@ -124,8 +112,8 @@ const ExcelUpload = ({ onUploadComplete }) => {
         }
 
         // 3. Excel listesinde olmayıp veritabanında kalanları SİL
-        for (const [dbTc, dbSt] of dbMap.entries()) {
-          if (!excelTcSet.has(dbTc)) {
+        for (const [dbStudentNo, dbSt] of dbMap.entries()) {
+          if (!excelStudentNoSet.has(dbStudentNo)) {
             operations.push(
               supabase.from('students').delete().eq('id', dbSt.id)
             );
@@ -163,7 +151,7 @@ const ExcelUpload = ({ onUploadComplete }) => {
     <div style={{ margin: '1rem 0', padding: '1rem', border: '1px solid #ddd', borderRadius: '8px', background: '#f9f9f9' }}>
       <h4>📤 Otomatik Excel Senkronizasyonu</h4>
       <p style={{ fontSize: '0.85rem', color: '#555', marginBottom: '0.8rem' }}>
-        Yüklenen Excel dosyasındaki TC kimlik numaraları taranır: Sistemde olmayanlar eklenir, bilgileri değişenler güncellenir, Excel'de bulunmayan eski kayıtlar silinir.
+        Yüklenen Excel dosyasındaki okul numaraları taranır: Sistemde olmayanlar eklenir, bilgileri değişenler güncellenir, Excel'de bulunmayan eski kayıtlar silinir.
       </p>
 
       <div>
@@ -200,5 +188,7 @@ const ExcelUpload = ({ onUploadComplete }) => {
     </div>
   );
 };
+
+ExcelUpload.displayName = 'ExcelUpload';
 
 export default ExcelUpload;
