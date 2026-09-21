@@ -1,4 +1,3 @@
-// ExamAttendanceLists.jsx
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabase';
 import * as XLSX from 'xlsx';
