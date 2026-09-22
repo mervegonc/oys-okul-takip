@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../supabase';
 import ExcelUpload from '../components/ExcelUpload';
-import { encrypt, decrypt } from '../utils/encryption';
 import { FaTrash, FaUserPlus, FaSort, FaSortUp, FaSortDown, FaFilter, FaFileExcel } from 'react-icons/fa';
-import * as XLSX from 'xlsx'; // Excel dışa aktarımı için SheetJS kütüphanesi
+import * as XLSX from 'xlsx';
 import '../styles/Students.css';
+
 const Students = () => {
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -29,7 +29,6 @@ const Students = () => {
     grade: '',
     class: '',
     studentNo: '',
-    tcNo: '',
     field: '',
     secondLang: 'None',
     gender: '',
@@ -90,7 +89,6 @@ const Students = () => {
         grade: 'grade',
         class: 'class',
         studentNo: 'student_no',
-        tcNo: 'tc_no',
         field: 'field',
         secondLang: 'second_lang',
         gender: 'gender',
@@ -105,37 +103,19 @@ const Students = () => {
 
       if (error) throw error;
 
-      const isAdmin = true;
-      const processed = (data || []).map((raw) => {
-        const student = {
-          id: raw.id,
-          firstName: raw.first_name || '',
-          lastName: raw.last_name || '',
-          grade: raw.grade || '',
-          class: raw.class || '',
-          studentNo: raw.student_no || '',
-          tcNo: raw.tc_no || '',
-          field: raw.field || '',
-          secondLang: raw.second_lang || '',
-          gender: raw.gender || '',
-          englishLevel: raw.english_level || 'Core',
-          createdAt: raw.created_at,
-        };
-
-        let tcNo = student.tcNo || '';
-
-        if (isAdmin) {
-          try {
-            if (tcNo && tcNo.length > 20) tcNo = decrypt(tcNo);
-          } catch (e) {
-            console.warn('Çözümleme hatası:', e);
-          }
-        } else {
-          tcNo = '***';
-        }
-
-        return { ...student, tcNo };
-      });
+      const processed = (data || []).map((raw) => ({
+        id: raw.id,
+        firstName: raw.first_name || '',
+        lastName: raw.last_name || '',
+        grade: raw.grade || '',
+        class: raw.class || '',
+        studentNo: raw.student_no || '',
+        field: raw.field || '',
+        secondLang: raw.second_lang || '',
+        gender: raw.gender || '',
+        englishLevel: raw.english_level || 'Core',
+        createdAt: raw.created_at,
+      }));
 
       setStudents(processed);
     } catch (error) {
@@ -161,38 +141,23 @@ const Students = () => {
       const { data, error } = await query;
       if (error) throw error;
 
-      // Verileri tablo formatına ve şifresi çözülmüş TC'ye dönüştür
-      const excelData = (data || []).map((raw, index) => {
-        let rawTc = raw.tc_no || '';
-        try {
-          if (rawTc && rawTc.length > 20) {
-            rawTc = decrypt(rawTc);
-          }
-        } catch (e) {
-          console.warn('TC Çözümleme hatası:', e);
-        }
+      const excelData = (data || []).map((raw, index) => ({
+        '#': index + 1,
+        'Ad': raw.first_name || '',
+        'Soyad': raw.last_name || '',
+        'Sınıf': raw.grade || '',
+        'Şube': raw.class || '',
+        'Öğrenci No': raw.student_no || '',
+        'Alan': raw.field || '',
+        '2. Dil': raw.second_lang || '',
+        'Cinsiyet': raw.gender || '',
+        'İngilizce Seviyesi': raw.english_level || 'Core',
+      }));
 
-        return {
-          '#': index + 1,
-          'Ad': raw.first_name || '',
-          'Soyad': raw.last_name || '',
-          'Sınıf': raw.grade || '',
-          'Şube': raw.class || '',
-          'Öğrenci No': raw.student_no || '',
-          'TC Kimlik No': rawTc,
-          'Alan': raw.field || '',
-          '2. Dil': raw.second_lang || '',
-          'Cinsiyet': raw.gender || '',
-          'İngilizce Seviyesi': raw.english_level || 'Core',
-        };
-      });
-
-      // SheetJS ile Excel dosyası oluşturma
       const worksheet = XLSX.utils.json_to_sheet(excelData);
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, worksheet, 'Öğrenciler');
 
-      // Dosyayı oluştur ve indir
       XLSX.writeFile(workbook, `Ogrenci_Listesi_${selectedGradeFilter}_Sinif.xlsx`);
     } catch (error) {
       console.error('Excel dışa aktarma hatası:', error);
@@ -231,13 +196,12 @@ const Students = () => {
       return;
     }
     try {
-      const encryptedData = {
+      const studentData = {
         first_name: newStudent.firstName,
         last_name: newStudent.lastName,
         grade: newStudent.grade,
         class: newStudent.class,
         student_no: newStudent.studentNo,
-        tc_no: encrypt(newStudent.tcNo),
         field: newStudent.field,
         second_lang: newStudent.secondLang,
         gender: newStudent.gender,
@@ -245,7 +209,7 @@ const Students = () => {
         created_at: new Date().toISOString(),
       };
 
-      const { error } = await supabase.from('students').insert(encryptedData);
+      const { error } = await supabase.from('students').insert(studentData);
       if (error) throw error;
 
       setNewStudent({
@@ -254,7 +218,6 @@ const Students = () => {
         grade: '',
         class: '',
         studentNo: '',
-        tcNo: '',
         field: '',
         secondLang: 'None',
         gender: '',
@@ -495,7 +458,6 @@ const Students = () => {
             <FaUserPlus /> Yeni Öğrenci
           </button>
 
-          {/* TÜM ÖĞRENCİLERİ EXCEL OLARAK İNDİR BUTONU */}
           <button
             onClick={handleExportAllToExcel}
             disabled={exporting}
@@ -557,7 +519,6 @@ const Students = () => {
             <input type="text" placeholder="Sınıf (örn: 5, 10)" value={newStudent.grade} onChange={(e) => setNewStudent({ ...newStudent, grade: e.target.value })} style={{ padding: '0.4rem' }} />
             <input type="text" placeholder="Şube (örn: C)" value={newStudent.class} onChange={(e) => setNewStudent({ ...newStudent, class: e.target.value })} style={{ padding: '0.4rem' }} />
             <input type="text" placeholder="Öğrenci No" value={newStudent.studentNo} onChange={(e) => setNewStudent({ ...newStudent, studentNo: e.target.value })} style={{ padding: '0.4rem' }} />
-            <input type="text" placeholder="TC Kimlik No" value={newStudent.tcNo} onChange={(e) => setNewStudent({ ...newStudent, tcNo: e.target.value })} style={{ padding: '0.4rem' }} />
             <input type="text" placeholder="Öğrenim Alanı" value={newStudent.field} onChange={(e) => setNewStudent({ ...newStudent, field: e.target.value })} style={{ padding: '0.4rem' }} />
             <input type="text" placeholder="Cinsiyet" value={newStudent.gender} onChange={(e) => setNewStudent({ ...newStudent, gender: e.target.value })} style={{ padding: '0.4rem' }} />
             <select value={newStudent.secondLang} onChange={(e) => setNewStudent({ ...newStudent, secondLang: e.target.value })} style={{ padding: '0.4rem' }}>
@@ -596,7 +557,6 @@ const Students = () => {
               <th onClick={() => handleSort('grade')}>Sınıf {getSortIcon('grade')}</th>
               <th onClick={() => handleSort('class')}>Şube {getSortIcon('class')}</th>
               <th onClick={() => handleSort('studentNo')}>No {getSortIcon('studentNo')}</th>
-              <th>TC</th>
               <th onClick={() => handleSort('field')}>Alan {getSortIcon('field')}</th>
               <th onClick={() => handleSort('secondLang')}>2.Dil {getSortIcon('secondLang')}</th>
               <th onClick={() => handleSort('gender')}>Cinsiyet {getSortIcon('gender')}</th>
@@ -607,7 +567,7 @@ const Students = () => {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan="13" style={{ textAlign: 'center', padding: '1.5rem' }}>Yükleniyor...</td>
+                <td colSpan="12" style={{ textAlign: 'center', padding: '1.5rem' }}>Yükleniyor...</td>
               </tr>
             ) : students.length > 0 ? (
               students.map((student, index) => (
@@ -621,7 +581,6 @@ const Students = () => {
                   <td style={{ padding: '0.5rem', textAlign: 'center' }}>{student.grade}</td>
                   <td style={{ padding: '0.5rem', textAlign: 'center' }}>{student.class}</td>
                   <td style={{ padding: '0.5rem', textAlign: 'center' }}>{student.studentNo}</td>
-                  <td style={{ padding: '0.5rem' }}>{student.tcNo}</td>
                   <td style={{ padding: '0.5rem' }}>{student.field}</td>
                   <td style={{ padding: '0.5rem' }}>{student.secondLang}</td>
                   <td style={{ padding: '0.5rem' }}>{student.gender}</td>
@@ -635,7 +594,7 @@ const Students = () => {
               ))
             ) : (
               <tr>
-                <td colSpan="13" style={{ textAlign: 'center', padding: '1rem' }}>
+                <td colSpan="12" style={{ textAlign: 'center', padding: '1rem' }}>
                   Filtrelere uygun öğrenci bulunamadı.
                 </td>
               </tr>
