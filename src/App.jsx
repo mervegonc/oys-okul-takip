@@ -15,9 +15,9 @@ import ManualEdit from './pages/ManualEdit';
 import AttendanceModule from './pages/AttendanceModule';
 import ExamAttendanceLists from './pages/ExamAttendanceLists';
 import StudentMatrix from './pages/StudentMatrix';
-import Invigilators from './pages/Invigilators'; // Yeni Gözetmenler sayfası
+import Invigilators from './pages/Invigilators';
 import DailyAttendanceList from './pages/DailyAttendanceList';
-import DailyAttendanceList from './pages/Calender';
+import Calendar from './pages/Calendar'; // DÜZELTME: Dosya adının Calendar (a harfiyle) olduğunu varsayarak
 
 function App() {
   const [user, setUser] = useState(null);
@@ -90,13 +90,13 @@ function App() {
                   <Route path="/student-matrix" element={
                     hasPermission(userEmail, 'exam') ? <StudentMatrix /> : <Navigate to="/" />
                   } />
-                  <Route path="/" element={<Navigate to="/students" />} />
                   <Route path="/daily-attendance-list" element={
-  hasPermission(userEmail, 'exam') ? <DailyAttendanceList /> : <Navigate to="/" />
-} />
-                       <Route path="/calender" element={
-                    hasPermission(userEmail, 'exam') ? <Calender /> : <Navigate to="/" />
+                    hasPermission(userEmail, 'exam') ? <DailyAttendanceList /> : <Navigate to="/" />
                   } />
+                  <Route path="/calendar" element={
+                    hasPermission(userEmail, 'exam') ? <Calendar /> : <Navigate to="/" />
+                  } />
+                  <Route path="/" element={<Navigate to="/students" />} />
                 </Routes>
               </>
             ) : (
