@@ -1,10 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from '../supabase'; // Projenin ana supabase bağlantısını kullanıyoruz
 
-// Supabase istemci bağlantını buraya ekle (veya dışarıdan import et)
-const supabase = createClient('SENIN_SUPABASE_URL', 'SENIN_SUPABASE_ANON_KEY');
-
-export default function Calender() {
+export default function Calendar() {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   
@@ -54,7 +51,7 @@ export default function Calender() {
   // Yeni etkinlik kaydetme
   const handleAddEvent = async (e) => {
     e.preventDefault();
-    const { data, error } = await supabase.from('school_calendar').insert([newEvent]);
+    const { error } = await supabase.from('school_calendar').insert([newEvent]);
     if (error) {
       alert('Kayıt eklenirken hata oluştu: ' + error.message);
     } else {
@@ -89,7 +86,7 @@ export default function Calender() {
   };
 
   return (
-    <div className="max-w-6xl mx-auto p-6 bg-slate-50 min-h-screen rounded-xl shadow-sm">
+    <div className="max-w-6xl mx-auto p-6 bg-slate-50 min-h-screen rounded-xl shadow-sm mt-4">
       {/* Üst Başlık ve Ekle Butonu */}
       <div className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
         <div>
@@ -177,7 +174,7 @@ export default function Calender() {
       {/* Detay Modalı */}
       {activeEvent && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl animate-in fade-in zoom-in duration-200">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl">
             <div className="flex justify-between items-start mb-4">
               <div>
                 {getCategoryBadge(activeEvent.category)}
@@ -246,7 +243,7 @@ export default function Calender() {
                   required
                   value={newEvent.title}
                   onChange={(e) => setNewEvent({ ...newEvent, title: e.target.value })}
-                  placeholder="Örn: 12. Sınıf Yaz Ödevi veya 3D TYT Deneme-1"
+                  placeholder="Örn: 12. Sınıf Yaz Ödevi veya Deneme Sınavı"
                   className="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-hidden"
                 />
               </div>
@@ -309,7 +306,7 @@ export default function Calender() {
                   rows="3"
                   value={newEvent.description}
                   onChange={(e) => setNewEvent({ ...newEvent, description: e.target.value })}
-                  placeholder="PDF'te yer alan detaylar, çözülecek testler veya deneme yayın adları..."
+                  placeholder="Detaylar veya notlar..."
                   className="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-hidden"
                 ></textarea>
               </div>
