@@ -17,6 +17,7 @@ import ExamAttendanceLists from './pages/ExamAttendanceLists';
 import StudentMatrix from './pages/StudentMatrix';
 import Invigilators from './pages/Invigilators'; // Yeni Gözetmenler sayfası
 import DailyAttendanceList from './pages/DailyAttendanceList';
+import DailyAttendanceList from './pages/Calender';
 
 function App() {
   const [user, setUser] = useState(null);
@@ -93,6 +94,9 @@ function App() {
                   <Route path="/daily-attendance-list" element={
   hasPermission(userEmail, 'exam') ? <DailyAttendanceList /> : <Navigate to="/" />
 } />
+                       <Route path="/calender" element={
+                    hasPermission(userEmail, 'exam') ? <Calender /> : <Navigate to="/" />
+                  } />
                 </Routes>
               </>
             ) : (
