@@ -15,8 +15,9 @@ import ManualEdit from './pages/ManualEdit';
 import AttendanceModule from './pages/AttendanceModule';
 import ExamAttendanceLists from './pages/ExamAttendanceLists';
 import StudentMatrix from './pages/StudentMatrix';
-import Invigilators from './pages/Invigilators'; // Yeni Gözetmenler sayfası
+import Invigilators from './pages/Invigilators';
 import DailyAttendanceList from './pages/DailyAttendanceList';
+import Calendar from './pages/Calendar'; // Veya dosya yolun neresiyse (örn: './components/Calendar')
 
 function App() {
   const [user, setUser] = useState(null);
@@ -51,6 +52,7 @@ function App() {
           element={
             user ? (
               <>
+                {/* Navbar burada kullanıcı giriş yaptığında sabit olarak kalır */}
                 <Navbar userEmail={userEmail} />
                 <Routes>
                   <Route path="/students" element={
@@ -89,10 +91,13 @@ function App() {
                   <Route path="/student-matrix" element={
                     hasPermission(userEmail, 'exam') ? <StudentMatrix /> : <Navigate to="/" />
                   } />
-                  <Route path="/" element={<Navigate to="/students" />} />
                   <Route path="/daily-attendance-list" element={
-  hasPermission(userEmail, 'exam') ? <DailyAttendanceList /> : <Navigate to="/" />
-} />
+                    hasPermission(userEmail, 'exam') ? <DailyAttendanceList /> : <Navigate to="/" />
+                  } />
+                  {/* Yeni Takvim Sayfası Rotalaması */}
+                  <Route path="/calendar" element={<Calendar />} />
+                  
+                  <Route path="/" element={<Navigate to="/students" />} />
                 </Routes>
               </>
             ) : (
