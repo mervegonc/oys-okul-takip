@@ -33,7 +33,7 @@ const DisciplineTracking = () => {
     fetchTotalCount();
   }, []);
 
-  // 2. Server-Side Çoklu İsim ve Parçalı Kelime Arama + Bugün Kayıt Kontrolü
+  // 2. Server-Side Çoklu İsim ve Parçalı Kelime Arama + Bugün Kayıt Kontrolü (TC koşulu esnetildi)
   useEffect(() => {
     const searchStudents = async () => {
       const term = searchTerm.trim();
@@ -59,6 +59,7 @@ const DisciplineTracking = () => {
             .replace(/I/g, 'ı')
             .replace(/İ/g, 'i');
 
+          // tc_no araması kaldırıldı veya opsiyonel hale getirildi ki şifreli/boş alanlar aramayı engellemesin
           const wordSearchPattern = [
             `first_name.ilike.%${original}%`,
             `first_name.ilike.%${upperTr}%`,
@@ -68,8 +69,7 @@ const DisciplineTracking = () => {
             `last_name.ilike.%${upperTr}%`,
             `last_name.ilike.%${lowerTr}%`,
             `last_name.ilike.%${alt}%`,
-            `student_no.ilike.%${original}%`,
-            `tc_no.ilike.%${original}%`
+            `student_no.ilike.%${original}%`
           ].join(',');
 
           query = query.or(wordSearchPattern);
@@ -98,7 +98,6 @@ const DisciplineTracking = () => {
 
           if (!discError && disciplineData) {
             const recordedIds = new Set(disciplineData.map(d => d.student_id));
-            // Her öğrenci objesine hasRecordedToday alanı ekleyelim
             const enrichedStudents = studentsData.map(student => ({
               ...student,
               hasRecordedToday: recordedIds.has(student.id)
