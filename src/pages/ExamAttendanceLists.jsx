@@ -413,11 +413,7 @@ const ExamAttendanceLists = () => {
       return false;
     }
     
-    const resolvedTc = decryptTC(dbSt.tc_no || st.tc_no || st.tc);
-    if (!resolvedTc || resolvedTc === '-') {
-      console.log("⚠️ [LOG] TC Çözülemedi veya Boş:", dbSt);
-      return false;
-    }
+    // TC kontrolü zorunluluktan çıkarıldı, eksik veya şifreli olsa bile öğrenciler listelenecek.
     
     if (targetGradeStr) {
       const studentGrade = String(dbSt.grade || st.grade || st.sinif || '').replace(/\D/g, '');
