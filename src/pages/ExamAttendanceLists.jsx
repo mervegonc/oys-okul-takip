@@ -1,37 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabase';
 import * as XLSX from 'xlsx';
-import CryptoJS from 'crypto-js';
-
-const decryptTC = (cipherText) => {
-  if (!cipherText || typeof cipherText !== 'string') return '-';
-
-  if (!cipherText.startsWith('U2FsdGVkX1')) {
-    return cipherText;
-  }
-
-  const envKey = import.meta.env ? import.meta.env.VITE_ENCRYPTION_KEY : null;
-
-  const SECRET_KEYS = [
-    envKey,
-    typeof process !== 'undefined' ? process.env?.VITE_ENCRYPTION_KEY : null,
-    typeof process !== 'undefined' ? process.env?.REACT_APP_ENCRYPTION_KEY : null,
-  ].filter(Boolean);
-
-  for (const key of SECRET_KEYS) {
-    try {
-      const bytes = CryptoJS.AES.decrypt(cipherText, key);
-      const decrypted = bytes.toString(CryptoJS.enc.Utf8);
-      if (decrypted && decrypted.trim().length > 0) {
-        return decrypted.trim();
-      }
-    } catch (e) {
-      // Key eşleşmediyse devam et
-    }
-  }
-
-  return cipherText;
-};
 
 const ExamAttendanceLists = () => {
   const [exams, setExams] = useState([]);
@@ -43,7 +12,6 @@ const ExamAttendanceLists = () => {
   const [loading, setLoading] = useState(false);
 
   const [activeTab, setActiveTab] = useState('attendance');
-  const [showTc, setShowTc] = useState(true);
   const [showRoomCode, setShowRoomCode] = useState(true);
   const [examCategory, setExamCategory] = useState('akademik_lise');
   
@@ -284,9 +252,6 @@ const ExamAttendanceLists = () => {
 
     const dbSt = studentMap[rawId] || studentMap[rawTc] || studentMap[rawNo] || {};
 
-    const cipherTc = dbSt.tc_no || st.tc_no || st.tc || st.tcNo || '';
-    const tc = decryptTC(cipherTc);
-
     const studentNo = dbSt.student_no || st.student_no || st.no || st.studentNo || '-';
 
     let firstName = dbSt.first_name || st.first_name || st.ad || '';
@@ -323,7 +288,6 @@ const ExamAttendanceLists = () => {
     const secondLanguage = dbSt.second_lang || dbSt.second_language || dbSt.ikinci_yabanci_dil || st.secondLanguage || st.ikinci_dil || '-';
 
     return {
-      tc,
       studentNo,
       fullName,
       surnameFirstFormat,
@@ -399,34 +363,23 @@ const ExamAttendanceLists = () => {
   const rawAssignments = seatingPlan?.assignments || [];
   const targetGradeStr = String(selectedExam?.grade || selectedExam?.sinif || '').replace(/\D/g, '');
 
-  console.log("🔍 [LOG] Filtreleme Öncesi Ham Atama Sayısı:", rawAssignments.length);
-  console.log("🔍 [LOG] Hedef Sınıf Filtresi (targetGradeStr):", targetGradeStr);
-
   const assignments = rawAssignments.filter(st => {
     const rawId = String(st.studentId || st.student_id || st.id || '').trim();
     const rawTc = String(st.tc || st.tc_no || st.tcNo || '').trim();
     const rawNo = String(st.no || st.student_no || st.studentNo || st.school_number || '').trim();
     
     const dbSt = studentMap[rawId] || studentMap[rawTc] || studentMap[rawNo];
-    if (!dbSt) {
-      console.log("⚠️ [LOG] Öğrenci Map'te Bulunamadı:", { rawId, rawTc, rawNo });
-      return false;
-    }
-    
-    // TC kontrolü zorunluluktan çıkarıldı, eksik veya şifreli olsa bile öğrenciler listelenecek.
+    if (!dbSt) return false;
     
     if (targetGradeStr) {
       const studentGrade = String(dbSt.grade || st.grade || st.sinif || '').replace(/\D/g, '');
       if (studentGrade && studentGrade !== targetGradeStr) {
-        console.log("⚠️ [LOG] Sınıf Uyuşmazlığı Nedeniyle Elendi:", { studentGrade, targetGradeStr, student: dbSt });
         return false;
       }
     }
     
     return true;
   });
-
-  console.log("🔍 [LOG] Filtreleme Sonrası Ekranda Görünecek 'assignments' Sayısı:", assignments.length);
 
   const groupedByRoom = assignments.reduce((acc, curr) => {
     const roomName = getRoomName(curr);
@@ -540,9 +493,6 @@ const ExamAttendanceLists = () => {
           item['2. Yab. Dil'] = det.secondLanguage;
         } else if (examCategory === 'sadece_ingilizce') {
           item['İng. Seviye'] = det.englishLevel;
-        }
-        if (showTc) {
-          item['TC Kimlik No'] = det.tc;
         }
         item['Öğrenci No'] = det.studentNo;
         return item;
@@ -762,10 +712,6 @@ const ExamAttendanceLists = () => {
               </div>
 
               <div style={{ display: 'flex', alignItems: 'center', marginTop: '1.2rem', gap: '1.2rem' }}>
-                <label style={{ fontSize: '0.9rem', cursor: 'pointer', fontWeight: 'bold', color: '#2b6cb0' }}>
-                  <input type="checkbox" checked={showTc} onChange={(e) => setShowTc(e.target.checked)} style={{ marginRight: '0.5rem' }} />
-                  TC Kimlik No Göster
-                </label>
                 <label style={{ fontSize: '0.9rem', cursor: 'pointer', fontWeight: 'bold', color: '#16a34a' }}>
                   <input type="checkbox" checked={showRoomCode} onChange={(e) => setShowRoomCode(e.target.checked)} style={{ marginRight: '0.5rem' }} />
                   Salon Şube Kodunu Göster
@@ -946,25 +892,24 @@ const ExamAttendanceLists = () => {
                     <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                       <thead>
                         <tr style={{ background: '#eee' }}>
-                          <th style={{ width: '5%', textAlign: 'center' }}>SIRA</th>
-                          {showTc && <th style={{ width: '16%', textAlign: 'center' }}>TC KİMLİK NO</th>}
-                          <th style={{ width: '11%', textAlign: 'center' }}>ÖĞR. NO</th>
+                          <th style={{ width: '6%', textAlign: 'center' }}>SIRA</th>
+                          <th style={{ width: '13%', textAlign: 'center' }}>ÖĞR. NO</th>
                           <th>ÖĞRENCİ ADI SOYADI</th>
-                          <th style={{ width: '11%', textAlign: 'center' }}>SINIF / ŞUBE</th>
+                          <th style={{ width: '13%', textAlign: 'center' }}>SINIF / ŞUBE</th>
                           
                           {examCategory === 'akademik_lise' && (
-                            <th style={{ width: '10%', textAlign: 'center' }}>ALAN</th>
+                            <th style={{ width: '12%', textAlign: 'center' }}>ALAN</th>
                           )}
                           {examCategory === 'sadece_ingilizce' && (
-                            <th style={{ width: '12%', textAlign: 'center' }}>İNG. SEVİYE</th>
+                            <th style={{ width: '14%', textAlign: 'center' }}>İNG. SEVİYE</th>
                           )}
                           {examCategory === 'sadece_ikinci_dil' && (
-                            <th style={{ width: '12%', textAlign: 'center' }}>2. YAB. DİL</th>
+                            <th style={{ width: '14%', textAlign: 'center' }}>2. YAB. DİL</th>
                           )}
                           {examCategory === 'ingilizce_ve_ikinci_dil' && (
                             <>
-                              <th style={{ width: '11%', textAlign: 'center' }}>İNG. SEVİYE</th>
-                              <th style={{ width: '11%', textAlign: 'center' }}>2. YAB. DİL</th>
+                              <th style={{ width: '12%', textAlign: 'center' }}>İNG. SEVİYE</th>
+                              <th style={{ width: '12%', textAlign: 'center' }}>2. YAB. DİL</th>
                             </>
                           )}
 
@@ -981,7 +926,6 @@ const ExamAttendanceLists = () => {
                           return (
                             <tr key={st.studentId || st.id || sIdx}>
                               <td style={{ textAlign: 'center', fontWeight: 'bold' }}>{st.seatNumber || st.seat_number || (sIdx + 1)}</td>
-                              {showTc && <td style={{ textAlign: 'center', fontFamily: 'monospace', fontWeight: '500' }}>{det.tc}</td>}
                               <td style={{ textAlign: 'center', fontWeight: '600' }}>{det.studentNo}</td>
                               <td style={{ fontWeight: '500' }}>{det.fullName}</td>
                               <td style={{ textAlign: 'center' }}>{det.grade}-{det.className}</td>
