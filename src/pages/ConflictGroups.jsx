@@ -1,47 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabase';
-import { FaPlus, FaTrash } from 'react-icons/fa';
+import { FaPlus, FaTrash, FaUserPlus } from 'react-icons/fa';
 
 const ConflictGroups = () => {
   const [groups, setGroups] = useState([]);
   const [students, setStudents] = useState([]);
-  const [selectedExam, setSelectedExam] = useState('');
-  const [exams, setExams] = useState([]);
+  const [selectedGrade, setSelectedGrade] = useState('12'); // Varsayılan sınıf seviyesi
   const [newGroupName, setNewGroupName] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  // Tüm sınavları getir
+  // Tüm öğrencileri veya seçilen sınıf seviyesindeki öğrencileri getir
   useEffect(() => {
-    const fetchExams = async () => {
-      try {
-        const { data, error } = await supabase
-          .from('exams')
-          .select('*')
-          .order('created_at', { ascending: false });
-        if (error) throw error;
-        setExams(data || []);
-      } catch (error) {
-        console.error('Sınavlar alınamadı:', error);
-      }
-    };
-    fetchExams();
-  }, []);
-
-  // Sınav seçildiğinde o sınıflardaki öğrencileri getir
-  useEffect(() => {
-    if (!selectedExam) {
-      setStudents([]);
-      return;
-    }
     const fetchStudents = async () => {
-      const exam = exams.find(e => e.id === selectedExam);
-      if (!exam) return;
-      const gradeLevels = exam.grade_levels || exam.gradeLevels || [];
-      if (gradeLevels.length === 0) return;
       try {
         const { data, error } = await supabase
           .from('students')
           .select('*')
-          .in('grade', gradeLevels.map(String));
+          .eq('grade', selectedGrade);
         if (error) throw error;
         setStudents(data || []);
       } catch (error) {
@@ -49,38 +24,32 @@ const ConflictGroups = () => {
       }
     };
     fetchStudents();
-  }, [selectedExam, exams]);
+  }, [selectedGrade]);
 
-  // Mevcut çakışma gruplarını getir
+  // Genel (Sınav bağımsız) çakışma gruplarını getir
   const fetchGroups = async () => {
-    if (!selectedExam) {
-      setGroups([]);
-      return;
-    }
+    setLoading(true);
     try {
       const { data, error } = await supabase
         .from('conflict_groups')
-        .select('*')
-        .eq('exam_id', selectedExam);
+        .select('*');
       if (error) throw error;
       setGroups(data || []);
     } catch (error) {
       console.error('Gruplar alınamadı:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
   useEffect(() => {
     fetchGroups();
-  }, [selectedExam]);
+  }, []);
 
-  // Yeni Grup Ekle
+  // Yeni Genel Grup Ekle
   const handleAddGroup = async () => {
     if (!newGroupName.trim()) {
-      alert('Grup adı girin.');
-      return;
-    }
-    if (!selectedExam) {
-      alert('Lütfen bir sınav seçin.');
+      alert('Lütfen bir grup adı girin.');
       return;
     }
     try {
@@ -89,7 +58,6 @@ const ConflictGroups = () => {
         .insert([
           {
             name: newGroupName.trim(),
-            exam_id: selectedExam,
             student_ids: [],
             created_at: new Date().toISOString(),
           }
@@ -107,7 +75,7 @@ const ConflictGroups = () => {
 
   // Grup Sil
   const handleDeleteGroup = async (groupId) => {
-    if (!window.confirm('Bu grubu silmek istediğinize emin misiniz?')) return;
+    if (!window.confirm('Bu çakışma grubunu tamamen silmek istediğinize emin misiniz?')) return;
     try {
       const { error } = await supabase
         .from('conflict_groups')
@@ -127,7 +95,7 @@ const ConflictGroups = () => {
     if (!group) return;
     const currentStudentIds = group.student_ids || [];
     if (currentStudentIds.includes(studentId)) {
-      alert('Bu öğrenci zaten grupta.');
+      alert('Bu öğrenci zaten bu grupta.');
       return;
     }
     try {
@@ -169,151 +137,143 @@ const ConflictGroups = () => {
 
   return (
     <div style={{ padding: '1rem', maxWidth: '1200px', margin: '0 auto' }}>
-      <h2>🚫 Çakışma Grupları</h2>
+      <h2>🚫 Ortak Çakışma Grupları</h2>
       <p style={{ color: '#666' }}>
-        Aynı salona düşmemesi gereken öğrencileri gruplara ekleyin. Sistem, karma dağıtım sırasında 
-        aynı gruptaki öğrencileri farklı salonlara atayacaktır.
+        Burada oluşturduğunuz gruplar (Örn: 12. Sınıf Risk Grubu / Kopya Çakışmaları) tüm sınavlar için 
+        ortak olarak geçerli olur. Her sınav için tekrar grup oluşturmanız gerekmez.
       </p>
 
-      {/* Sınav Seçimi */}
-      <div style={{ marginBottom: '1rem' }}>
-        <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '0.5rem' }}>Sınav Seçin</label>
+      {/* Sınıf Filtresi (Öğrenci eklemeyi kolaylaştırmak için) */}
+      <div style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+        <label style={{ fontWeight: 'bold' }}>Öğrenci Listesi Sınıf Filtresi:</label>
         <select
-          value={selectedExam}
-          onChange={(e) => setSelectedExam(e.target.value)}
-          style={{ width: '100%', padding: '0.5rem', border: '1px solid #ddd', borderRadius: '4px' }}
+          value={selectedGrade}
+          onChange={(e) => setSelectedGrade(e.target.value)}
+          style={{ padding: '0.4rem', border: '1px solid #ddd', borderRadius: '4px' }}
         >
-          <option value="">-- Sınav Seçin --</option>
-          {exams.map(exam => {
-            const grades = exam.grade_levels || exam.gradeLevels || [];
-            const gradeStr = grades.length > 0 ? ` [Sınıflar: ${grades.join(', ')}]` : '';
-            return (
-              <option key={exam.id} value={exam.id}>
-                {exam.title} ({exam.date}){gradeStr}
-              </option>
-            );
-          })}
+          {['9', '10', '11', '12'].map(g => (
+            <option key={g} value={g}>{g}. Sınıf</option>
+          ))}
         </select>
       </div>
 
-      {selectedExam && (
-        <>
-          {/* Yeni Grup Ekle */}
-          <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem' }}>
-            <input
-              type="text"
-              placeholder="Grup adı (örn: 12. Sınıf SBS kopya-1)"
-              value={newGroupName}
-              onChange={(e) => setNewGroupName(e.target.value)}
-              style={{ flex: 1, padding: '0.5rem', border: '1px solid #ddd', borderRadius: '4px' }}
-            />
-            <button
-              onClick={handleAddGroup}
-              style={{
-                padding: '0.5rem 1rem',
-                background: '#28a745',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.5rem',
-              }}
-            >
-              <FaPlus /> Grup Ekle
-            </button>
-          </div>
+      {/* Yeni Grup Ekle */}
+      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem' }}>
+        <input
+          type="text"
+          placeholder="Yeni Grup Adı (örn: 12. Sınıf Çakışma Grubu A)"
+          value={newGroupName}
+          onChange={(e) => setNewGroupName(e.target.value)}
+          style={{ flex: 1, padding: '0.5rem', border: '1px solid #ddd', borderRadius: '4px' }}
+        />
+        <button
+          onClick={handleAddGroup}
+          style={{
+            padding: '0.5rem 1rem',
+            background: '#28a745',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+          }}
+        >
+          <FaPlus /> Grup Oluştur
+        </button>
+      </div>
 
-          {/* Grup Listesi */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1rem' }}>
-            {groups.map((group) => {
-              const currentIds = group.student_ids || [];
-              const groupStudents = students.filter(s => currentIds.map(String).includes(String(s.id)));
-              const availableStudents = students.filter(s => !currentIds.map(String).includes(String(s.id)));
+      {/* Grup Listesi */}
+      {loading ? (
+        <p>Yükleniyor...</p>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1rem' }}>
+          {groups.map((group) => {
+            const currentIds = group.student_ids || [];
+            // Tüm öğrencilerden bu grupta olanları süz
+            const groupStudents = students.filter(s => currentIds.map(String).includes(String(s.id)));
+            const availableStudents = students.filter(s => !currentIds.map(String).includes(String(s.id)));
 
-              return (
-                <div
-                  key={group.id}
-                  style={{
-                    background: '#f8f9fa',
-                    padding: '1rem',
-                    borderRadius: '8px',
-                    border: '1px solid #e0e0e0',
-                  }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                    <h4 style={{ margin: 0 }}>{group.name}</h4>
-                    <button
-                      onClick={() => handleDeleteGroup(group.id)}
-                      style={{
-                        background: 'transparent',
-                        border: 'none',
-                        color: '#dc3545',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      <FaTrash />
-                    </button>
-                  </div>
+            return (
+              <div
+                key={group.id}
+                style={{
+                  background: '#f8f9fa',
+                  padding: '1rem',
+                  borderRadius: '8px',
+                  border: '1px solid #e0e0e0',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                  <h4 style={{ margin: 0, color: '#333' }}>{group.name}</h4>
+                  <button
+                    onClick={() => handleDeleteGroup(group.id)}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      color: '#dc3545',
+                      cursor: 'pointer',
+                    }}
+                    title="Grubu Sil"
+                  >
+                    <FaTrash />
+                  </button>
+                </div>
 
-                  {/* Gruptaki Öğrenciler */}
-                  <div style={{ marginBottom: '0.5rem' }}>
-                    <strong>Öğrenciler:</strong>
-                    {groupStudents.length === 0 ? (
-                      <span style={{ color: '#666', fontSize: '0.9rem', marginLeft: '0.5rem' }}>Henüz öğrenci eklenmemiş</span>
-                    ) : (
-                      <ul style={{ paddingLeft: '1.2rem', margin: '0.3rem 0' }}>
-                        {groupStudents.map(s => (
-                          <li key={s.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '0.2rem 0' }}>
-                            <span>{s.first_name || s.firstName} {s.last_name || s.lastName} ({s.grade}-{s.class})</span>
-                            <button
-                              onClick={() => handleRemoveStudentFromGroup(group.id, s.id)}
-                              style={{
-                                background: 'transparent',
-                                border: 'none',
-                                color: '#dc3545',
-                                cursor: 'pointer',
-                                fontSize: '0.8rem',
-                              }}
-                            >
-                              <FaTrash />
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-
-                  {/* Öğrenci Ekleme Select */}
-                  {availableStudents.length > 0 && (
-                    <div style={{ display: 'flex', gap: '0.3rem', marginTop: '0.5rem' }}>
-                      <select
-                        onChange={(e) => {
-                          if (e.target.value) {
-                            handleAddStudentToGroup(group.id, e.target.value);
-                            e.target.value = '';
-                          }
-                        }}
-                        style={{ flex: 1, padding: '0.3rem', border: '1px solid #ddd', borderRadius: '4px' }}
-                      >
-                        <option value="">Öğrenci ekle...</option>
-                        {availableStudents.map(s => (
-                          <option key={s.id} value={s.id}>
-                            {s.first_name || s.firstName} {s.last_name || s.lastName} ({s.grade}-{s.class})
-                          </option>
-                        ))}
-                      </select>
-                    </div>
+                {/* Gruptaki Öğrenciler */}
+                <div style={{ marginBottom: '0.8rem' }}>
+                  <strong style={{ fontSize: '0.85rem', color: '#555' }}>Gruptaki Öğrenciler ({groupStudents.length}):</strong>
+                  {groupStudents.length === 0 ? (
+                    <div style={{ color: '#888', fontSize: '0.85rem', marginTop: '0.2rem' }}>Henüz öğrenci eklenmemiş</div>
+                  ) : (
+                    <ul style={{ paddingLeft: '1.2rem', margin: '0.3rem 0', maxHeight: '150px', overflowY: 'auto' }}>
+                      {groupStudents.map(s => (
+                        <li key={s.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '0.2rem 0', fontSize: '0.9rem' }}>
+                          <span>{s.first_name || s.firstName} {s.last_name || s.lastName} ({s.grade}-{s.class})</span>
+                          <button
+                            onClick={() => handleRemoveStudentFromGroup(group.id, s.id)}
+                            style={{
+                              background: 'transparent',
+                              border: 'none',
+                              color: '#dc3545',
+                            }}
+                          >
+                            <FaTrash size={12} />
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
                   )}
                 </div>
-              );
-            })}
-            {groups.length === 0 && (
-              <p style={{ color: '#666' }}>Henüz çakışma grubu oluşturulmamış.</p>
-            )}
-          </div>
-        </>
+
+                {/* Öğrenci Ekleme */}
+                <div style={{ display: 'flex', gap: '0.3rem', marginTop: '0.5rem' }}>
+                  <select
+                    onChange={(e) => {
+                      if (e.target.value) {
+                        handleAddStudentToGroup(group.id, e.target.value);
+                        e.target.value = '';
+                      }
+                    }}
+                    style={{ flex: 1, padding: '0.4rem', border: '1px solid #ddd', borderRadius: '4px', fontSize: '0.85rem' }}
+                  >
+                    <option value="">+ {selectedGrade}. Sınıftan öğrenci ekle...</option>
+                    {availableStudents.map(s => (
+                      <option key={s.id} value={s.id}>
+                        {s.first_name || s.firstName} {s.last_name || s.lastName} ({s.grade}-{s.class}) - No: {s.student_no || s.studentNo}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            );
+          })}
+          {groups.length === 0 && (
+            <p style={{ color: '#666' }}>Henüz ortak çakışma grubu oluşturulmamış.</p>
+          )}
+        </div>
       )}
     </div>
   );
