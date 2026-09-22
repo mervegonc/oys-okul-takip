@@ -1219,4 +1219,4 @@ const ExamAttendanceLists = () => {
   );
 };
 
-export data export default ExamAttendanceLists;
+export default ExamAttendanceLists;
