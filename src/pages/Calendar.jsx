@@ -179,6 +179,21 @@ export default function Calendar() {
     }
   };
 
+  // Toplu (Hepsini) Silme Fonksiyonu
+  const handleDeleteAllEvents = async () => {
+    if (window.confirm('DİKKAT: Veritabanındaki TÜM takvim kayıtları kalıcı olarak silinecek. Emin misiniz?')) {
+      // Supabase'de tüm satırları silmek için koşulsuz delete sorgusu (not: RLS politikalarınız izin vermelidir)
+      const { error } = await supabase.from('school_calendar').delete().neq('id', 0);
+      if (error) {
+        alert('Toplu silme hatası: ' + error.message);
+      } else {
+        alert('Tüm takvim kayıtları başarıyla silindi.');
+        setActiveEvent(null);
+        fetchEvents();
+      }
+    }
+  };
+
   const getCategoryBadgeClass = (cat) => {
     switch (cat) {
       case 'exam': return 'badge badge-exam';
@@ -206,11 +221,15 @@ export default function Calendar() {
           <h1 className="calendar-title">Okul İşleyiş ve Sınav Takvimi</h1>
           <p className="calendar-subtitle">Sınavları, ödevleri ve grup değişim tarihlerini buradan takip edebilirsiniz.</p>
         </div>
-        <div style={{ display: 'flex', gap: '10px' }}>
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
           <label className="calendar-add-btn" style={{ background: '#10b981', cursor: 'pointer', display: 'inline-flex', alignItems: 'center' }}>
             📥 Excel ile Yükle
             <input type="file" accept=".xlsx, .xls, .csv" onChange={handleExcelUpload} style={{ display: 'none' }} />
           </label>
+
+          <button onClick={handleDeleteAllEvents} className="calendar-add-btn" style={{ background: '#ef4444' }}>
+            🗑️ Hepsini Sil
+          </button>
 
           <button onClick={() => setIsAddModalOpen(true)} className="calendar-add-btn">
             + Yeni Etkinlik / Sınav Ekle
