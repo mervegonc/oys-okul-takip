@@ -179,11 +179,25 @@ export default function Calendar() {
     }
   };
 
-  // Toplu (Hepsini) Silme Fonksiyonu
+  // UUID tablosuyla uyumlu Düzeltilmiş Toplu Silme Fonksiyonu
   const handleDeleteAllEvents = async () => {
     if (window.confirm('DİKKAT: Veritabanındaki TÜM takvim kayıtları kalıcı olarak silinecek. Emin misiniz?')) {
-      // Supabase'de tüm satırları silmek için koşulsuz delete sorgusu (not: RLS politikalarınız izin vermelidir)
-      const { error } = await supabase.from('school_calendar').delete().neq('id', 0);
+      // Tüm kayıtların id'lerini seçip silme sorgusu gönderiyoruz
+      const { data: allData, error: fetchError } = await supabase.from('school_calendar').select('id');
+      
+      if (fetchError) {
+        alert('Kayıtlar alınırken hata oluştu: ' + fetchError.message);
+        return;
+      }
+
+      if (!allData || allData.length === 0) {
+        alert('Silinecek kayıt bulunmuyor.');
+        return;
+      }
+
+      const idsToDelete = allData.map(item => item.id);
+      const { error } = await supabase.from('school_calendar').delete().in('id', idsToDelete);
+
       if (error) {
         alert('Toplu silme hatası: ' + error.message);
       } else {
