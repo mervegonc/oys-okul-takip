@@ -10,7 +10,6 @@ export default function Calendar() {
   const [selectedGrade, setSelectedGrade] = useState('12');
   const [selectedCategory, setSelectedCategory] = useState('all');
   
-  // Görünüm modları: 'monthly' (Aylık Takvim Izgarası) veya 'weekly' (Haftalık)
   const [viewMode, setViewMode] = useState('monthly');
   const [currentDate, setCurrentDate] = useState(new Date());
 
@@ -69,16 +68,13 @@ export default function Calendar() {
     setCurrentDate(newDate);
   };
 
-  // Ayın günlerini ve boşlukları hesaplama (Pazartesi başlangıçlı takvim için)
   const getDaysInMonth = (year, month) => {
     const date = new Date(year, month, 1);
     const days = [];
     
-    // Haftanın hangi gün başladığını bul (0: Pazar, 1: Pazartesi, ...)
     let firstDayIndex = date.getDay() - 1; 
-    if (firstDayIndex === -1) firstDayIndex = 6; // Pazartesi bazlı yapmak için
+    if (firstDayIndex === -1) firstDayIndex = 6; 
 
-    // Önceki aydan boşluklar
     const prevMonthDays = new Date(year, month, 0).getDate();
     for (let i = firstDayIndex - 1; i >= 0; i--) {
       days.push({
@@ -88,7 +84,6 @@ export default function Calendar() {
       });
     }
 
-    // Bu ayın günleri
     const totalDays = new Date(year, month + 1, 0).getDate();
     for (let i = 1; i <= totalDays; i++) {
       const formattedMonth = String(month + 1).padStart(2, '0');
@@ -102,7 +97,6 @@ export default function Calendar() {
       });
     }
 
-    // Sonraki aydan doldurma (Tabloyu tamamlamak için)
     const totalCells = Math.ceil(days.length / 7) * 7;
     const nextMonthDaysCount = totalCells - days.length;
     for (let i = 1; i <= nextMonthDaysCount; i++) {
@@ -116,7 +110,6 @@ export default function Calendar() {
     return days;
   };
 
-  // Haftalık görünüm için günler
   const getDaysInWeek = (date) => {
     const curr = new Date(date);
     const firstDayOfWeek = new Date(curr.setDate(curr.getDate() - curr.getDay() + (curr.getDay() === 0 ? -6 : 1)));
@@ -139,7 +132,6 @@ export default function Calendar() {
     return days;
   };
 
-  // Etkinlik ekleme, Excel ve diğer fonksiyonlar (Aynı kalıyor)
   const handleAddEvent = async (e) => {
     e.preventDefault();
     const payload = { ...newEvent, end_date: newEvent.end_date ? newEvent.end_date : null };
@@ -256,7 +248,6 @@ export default function Calendar() {
         </div>
       </div>
 
-      {/* Kontroller */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc', padding: '15px', borderRadius: '10px', marginBottom: '20px', border: '1px solid #e2e8f0' }}>
         <div style={{ display: 'flex', gap: '10px' }}>
           <button onClick={() => setViewMode('monthly')} style={{ padding: '8px 16px', background: viewMode === 'monthly' ? '#2563eb' : '#e2e8f0', color: viewMode === 'monthly' ? '#fff' : '#334155', border: 'none', borderRadius: '6px', fontWeight: '600', cursor: 'pointer' }}>Aylık Takvim</button>
@@ -272,7 +263,6 @@ export default function Calendar() {
         </div>
       </div>
 
-      {/* Filtreler */}
       <div style={{ display: 'flex', gap: '15px', marginBottom: '20px' }}>
         <select value={selectedGrade} onChange={(e) => setSelectedGrade(e.target.value)} style={{ padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
           <option value="all">Tüm Okul / Sınıfsız</option>
@@ -290,16 +280,13 @@ export default function Calendar() {
         </select>
       </div>
 
-      {/* Takvim Izgarası (Grid) */}
       <div style={{ background: '#fff', border: '1px solid #cbd5e1', borderRadius: '10px', overflow: 'hidden', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}>
-        {/* Haftanın Günleri Başlığı */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', background: '#f1f5f9', borderBottom: '1px solid #cbd5e1', textAlign: 'center', fontWeight: 'bold', padding: '10px 0', color: '#475569' }}>
           {weekDaysHeader.map((d, index) => (
             <div key={index}>{d}</div>
           ))}
         </div>
 
-        {/* Gün Kutucukları */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gridAutoRows: 'minmax(120px, auto)' }}>
           {daysGrid.map((dayItem, index) => {
             const dayEvents = events.filter(ev => ev.event_date === dayItem.dateStr);
@@ -353,7 +340,6 @@ export default function Calendar() {
         </div>
       </div>
 
-      {/* Detay Modalı */}
       {activeEvent && (
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 }}>
           <div style={{ background: '#fff', padding: '25px', borderRadius: '10px', width: '400px', maxWidth: '90%' }}>
@@ -369,7 +355,6 @@ export default function Calendar() {
         </div>
       )}
 
-      {/* Ekleme Modalı (Önceki ile aynı yapıda) */}
       {isAddModalOpen && (
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 }}>
           <div style={{ background: '#fff', padding: '25px', borderRadius: '10px', width: '450px', maxWidth: '90%' }}>
@@ -410,7 +395,7 @@ export default function Calendar() {
               </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
                 <button type="button" onClick={() => setIsAddModalOpen(false)} style={{ background: '#64748b', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: '4px', cursor: 'pointer' }}>İptal</button>
-                <button type="submit" style={{ background: '#2563eb', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: '4px', cursor: 'pointer' }}>Kaydet</Cbutton>
+                <button type="submit" style={{ background: '#2563eb', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: '4px', cursor: 'pointer' }}>Kaydet</button>
               </div>
             </form>
           </div>
