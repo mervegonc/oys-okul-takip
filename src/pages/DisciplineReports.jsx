@@ -119,7 +119,6 @@ const DisciplineReports = () => {
     };
   });
 
- // Sınıf seviyesi boş veya tanımsız olanları (örneğin sadece 'C' gelenleri) hariç tutarak temiz bir liste elde edelim
   const classStats = classes
     .filter((c) => c !== 'all')
     .map((cls) => {
@@ -127,7 +126,6 @@ const DisciplineReports = () => {
       const sampleGrade = items.length > 0 ? items[0].grade : '';
       return {
         classKey: cls,
-        // Eğer grade yoksa veya boşsa bu satırı tamamen filtrelemek için bir flag koyabiliriz
         isValid: Boolean(sampleGrade && sampleGrade.trim() !== ''),
         displayClass: sampleGrade ? `${sampleGrade}/${cls}` : cls,
         late: new Set(items.filter((r) => r.type === 'late' || r.type === 'both').map(r => r.student_id || r.studentName)).size,
@@ -135,7 +133,7 @@ const DisciplineReports = () => {
         total: new Set(items.map(r => r.student_id || r.studentName)).size,
       };
     })
-    .filter(stat => stat.isValid); // Sadece sınıf seviyesi tam olanları göster (tek başına 'C' yazanları engelle)
+    .filter(stat => stat.isValid);
 
   const hourStats = Array(24).fill(0);
   filteredRecords.forEach((r) => {
@@ -176,7 +174,12 @@ const DisciplineReports = () => {
       acc[key].count++;
       return acc;
     }, {});
-  const lateLeaderList = Object.values(lateLeaders).sort((a, b) => b.count - a.count).slice(0, 5);
+  
+  // En Çok Geç Kalanlar (2 ve üzeri filtrelemesi istendiği gibi eklendi)
+  const lateLeaderList = Object.values(lateLeaders)
+    .filter(item => item.count >= 2)
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 5);
 
   const dressLeaders = filteredRecords
     .filter((r) => r.type === 'dress' || r.type === 'both')
@@ -186,7 +189,12 @@ const DisciplineReports = () => {
       acc[key].count++;
       return acc;
     }, {});
-  const dressLeaderList = Object.values(dressLeaders).sort((a, b) => b.count - a.count).slice(0, 5);
+  
+  // En Çok Kıyafet İhlali Yapanlar (Sadece 2 ve üzeri olanlar listelenir)
+  const dressLeaderList = Object.values(dressLeaders)
+    .filter(item => item.count >= 2)
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 5);
 
   // Tarih Aralığı Günleri (Matris Görünümü İçin)
   let intervalDays = [];
@@ -369,7 +377,7 @@ const DisciplineReports = () => {
         </button>
       </div>
 
-      {/* Özet Kartlar (Tekil Kişi Mantığıyla) */}
+      {/* Özet Kartlar */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px,1fr))', gap: '1.25rem', marginBottom: '2rem' }}>
         <div style={{ padding: '1.25rem', background: 'linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%)', borderRadius: '16px', border: '1px solid #fde68a' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
@@ -433,7 +441,7 @@ const DisciplineReports = () => {
           </table>
         </div>
 
-        {/* Şube Düzeyi (11/C şeklinde birleştirilmiş) */}
+        {/* Şube Düzeyi */}
         <div style={{ background: 'white', borderRadius: '16px', padding: '1.5rem', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
           <h4 style={{ margin: '0 0 1rem 0', fontSize: '1.1rem', fontWeight: '700', color: '#1e293b' }}>Şubeye Göre Dağılım</h4>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
@@ -470,7 +478,7 @@ const DisciplineReports = () => {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px,1fr))', gap: '1.5rem', marginBottom: '2rem' }}>
         
         <div style={{ background: 'white', padding: '1.5rem', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
-          <h4 style={{ margin: '0 0 1rem 0', fontSize: '1.1rem', fontWeight: '700', color: '#1e293b' }}>En Çok Geç Kalanlar</h4>
+          <h4 style={{ margin: '0 0 1rem 0', fontSize: '1.1rem', fontWeight: '700', color: '#1e293b' }}>En Çok Geç Kalanlar (2 ve Üzeri)</h4>
           {lateLeaderList.length > 0 ? (
             <ol style={{ paddingLeft: '1.2rem', margin: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
               {lateLeaderList.map((item, idx) => (
@@ -479,11 +487,11 @@ const DisciplineReports = () => {
                 </li>
               ))}
             </ol>
-          ) : <p style={{ color: '#94a3b8', fontSize: '0.9rem', margin: 0 }}>Veri yok</p>}
+          ) : <p style={{ color: '#94a3b8', fontSize: '0.9rem', margin: 0 }}>2 ve üzeri geç kalma kaydı bulunmuyor.</p>}
         </div>
 
         <div style={{ background: 'white', padding: '1.5rem', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
-          <h4 style={{ margin: '0 0 1rem 0', fontSize: '1.1rem', fontWeight: '700', color: '#1e293b' }}>En Çok Kıyafet İhlali Yapanlar</h4>
+          <h4 style={{ margin: '0 0 1rem 0', fontSize: '1.1rem', fontWeight: '700', color: '#1e293b' }}>En Çok Kıyafet İhlali Yapanlar (2 ve Üzeri)</h4>
           {dressLeaderList.length > 0 ? (
             <ol style={{ paddingLeft: '1.2rem', margin: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
               {dressLeaderList.map((item, idx) => (
@@ -492,7 +500,7 @@ const DisciplineReports = () => {
                 </li>
               ))}
             </ol>
-          ) : <p style={{ color: '#94a3b8', fontSize: '0.9rem', margin: 0 }}>Veri yok</p>}
+          ) : <p style={{ color: '#94a3b8', fontSize: '0.9rem', margin: 0 }}>2 ve üzeri kıyafet ihlali kaydı bulunmuyor.</p>}
         </div>
 
       </div>
@@ -577,9 +585,9 @@ const DisciplineReports = () => {
           </div>
         </div>
       ) : (
-        /* Günlük Matris / Sütun Sütun Görünüm */
+        /* Günlük Matris / Sütun Sütun Görünüm (En çok ihlal yapanlar en üstte) */
         <div style={{ background: 'white', borderRadius: '16px', padding: '1.5rem', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
-          <h4 style={{ margin: '0 0 1rem 0', fontSize: '1.1rem', fontWeight: '700', color: '#1e293b' }}>Haftalık / Günlük Sütunlu Matris Görünümü</h4>
+          <h4 style={{ margin: '0 0 1rem 0', fontSize: '1.1rem', fontWeight: '700', color: '#1e293b' }}>Haftalık / Günlük Sütunlu Matris Görünümü (En Çok İhlal Yapanlar Üstte)</h4>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
               <thead>
@@ -597,42 +605,47 @@ const DisciplineReports = () => {
                 </tr>
               </thead>
               <tbody>
-                {/* Benzersiz Öğrencileri Listele */}
-                {Array.from(new Set(filteredRecords.map(r => r.student_id || r.studentName))).map((studentKey, sIdx) => {
-                  const studentRecords = filteredRecords.filter(r => (r.student_id || r.studentName) === studentKey);
-                  const sample = studentRecords[0];
-                  if (!sample) return null;
+                {/* Öğrencileri toplam ihlal sayısına göre azalan sırada sıralayarak listele */}
+                {Array.from(new Set(filteredRecords.map(r => r.student_id || r.studentName)))
+                  .sort((aKey, bKey) => {
+                    const countA = filteredRecords.filter(r => (r.student_id || r.studentName) === aKey).length;
+                    const countB = filteredRecords.filter(r => (r.student_id || r.studentName) === bKey).length;
+                    return countB - countA; // En çok vakası olan en üstte
+                  })
+                  .map((studentKey, sIdx) => {
+                    const studentRecords = filteredRecords.filter(r => (r.student_id || r.studentName) === studentKey);
+                    const sample = studentRecords[0];
+                    if (!sample) return null;
 
-                  return (
-                    <tr key={sIdx} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                      <td style={{ padding: '0.75rem', fontWeight: '600', color: '#0f172a' }}>{sample.studentName}</td>
-                      <td style={{ padding: '0.75rem', color: '#4338ca', fontWeight: '600' }}>{sample.grade}/{sample.class}</td>
-                      {intervalDays.map((day, dIdx) => {
-                        // O güne denk gelen kayıt var mı?
-                        const dayRecord = studentRecords.find(r => isSameDay(r.createdAt, day));
-                        return (
-                          <td key={dIdx} style={{ padding: '0.75rem', textAlign: 'center', borderLeft: '1px solid #f1f5f9', background: dayRecord ? '#f8fafc' : 'transparent' }}>
-                            {dayRecord ? (
-                              <span style={{ 
-                                padding: '0.2rem 0.4rem', 
-                                borderRadius: '4px', 
-                                fontSize: '0.75rem', 
-                                fontWeight: '600',
-                                background: dayRecord.type === 'late' ? '#fef3c7' : dayRecord.type === 'dress' ? '#cffafe' : '#fee2e2',
-                                color: dayRecord.type === 'late' ? '#92400e' : dayRecord.type === 'dress' ? '#155e75' : '#991b1b',
-                                display: 'inline-block'
-                              }}>
-                                {dayRecord.type === 'late' ? 'Geç' : dayRecord.type === 'dress' ? 'Kıyafet' : 'Her İkisi'}
-                              </span>
-                            ) : (
-                              <span style={{ color: '#cbd5e1' }}>-</span>
-                            )}
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  );
-                })}
+                    return (
+                      <tr key={sIdx} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                        <td style={{ padding: '0.75rem', fontWeight: '600', color: '#0f172a' }}>{sample.studentName}</td>
+                        <td style={{ padding: '0.75rem', color: '#4338ca', fontWeight: '600' }}>{sample.grade}/{sample.class}</td>
+                        {intervalDays.map((day, dIdx) => {
+                          const dayRecord = studentRecords.find(r => isSameDay(r.createdAt, day));
+                          return (
+                            <td key={dIdx} style={{ padding: '0.75rem', textAlign: 'center', borderLeft: '1px solid #f1f5f9', background: dayRecord ? '#f8fafc' : 'transparent' }}>
+                              {dayRecord ? (
+                                <span style={{ 
+                                  padding: '0.2rem 0.4rem', 
+                                  borderRadius: '4px', 
+                                  fontSize: '0.75rem', 
+                                  fontWeight: '600',
+                                  background: dayRecord.type === 'late' ? '#fef3c7' : dayRecord.type === 'dress' ? '#cffafe' : '#fee2e2',
+                                  color: dayRecord.type === 'late' ? '#92400e' : dayRecord.type === 'dress' ? '#155e75' : '#991b1b',
+                                  display: 'inline-block'
+                                }}>
+                                  {dayRecord.type === 'late' ? 'Geç' : dayRecord.type === 'dress' ? 'Kıyafet' : 'Her İkisi'}
+                                </span>
+                              ) : (
+                                <span style={{ color: '#cbd5e1' }}>-</span>
+                              )}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  })}
                 {filteredRecords.length === 0 && (
                   <tr>
                     <td colSpan={2 + intervalDays.length} style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>
