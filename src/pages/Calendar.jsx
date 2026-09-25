@@ -7,7 +7,7 @@ export default function Calendar() {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   
-  const [selectedGrade, setSelectedGrade] = useState('12');
+  const [selectedGrade, setSelectedGrade] = useState('all');
   const [selectedCategory, setSelectedCategory] = useState('all');
   
   const [viewMode, setViewMode] = useState('monthly');
@@ -125,8 +125,7 @@ export default function Calendar() {
       days.push({
         dayNumber: d.getDate(),
         isCurrentMonth: true,
-        dateStr: `${year}-${month}-${day}`,
-        fullDateObj: d
+        dateStr: `${year}-${month}-${day}`
       });
     }
     return days;
@@ -145,7 +144,6 @@ export default function Calendar() {
     }
   };
 
-  // Excel tarihlerini (örn: "12 Eylül 2026 Cumartesi") hatasız parse eden güncellenmiş fonksiyon
   const parseTurkishDate = (dateStr) => {
     if (!dateStr) return new Date().toISOString().split('T')[0];
     if (dateStr instanceof Date) return dateStr.toISOString().split('T')[0];
@@ -157,8 +155,6 @@ export default function Calendar() {
     };
     
     const cleanStr = String(dateStr).toLowerCase().trim();
-    
-    // "12 Eylül 2026 Cumartesi" kalıbını doğrudan GÜN AY YIL sırasıyla yakalar
     const match = cleanStr.match(/(\d{1,2})\s+([a-züİöçşğ]+)\s+(\d{2,4})/);
     
     if (match) {
@@ -169,27 +165,20 @@ export default function Calendar() {
       
       let month = '01';
       for (let [mName, mNum] of Object.entries(months)) {
-        if (monthStr.includes(mName)) {
-          month = mNum;
-          break;
-        }
+        if (monthStr.includes(mName)) { month = mNum; break; }
       }
       return `${year}-${month}-${day}`;
     }
     
-    // Yedek esnek parse mekanizması
     let foundMonth = '01', foundYear = '2026', foundDay = '01';
     for (let [mName, mNum] of Object.entries(months)) {
-      if (cleanStr.includes(mName)) {
-        foundMonth = mNum;
-        break;
-      }
+      if (cleanStr.includes(mName)) { foundMonth = mNum; break; }
     }
     
     const numbers = cleanStr.replace(/[^0-9]/g, ' ').trim().split(/\s+/).filter(Boolean);
     if (numbers.length >= 2) {
       foundDay = numbers[0].padStart(2, '0');
-      const secondNum = numbers[1];
+      let secondNum = numbers[1];
       foundYear = secondNum.length === 2 ? '20' + secondNum : secondNum;
     } else if (numbers.length === 1) {
       foundDay = numbers[0].padStart(2, '0');
@@ -234,7 +223,7 @@ export default function Calendar() {
         }));
         const { error } = await supabase.from('school_calendar').insert(formattedEvents);
         if (error) alert('Hata: ' + error.message);
-        else { alert(`${formattedEvents.length} etkinlik başarıyla yüklendi!`); fetchEvents(); }
+        else { alert(`${formattedEvents.length} etkinlik yüklendi!`); fetchEvents(); }
       } catch (err) { alert('Dosya okunamadı.'); }
       e.target.value = '';
     };
@@ -242,19 +231,20 @@ export default function Calendar() {
   };
 
   const handleDeleteEvent = async (id) => {
-    if (window.confirm('Silmek istediğinize emin misiniz?')) {
+    if (window.confirm('Bu etkinliği silmek istediğinize emin misiniz?')) {
       const { error } = await supabase.from('school_calendar').delete().eq('id', id);
       if (!error) { setActiveEvent(null); fetchEvents(); }
     }
   };
 
-  const getCategoryBadgeClass = (cat) => {
+  // Kategoriye özel CSS sınıfı
+  const getCategoryClass = (cat) => {
     switch (cat) {
-      case 'exam': return 'badge-exam';
-      case 'homework': return 'badge-homework';
-      case 'group_change': return 'badge-group_change';
-      case 'meeting': return 'badge-meeting';
-      default: return 'badge-default';
+      case 'exam': return 'event-exam';
+      case 'homework': return 'event-homework';
+      case 'group_change': return 'event-group';
+      case 'meeting': return 'event-meeting';
+      default: return 'event-default';
     }
   };
 
@@ -262,111 +252,104 @@ export default function Calendar() {
     ? getDaysInMonth(currentDate.getFullYear(), currentDate.getMonth())
     : getDaysInWeek(currentDate);
 
-  const weekDaysHeader = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
+  const weekDaysHeader = ['Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar'];
 
   return (
-    <div className="calendar-container" style={{ maxWidth: '1400px', margin: '0 auto', padding: '20px', fontFamily: 'sans-serif' }}>
-      <div className="calendar-header-section" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+    <div className="modern-calendar-root">
+      {/* Üst Başlık ve Aksiyonlar */}
+      <div className="cal-top-banner">
         <div>
-          <h1 className="calendar-title" style={{ fontSize: '24px', fontWeight: 'bold', color: '#1e293b' }}>Okul İşleyiş ve Sınav Takvimi</h1>
-          <p className="calendar-subtitle" style={{ color: '#64748b' }}>Takvimi aylık veya haftalık ızgara görünümünde takip edin.</p>
+          <h1 className="cal-main-title">Okul İşleyiş ve Sınav Takvimi</h1>
+          <p className="cal-sub-title">Etkinlikleri ve sınavları kategori ile sınıf düzeylerine göre şık arayüzde yönetin.</p>
         </div>
-        <div style={{ display: 'flex', gap: '10px' }}>
-          <label className="calendar-add-btn" style={{ background: '#10b981', color: '#fff', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', fontWeight: '600' }}>
-            📥 Excel ile Yükle
-            <input type="file" accept=".xlsx, .xls, .csv" onChange={handleExcelUpload} style={{ display: 'none' }} />
+        <div className="cal-actions">
+          <label className="cal-btn cal-btn-success">
+            <span>📥 Excel Yükle</span>
+            <input type="file" accept=".xlsx, .xls, .csv" onChange={handleExcelUpload} hidden />
           </label>
-          <button onClick={() => setIsAddModalOpen(true)} style={{ background: '#2563eb', color: '#fff', padding: '8px 16px', border: 'none', borderRadius: '6px', fontWeight: '600', cursor: 'pointer' }}>
-            + Yeni Etkinlik Ekle
+          <button className="cal-btn cal-btn-primary" onClick={() => setIsAddModalOpen(true)}>
+            + Yeni Etkinlik
           </button>
         </div>
       </div>
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc', padding: '15px', borderRadius: '10px', marginBottom: '20px', border: '1px solid #e2e8f0' }}>
-        <div style={{ display: 'flex', gap: '10px' }}>
-          <button onClick={() => setViewMode('monthly')} style={{ padding: '8px 16px', background: viewMode === 'monthly' ? '#2563eb' : '#e2e8f0', color: viewMode === 'monthly' ? '#fff' : '#334155', border: 'none', borderRadius: '6px', fontWeight: '600', cursor: 'pointer' }}>Aylık Takvim</button>
-          <button onClick={() => setViewMode('weekly')} style={{ padding: '8px 16px', background: viewMode === 'weekly' ? '#2563eb' : '#e2e8f0', color: viewMode === 'weekly' ? '#fff' : '#334155', border: 'none', borderRadius: '6px', fontWeight: '600', cursor: 'pointer' }}>Haftalık Takvim</button>
+      {/* Kontrol Paneli & Filtreler */}
+      <div className="cal-control-panel">
+        <div className="cal-view-toggle">
+          <button 
+            className={`toggle-pill ${viewMode === 'monthly' ? 'active' : ''}`} 
+            onClick={() => setViewMode('monthly')}
+          >
+            Aylık Görünüm
+          </button>
+          <button 
+            className={`toggle-pill ${viewMode === 'weekly' ? 'active' : ''}`} 
+            onClick={() => setViewMode('weekly')}
+          >
+            Haftalık Görünüm
+          </button>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-          <button onClick={handlePrevPeriod} style={{ padding: '6px 12px', background: '#fff', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>&larr; Önceki</button>
-          <span style={{ fontSize: '16px', fontWeight: 'bold', color: '#1e293b', minWidth: '180px', textAlign: 'center' }}>
+        <div className="cal-date-navigator">
+          <button className="nav-arrow-btn" onClick={handlePrevPeriod}>&larr; Önceki</button>
+          <span className="current-date-label">
             {currentDate.toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })}
           </span>
-          <button onClick={handleNextPeriod} style={{ padding: '6px 12px', background: '#fff', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>Sonraki &rarr;</button>
+          <button className="nav-arrow-btn" onClick={handleNextPeriod}>Sonraki &rarr;</button>
+        </div>
+
+        <div className="cal-filters">
+          <select value={selectedGrade} onChange={(e) => setSelectedGrade(e.target.value)} className="cal-select">
+            <option value="all">Tüm Sınıflar</option>
+            <option value="12">12. Sınıflar</option>
+            <option value="11">11. Sınıflar</option>
+            <option value="10">10. Sınıflar</option>
+            <option value="9">9. Sınıflar</option>
+          </select>
+          <select value={selectedCategory} onChange={(e) => setSelectedCategory(e.target.value)} className="cal-select">
+            <option value="all">Tüm Kategoriler</option>
+            <option value="exam">Sınavlar</option>
+            <option value="homework">Ödevler</option>
+            <option value="group_change">Grup Değişimleri</option>
+            <option value="meeting">Toplantılar</option>
+          </select>
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: '15px', marginBottom: '20px' }}>
-        <select value={selectedGrade} onChange={(e) => setSelectedGrade(e.target.value)} style={{ padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
-          <option value="all">Tüm Okul / Sınıfsız</option>
-          <option value="12">12. Sınıflar</option>
-          <option value="11">11. Sınıflar</option>
-          <option value="10">10. Sınıflar</option>
-          <option value="9">9. Sınıflar</option>
-        </select>
-        <select value={selectedCategory} onChange={(e) => setSelectedCategory(e.target.value)} style={{ padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
-          <option value="all">Tüm Kategoriler</option>
-          <option value="exam">Sınavlar</option>
-          <option value="homework">Ödevler</option>
-          <option value="group_change">Grup Değişimleri</option>
-          <option value="meeting">Toplantılar</option>
-        </select>
-      </div>
-
-      <div style={{ background: '#fff', border: '1px solid #cbd5e1', borderRadius: '10px', overflow: 'hidden', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', background: '#f1f5f9', borderBottom: '1px solid #cbd5e1', textAlign: 'center', fontWeight: 'bold', padding: '10px 0', color: '#475569' }}>
-          {weekDaysHeader.map((d, index) => (
-            <div key={index}>{d}</div>
+      {/* Takvim Izgarası */}
+      <div className="cal-grid-wrapper">
+        <div className="cal-weekdays-header">
+          {weekDaysHeader.map((d, idx) => (
+            <div key={idx} className="weekday-title">{d}</div>
           ))}
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gridAutoRows: 'minmax(120px, auto)' }}>
+        <div className="cal-days-grid">
           {daysGrid.map((dayItem, index) => {
             const dayEvents = events.filter(ev => ev.event_date === dayItem.dateStr);
 
             return (
               <div 
                 key={index} 
-                style={{
-                  borderRight: '1px solid #e2e8f0',
-                  borderBottom: '1px solid #e2e8f0',
-                  padding: '8px',
-                  background: dayItem.isCurrentMonth ? '#fff' : '#f8fafc',
-                  opacity: dayItem.isCurrentMonth ? 1 : 0.4,
-                  minHeight: '120px',
-                  display: 'flex',
-                  flexDirection: 'column'
-                }}
+                className={`cal-day-cell ${dayItem.isCurrentMonth ? '' : 'outside-month'}`}
               >
-                <div style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '14px', color: dayItem.isCurrentMonth ? '#1e293b' : '#94a3b8', marginBottom: '5px' }}>
-                  {dayItem.dayNumber}
-                </div>
+                <div className="day-number-badge">{dayItem.dayNumber}</div>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', overflowY: 'auto', maxHeight: '100px' }}>
-                  {dayEvents.map(ev => (
-                    <div 
-                      key={ev.id} 
-                      onClick={() => setActiveEvent(ev)}
-                      className={getCategoryBadgeClass(ev.category)}
-                      style={{
-                        fontSize: '11px',
-                        padding: '3px 6px',
-                        borderRadius: '4px',
-                        cursor: 'pointer',
-                        whiteSpace: 'nowrap',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        fontWeight: '500',
-                        background: ev.category === 'exam' ? '#fee2e2' : ev.category === 'homework' ? '#fef3c7' : '#e0f2fe',
-                        color: ev.category === 'exam' ? '#991b1b' : ev.category === 'homework' ? '#92400e' : '#0369a1',
-                        borderLeft: `3px solid ${ev.category === 'exam' ? '#dc2626' : ev.category === 'homework' ? '#d97706' : '#0284c7'}`
-                      }}
-                      title={ev.title}
-                    >
-                      {ev.title}
-                    </div>
-                  ))}
+                <div className="events-stack">
+                  {dayEvents.map(ev => {
+                    const gradeText = ev.grade_level === 'all' ? 'Tüm Okul' : `${ev.grade_level}. Sınıf`;
+                    return (
+                      <div 
+                        key={ev.id} 
+                        onClick={() => setActiveEvent(ev)}
+                        className={`event-card-item ${getCategoryClass(ev.category)}`}
+                        title={ev.title}
+                      >
+                        <span className="event-grade-pill">{gradeText}</span>
+                        <span className="event-title-text">{ev.title}</span>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             );
@@ -374,43 +357,53 @@ export default function Calendar() {
         </div>
       </div>
 
+      {/* Detay / Silme Modalı */}
       {activeEvent && (
-        <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 }}>
-          <div style={{ background: '#fff', padding: '25px', borderRadius: '10px', width: '400px', maxWidth: '90%' }}>
-            <h2 style={{ margin: '0 0 10px 0', fontSize: '18px' }}>{activeEvent.title}</h2>
-            <p><strong>Tarih:</strong> {new Date(activeEvent.event_date).toLocaleDateString('tr-TR')}</p>
-            <p><strong>Sınıf:</strong> {activeEvent.grade_level === 'all' ? 'Tüm Okul' : `${activeEvent.grade_level}. Sınıf`}</p>
-            <p><strong>Açıklama:</strong> {activeEvent.description || 'Açıklama yok.'}</p>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '20px' }}>
-              <button onClick={() => handleDeleteEvent(activeEvent.id)} style={{ background: '#dc2626', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer' }}>Sil</button>
-              <button onClick={() => setActiveEvent(null)} style={{ background: '#334155', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer' }}>Kapat</button>
+        <div className="cal-modal-backdrop" onClick={() => setActiveEvent(null)}>
+          <div className="cal-modal-box" onClick={e => e.stopPropagation()}>
+            <div className="modal-header-tag">
+              <span className={`modal-cat-badge ${activeEvent.category}`}>
+                {activeEvent.category === 'exam' ? 'Sınav' : activeEvent.category === 'homework' ? 'Ödev' : 'Etkinlik'}
+              </span>
+              <span className="modal-grade-tag">
+                {activeEvent.grade_level === 'all' ? 'Tüm Okul' : `${activeEvent.grade_level}. Sınıf`}
+              </span>
+            </div>
+            <h2 className="modal-title">{activeEvent.title}</h2>
+            <p className="modal-info-row"><strong>📅 Tarih:</strong> {new Date(activeEvent.event_date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+            <p className="modal-info-row"><strong>📝 Açıklama:</strong> {activeEvent.description || 'Açıklama belirtilmemiş.'}</p>
+            
+            <div className="modal-footer-btns">
+              <button className="btn-danger-soft" onClick={() => handleDeleteEvent(activeEvent.id)}>Etkinliği Sil</button>
+              <button className="btn-secondary-soft" onClick={() => setActiveEvent(null)}>Kapat</button>
             </div>
           </div>
         </div>
       )}
 
+      {/* Yeni Etkinlik Ekleme Modalı */}
       {isAddModalOpen && (
-        <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 }}>
-          <div style={{ background: '#fff', padding: '25px', borderRadius: '10px', width: '450px', maxWidth: '90%' }}>
-            <h2 style={{ margin: '0 0 15px 0', fontSize: '18px' }}>Yeni Etkinlik Ekle</h2>
+        <div className="cal-modal-backdrop" onClick={() => setIsAddModalOpen(false)}>
+          <div className="cal-modal-box" onClick={e => e.stopPropagation()}>
+            <h2 className="modal-title">✨ Yeni Etkinlik Tanımla</h2>
             <form onSubmit={handleAddEvent}>
-              <div style={{ marginBottom: '10px' }}>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', marginBottom: '5px' }}>Etkinlik Adı</label>
-                <input type="text" required value={newEvent.title} onChange={e => setNewEvent({...newEvent, title: e.target.value})} style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '4px' }} />
+              <div className="form-group">
+                <label>Etkinlik / Sınav Adı</label>
+                <input type="text" required value={newEvent.title} onChange={e => setNewEvent({...newEvent, title: e.target.value})} placeholder="Örn: 3D TYT Deneme" className="cal-input" />
               </div>
-              <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
-                <div style={{ flex: 1 }}>
-                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', marginBottom: '5px' }}>Kategori</label>
-                  <select value={newEvent.category} onChange={e => setNewEvent({...newEvent, category: e.target.value})} style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '4px' }}>
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Kategori</label>
+                  <select value={newEvent.category} onChange={e => setNewEvent({...newEvent, category: e.target.value})} className="cal-select w-full">
                     <option value="exam">Sınav</option>
                     <option value="homework">Ödev</option>
                     <option value="group_change">Grup Değişimi</option>
                     <option value="meeting">Toplantı</option>
                   </select>
                 </div>
-                <div style={{ flex: 1 }}>
-                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', marginBottom: '5px' }}>Sınıf</label>
-                  <select value={newEvent.grade_level} onChange={e => setNewEvent({...newEvent, grade_level: e.target.value})} style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '4px' }}>
+                <div className="form-group">
+                  <label>Sınıf Seviyesi</label>
+                  <select value={newEvent.grade_level} onChange={e => setNewEvent({...newEvent, grade_level: e.target.value})} className="cal-select w-full">
                     <option value="all">Tüm Okul</option>
                     <option value="12">12. Sınıf</option>
                     <option value="11">11. Sınıf</option>
@@ -419,17 +412,17 @@ export default function Calendar() {
                   </select>
                 </div>
               </div>
-              <div style={{ marginBottom: '10px' }}>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', marginBottom: '5px' }}>Tarih</label>
-                <input type="date" required value={newEvent.event_date} onChange={e => setNewEvent({...newEvent, event_date: e.target.value})} style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '4px' }} />
+              <div className="form-group">
+                <label>Tarih</label>
+                <input type="date" required value={newEvent.event_date} onChange={e => setNewEvent({...newEvent, event_date: e.target.value})} className="cal-input" />
               </div>
-              <div style={{ marginBottom: '15px' }}>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', marginBottom: '5px' }}>Açıklama</label>
-                <textarea rows="3" value={newEvent.description} onChange={e => setNewEvent({...newEvent, description: e.target.value})} style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '4px' }}></textarea>
+              <div className="form-group">
+                <label>Açıklama / Detay</label>
+                <textarea rows="3" value={newEvent.description} onChange={e => setNewEvent({...newEvent, description: e.target.value})} placeholder="Soru sayısı, süre vb." className="cal-input"></textarea>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-                <button type="button" onClick={() => setIsAddModalOpen(false)} style={{ background: '#64748b', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: '4px', cursor: 'pointer' }}>İptal</button>
-                <button type="submit" style={{ background: '#2563eb', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: '4px', cursor: 'pointer' }}>Kaydet</button>
+              <div className="modal-footer-btns">
+                <button type="button" className="btn-secondary-soft" onClick={() => setIsAddModalOpen(false)}>İptal</button>
+                <button type="submit" className="cal-btn cal-btn-primary">Kaydet</button>
               </div>
             </form>
           </div>
