@@ -1,11 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabase';
-import { Bar } from 'react-chartjs-2';
-import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend } from 'chart.js';
 import { FaCalendarAlt, FaUsers, FaFilter, FaFileCsv, FaEdit, FaTrash, FaSortAlphaDown, FaClock, FaExclamationTriangle, FaUserCheck, FaTable } from 'react-icons/fa';
 import { format, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay } from 'date-fns';
-
-ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
 
 const DisciplineReports = () => {
   const [records, setRecords] = useState([]);
@@ -135,37 +131,6 @@ const DisciplineReports = () => {
     })
     .filter(stat => stat.isValid);
 
-  const hourStats = Array(24).fill(0);
-  filteredRecords.forEach((r) => {
-    const date = r.createdAt instanceof Date ? r.createdAt : new Date(r.createdAt);
-    hourStats[date.getHours()]++;
-  });
-
-  const chartData = {
-    labels: Array.from({ length: 24 }, (_, i) => `${i}:00`),
-    datasets: [
-      {
-        label: 'Kayıt Sayısı',
-        data: hourStats,
-        backgroundColor: 'rgba(99, 102, 241, 0.6)',
-        borderColor: 'rgba(99, 102, 241, 1)',
-        borderWidth: 2,
-        borderRadius: 4,
-      },
-    ],
-  };
-
-  const chartOptions = {
-    responsive: true,
-    plugins: {
-      legend: { display: false },
-      title: { display: true, text: 'Saatlere Göre Dağılım', font: { size: 14, weight: 'bold' } },
-    },
-    scales: {
-      y: { beginAtZero: true, ticks: { stepSize: 1 } },
-    },
-  };
-
   const lateLeaders = filteredRecords
     .filter((r) => r.type === 'late' || r.type === 'both')
     .reduce((acc, r) => {
@@ -175,7 +140,6 @@ const DisciplineReports = () => {
       return acc;
     }, {});
   
-  // En Çok Geç Kalanlar (2 ve üzeri filtrelemesi istendiği gibi eklendi)
   const lateLeaderList = Object.values(lateLeaders)
     .filter(item => item.count >= 2)
     .sort((a, b) => b.count - a.count)
@@ -190,13 +154,11 @@ const DisciplineReports = () => {
       return acc;
     }, {});
   
-  // En Çok Kıyafet İhlali Yapanlar (Sadece 2 ve üzeri olanlar listelenir)
   const dressLeaderList = Object.values(dressLeaders)
     .filter(item => item.count >= 2)
     .sort((a, b) => b.count - a.count)
     .slice(0, 5);
 
-  // Tarih Aralığı Günleri (Matris Görünümü İçin)
   let intervalDays = [];
   try {
     let startD = dateRange === 'custom' ? new Date(startDate) : (dateRange === 'today' ? new Date() : startOfWeek(new Date(), { weekStartsOn: 1 }));
@@ -284,16 +246,15 @@ const DisciplineReports = () => {
   if (loading) return <div style={{ padding: '3rem', textAlign: 'center', color: '#666', fontSize: '1.1rem' }}>Yükleniyor...</div>;
 
   return (
-    <div style={{ padding: '2rem', maxWidth: '1400px', margin: '0 auto', fontFamily: 'Inter, system-ui, sans-serif', color: '#1e293b', background: '#f8fafc', minHeight: '100vh' }}>
+    <div style={{ padding: '1rem', width: '100%', boxSizing: 'border-box', fontFamily: 'Inter, system-ui, sans-serif', color: '#1e293b', background: '#f8fafc', minHeight: '100vh' }}>
       
-      {/* Başlık */}
+      {/* Başlık ve Görünüm Modu Değiştirici */}
       <div style={{ marginBottom: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
           <h2 style={{ fontSize: '1.8rem', fontWeight: '700', color: '#0f172a', margin: 0 }}>Geç Kalma / Kıyafet Raporları</h2>
           <p style={{ color: '#64748b', fontSize: '0.95rem', marginTop: '0.3rem' }}>Öğrenci disiplin verilerini filtreleyin, tekil kişi bazlı analiz edin ve tarihe göre inceleyin.</p>
         </div>
         
-        {/* Görünüm Modu Değiştirici */}
         <div style={{ display: 'flex', background: '#e2e8f0', padding: '0.3rem', borderRadius: '10px', gap: '0.3rem' }}>
           <button 
             onClick={() => setViewMode('list')} 
@@ -310,7 +271,7 @@ const DisciplineReports = () => {
         </div>
       </div>
 
-      {/* Modern Filtre Paneli */}
+      {/* Filtre Paneli */}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', marginBottom: '2rem', padding: '1.25rem', background: '#ffffff', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', alignItems: 'center' }}>
         
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#f1f5f9', padding: '0.5rem 0.75rem', borderRadius: '10px' }}>
@@ -365,8 +326,7 @@ const DisciplineReports = () => {
             alignItems: 'center', 
             gap: '0.4rem',
             fontSize: '0.9rem',
-            fontWeight: '500',
-            transition: 'all 0.2s'
+            fontWeight: '500'
           }}
         >
           <FaSortAlphaDown /> İsim Sıralı {sortByName ? '(Aktif)' : ''}
@@ -415,7 +375,6 @@ const DisciplineReports = () => {
       {/* Sınıf ve Şube İstatistik Tabloları */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(450px, 1fr))', gap: '1.5rem', marginBottom: '2rem' }}>
         
-        {/* Sınıf Düzeyi */}
         <div style={{ background: 'white', borderRadius: '16px', padding: '1.5rem', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
           <h4 style={{ margin: '0 0 1rem 0', fontSize: '1.1rem', fontWeight: '700', color: '#1e293b' }}>Sınıf Düzeyine Göre Dağılım (Tekil Kişi)</h4>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
@@ -441,7 +400,6 @@ const DisciplineReports = () => {
           </table>
         </div>
 
-        {/* Şube Düzeyi */}
         <div style={{ background: 'white', borderRadius: '16px', padding: '1.5rem', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
           <h4 style={{ margin: '0 0 1rem 0', fontSize: '1.1rem', fontWeight: '700', color: '#1e293b' }}>Şubeye Göre Dağılım</h4>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
@@ -467,11 +425,6 @@ const DisciplineReports = () => {
           </table>
         </div>
 
-      </div>
-
-      {/* Grafik */}
-      <div style={{ marginBottom: '2rem', background: 'white', padding: '1.5rem', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
-        <Bar data={chartData} options={chartOptions} />
       </div>
 
       {/* Liderlik Tabloları */}
@@ -585,7 +538,6 @@ const DisciplineReports = () => {
           </div>
         </div>
       ) : (
-        /* Günlük Matris / Sütun Sütun Görünüm (En çok ihlal yapanlar en üstte) */
         <div style={{ background: 'white', borderRadius: '16px', padding: '1.5rem', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
           <h4 style={{ margin: '0 0 1rem 0', fontSize: '1.1rem', fontWeight: '700', color: '#1e293b' }}>Haftalık / Günlük Sütunlu Matris Görünümü (En Çok İhlal Yapanlar Üstte)</h4>
           <div style={{ overflowX: 'auto' }}>
@@ -605,12 +557,11 @@ const DisciplineReports = () => {
                 </tr>
               </thead>
               <tbody>
-                {/* Öğrencileri toplam ihlal sayısına göre azalan sırada sıralayarak listele */}
                 {Array.from(new Set(filteredRecords.map(r => r.student_id || r.studentName)))
                   .sort((aKey, bKey) => {
                     const countA = filteredRecords.filter(r => (r.student_id || r.studentName) === aKey).length;
                     const countB = filteredRecords.filter(r => (r.student_id || r.studentName) === bKey).length;
-                    return countB - countA; // En çok vakası olan en üstte
+                    return countB - countA;
                   })
                   .map((studentKey, sIdx) => {
                     const studentRecords = filteredRecords.filter(r => (r.student_id || r.studentName) === studentKey);
@@ -621,7 +572,7 @@ const DisciplineReports = () => {
                       <tr key={sIdx} style={{ borderBottom: '1px solid #f1f5f9' }}>
                         <td style={{ padding: '0.75rem', fontWeight: '600', color: '#0f172a' }}>{sample.studentName}</td>
                         <td style={{ padding: '0.75rem', color: '#4338ca', fontWeight: '600' }}>{sample.grade}/{sample.class}</td>
-                        {intervalDays.map((day, dIdx) => {
+                        {intervalDays.mainMap || intervalDays.map((day, dIdx) => {
                           const dayRecord = studentRecords.find(r => isSameDay(r.createdAt, day));
                           return (
                             <td key={dIdx} style={{ padding: '0.75rem', textAlign: 'center', borderLeft: '1px solid #f1f5f9', background: dayRecord ? '#f8fafc' : 'transparent' }}>
