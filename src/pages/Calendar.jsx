@@ -9,8 +9,12 @@ export default function Calendar() {
   
   const [selectedGrade, setSelectedGrade] = useState('12');
   const [selectedCategory, setSelectedCategory] = useState('all');
-  const [activeEvent, setActiveEvent] = useState(null);
   
+  // Görünüm modları: 'monthly' (Aylık) veya 'weekly' (Haftalık)
+  const [viewMode, setViewMode] = useState('monthly');
+  const [currentDate, setCurrentDate] = useState(new Date());
+
+  const [activeEvent, setActiveEvent] = useState(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [newEvent, setNewEvent] = useState({
     title: '',
@@ -23,6 +27,7 @@ export default function Calendar() {
 
   const fetchEvents = async () => {
     setLoading(true);
+    // Verileri kesin olarak tarihe göre (artan) sıralı çekiyoruz
     let query = supabase.from('school_calendar').select('*').order('event_date', { ascending: true });
     
     if (selectedGrade !== 'all') {
@@ -45,6 +50,52 @@ export default function Calendar() {
     fetchEvents();
   }, [selectedGrade, selectedCategory]);
 
+  // Tarih Filtreleme Mantığı (Aylık / Haftalık)
+  const filteredEventsByDate = events.filter(item => {
+    if (!item.event_date) return false;
+    const eventDate = new Date(item.event_date);
+
+    if (viewMode === 'monthly') {
+      return (
+        eventDate.getMonth() === currentDate.getMonth() &&
+        eventDate.getFullYear() === currentDate.getFullYear()
+      );
+    } else if (viewMode === 'weekly') {
+      // Seçilen haftanın başlangıç ve bitiş tarihlerini bulalım (Pazartesi - Pazar)
+      const curr = new Date(currentDate);
+      const firstDayOfWeek = new Date(curr.setDate(curr.getDate() - curr.getDay() + (curr.getDay() === 0 ? -6 : 1)));
+      firstDayOfWeek.setHours(0, 0, 0, 0);
+
+      const lastDayOfWeek = new Date(firstDayOfWeek);
+      lastDayOfWeek.setDate(lastDayOfWeek.getDate() + 6);
+      lastDayOfWeek.setHours(23, 59, 59, 999);
+
+      return eventDate >= firstDayOfWeek && eventDate <= lastDayOfWeek;
+    }
+    return true;
+  });
+
+  // Önceki / Sonraki Dönem Butonları
+  const handlePrevPeriod = () => {
+    const newDate = new Date(currentDate);
+    if (viewMode === 'monthly') {
+      newDate.setMonth(newDate.getMonth() - 1);
+    } else {
+      newDate.setDate(newDate.getDate() - 7);
+    }
+    setCurrentDate(newDate);
+  };
+
+  const handleNextPeriod = () => {
+    const newDate = new Date(currentDate);
+    if (viewMode === 'monthly') {
+      newDate.setMonth(newDate.getMonth() + 1);
+    } else {
+      newDate.setDate(newDate.getDate() + 7);
+    }
+    setCurrentDate(newDate);
+  };
+
   const handleAddEvent = async (e) => {
     e.preventDefault();
     const payload = {
@@ -62,7 +113,6 @@ export default function Calendar() {
     }
   };
 
-  // Düzeltilmiş Türkçe tarih metnini Date formatına çeviren fonksiyon
   const parseTurkishDate = (dateStr) => {
     if (!dateStr) return new Date().toISOString().split('T')[0];
     if (dateStr instanceof Date) return dateStr.toISOString().split('T')[0];
@@ -102,17 +152,14 @@ export default function Calendar() {
     return `${foundYear}-${foundMonth}-${foundDay}`;
   };
 
-  // Sınıf Seviyesini Ayrıştıran Fonksiyon
   const parseGradeLevel = (gradeStr) => {
     if (!gradeStr) return '12';
     const str = String(gradeStr).toLowerCase();
     if (str.includes('tüm') || str.includes('okul') || str.includes('tümü')) return 'all';
-    
     const match = str.match(/\d+/);
     return match ? match[0] : '12';
   };
 
-  // Kategori Türünü Ayrıştıran Fonksiyon
   const parseCategory = (catStr) => {
     if (!catStr) return 'exam';
     const str = String(catStr).toLowerCase();
@@ -122,7 +169,6 @@ export default function Calendar() {
     return 'exam';
   };
 
-  // Excel Dosyası Yükleme İşleyicisi
   const handleExcelUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -179,35 +225,6 @@ export default function Calendar() {
     }
   };
 
-  // UUID tablosuyla uyumlu Düzeltilmiş Toplu Silme Fonksiyonu
-  const handleDeleteAllEvents = async () => {
-    if (window.confirm('DİKKAT: Veritabanındaki TÜM takvim kayıtları kalıcı olarak silinecek. Emin misiniz?')) {
-      // Tüm kayıtların id'lerini seçip silme sorgusu gönderiyoruz
-      const { data: allData, error: fetchError } = await supabase.from('school_calendar').select('id');
-      
-      if (fetchError) {
-        alert('Kayıtlar alınırken hata oluştu: ' + fetchError.message);
-        return;
-      }
-
-      if (!allData || allData.length === 0) {
-        alert('Silinecek kayıt bulunmuyor.');
-        return;
-      }
-
-      const idsToDelete = allData.map(item => item.id);
-      const { error } = await supabase.from('school_calendar').delete().in('id', idsToDelete);
-
-      if (error) {
-        alert('Toplu silme hatası: ' + error.message);
-      } else {
-        alert('Tüm takvim kayıtları başarıyla silindi.');
-        setActiveEvent(null);
-        fetchEvents();
-      }
-    }
-  };
-
   const getCategoryBadgeClass = (cat) => {
     switch (cat) {
       case 'exam': return 'badge badge-exam';
@@ -228,26 +245,58 @@ export default function Calendar() {
     }
   };
 
+  // Başlık metnini dinamik göstermek için
+  const getPeriodTitle = () => {
+    if (viewMode === 'monthly') {
+      return currentDate.toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' });
+    } else {
+      const curr = new Date(currentDate);
+      const firstDay = new Date(curr.setDate(curr.getDate() - curr.getDay() + (curr.getDay() === 0 ? -6 : 1)));
+      const lastDay = new Date(firstDay);
+      lastDay.setDate(lastDay.getDate() + 6);
+      return `${firstDay.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })} - ${lastDay.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' })}`;
+    }
+  };
+
   return (
     <div className="calendar-container">
       <div className="calendar-header-section">
         <div>
           <h1 className="calendar-title">Okul İşleyiş ve Sınav Takvimi</h1>
-          <p className="calendar-subtitle">Sınavları, ödevleri ve grup değişim tarihlerini buradan takip edebilirsiniz.</p>
+          <p className="calendar-subtitle">Sınavları, ödevleri ve grup değişim tarihlerini haftalık veya aylık olarak takip edebilirsiniz.</p>
         </div>
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
           <label className="calendar-add-btn" style={{ background: '#10b981', cursor: 'pointer', display: 'inline-flex', alignItems: 'center' }}>
             📥 Excel ile Yükle
             <input type="file" accept=".xlsx, .xls, .csv" onChange={handleExcelUpload} style={{ display: 'none' }} />
           </label>
-
-          <button onClick={handleDeleteAllEvents} className="calendar-add-btn" style={{ background: '#ef4444' }}>
-            🗑️ Hepsini Sil
-          </button>
-
           <button onClick={() => setIsAddModalOpen(true)} className="calendar-add-btn">
             + Yeni Etkinlik / Sınav Ekle
           </button>
+        </div>
+      </div>
+
+      {/* Görünüm ve Zaman Kontrolleri */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc', padding: '15px', borderRadius: '10px', marginBottom: '20px', flexWrap: 'wrap', gap: '15px', border: '1px solid #e2e8f0' }}>
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+          <button 
+            onClick={() => setViewMode('monthly')} 
+            style={{ padding: '8px 16px', background: viewMode === 'monthly' ? '#2563eb' : '#e2e8f0', color: viewMode === 'monthly' ? '#fff' : '#334155', border: 'none', borderRadius: '6px', fontWeight: '600', cursor: 'pointer' }}
+          >
+            Aylık Görünüm
+          </button>
+          <button 
+            onClick={() => setViewMode('weekly')} 
+            style={{ padding: '8px 16px', background: viewMode === 'weekly' ? '#2563eb' : '#e2e8f0', color: viewMode === 'weekly' ? '#fff' : '#334155', border: 'none', borderRadius: '6px', fontWeight: '600', cursor: 'pointer' }}
+          >
+            Haftalık Görünüm
+          </button>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+          <button onClick={handlePrevPeriod} style={{ padding: '6px 12px', background: '#fff', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>&larr; Önceki</button>
+          <span style={{ fontSize: '16px', fontWeight: 'bold', color: '#1e293b', minWidth: '160px', textAlign: 'center' }}>{getPeriodTitle()}</span>
+          <button onClick={handleNextPeriod} style={{ padding: '6px 12px', background: '#fff', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>Sonraki &rarr;</button>
         </div>
       </div>
 
@@ -276,11 +325,11 @@ export default function Calendar() {
 
       {loading ? (
         <div className="loading-box">Takvim yükleniyor...</div>
-      ) : events.length === 0 ? (
-        <div className="empty-box">Bu kriterlere uygun etkinlik bulunamadı.</div>
+      ) : filteredEventsByDate.length === 0 ? (
+        <div className="empty-box">Seçilen tarih aralığında ve kriterlerde etkinlik bulunamadı.</div>
       ) : (
         <div className="calendar-grid">
-          {events.map((item) => (
+          {filteredEventsByDate.map((item) => (
             <div key={item.id} onClick={() => setActiveEvent(item)} className="calendar-card">
               <div>
                 <div className="calendar-card-header">
