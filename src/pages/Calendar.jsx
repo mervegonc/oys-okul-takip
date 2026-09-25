@@ -145,22 +145,56 @@ export default function Calendar() {
     }
   };
 
+  // Excel tarihlerini (örn: "12 Eylül 2026 Cumartesi") hatasız parse eden güncellenmiş fonksiyon
   const parseTurkishDate = (dateStr) => {
     if (!dateStr) return new Date().toISOString().split('T')[0];
     if (dateStr instanceof Date) return dateStr.toISOString().split('T')[0];
-    const months = { 'ocak': '01', 'şubat': '02', 'mart': '03', 'nisan': '04', 'mayıs': '05', 'haziran': '06', 'temmuz': '07', 'ağustos': '08', 'eylül': '09', 'ekim': '10', 'kasım': '11', 'aralık': '12' };
-    let cleanStr = String(dateStr).toLowerCase().trim();
+    
+    const months = { 
+      'ocak': '01', 'şubat': '02', 'mart': '03', 'nisan': '04', 
+      'mayıs': '05', 'haziran': '06', 'temmuz': '07', 'ağustos': '08', 
+      'eylül': '09', 'ekim': '10', 'kasım': '11', 'aralık': '12' 
+    };
+    
+    const cleanStr = String(dateStr).toLowerCase().trim();
+    
+    // "12 Eylül 2026 Cumartesi" kalıbını doğrudan GÜN AY YIL sırasıyla yakalar
+    const match = cleanStr.match(/(\d{1,2})\s+([a-züİöçşğ]+)\s+(\d{2,4})/);
+    
+    if (match) {
+      const day = match[1].padStart(2, '0');
+      const monthStr = match[2];
+      let year = match[3];
+      if (year.length === 2) year = '20' + year;
+      
+      let month = '01';
+      for (let [mName, mNum] of Object.entries(months)) {
+        if (monthStr.includes(mName)) {
+          month = mNum;
+          break;
+        }
+      }
+      return `${year}-${month}-${day}`;
+    }
+    
+    // Yedek esnek parse mekanizması
     let foundMonth = '01', foundYear = '2026', foundDay = '01';
     for (let [mName, mNum] of Object.entries(months)) {
-      if (cleanStr.includes(mName)) { foundMonth = mNum; cleanStr = cleanStr.replace(mName, ''); break; }
+      if (cleanStr.includes(mName)) {
+        foundMonth = mNum;
+        break;
+      }
     }
+    
     const numbers = cleanStr.replace(/[^0-9]/g, ' ').trim().split(/\s+/).filter(Boolean);
     if (numbers.length >= 2) {
-      for (let num of numbers) {
-        if (num.length === 4 || (num.length === 2 && parseInt(num) > 31)) { foundYear = num.length === 2 ? '20' + num : num; }
-        else { foundDay = num.padStart(2, '0'); }
-      }
-    } else if (numbers.length === 1) { foundDay = numbers[0].padStart(2, '0'); }
+      foundDay = numbers[0].padStart(2, '0');
+      const secondNum = numbers[1];
+      foundYear = secondNum.length === 2 ? '20' + secondNum : secondNum;
+    } else if (numbers.length === 1) {
+      foundDay = numbers[0].padStart(2, '0');
+    }
+    
     return `${foundYear}-${foundMonth}-${foundDay}`;
   };
 
@@ -200,7 +234,7 @@ export default function Calendar() {
         }));
         const { error } = await supabase.from('school_calendar').insert(formattedEvents);
         if (error) alert('Hata: ' + error.message);
-        else { alert(`${formattedEvents.length} etkinlik yüklendi!`); fetchEvents(); }
+        else { alert(`${formattedEvents.length} etkinlik başarıyla yüklendi!`); fetchEvents(); }
       } catch (err) { alert('Dosya okunamadı.'); }
       e.target.value = '';
     };
