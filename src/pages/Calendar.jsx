@@ -62,7 +62,7 @@ export default function Calendar() {
     }
   };
 
-  // Türkçe tarih metnini Date objesine çeviren yardımcı fonksiyon
+  // Düzeltilmiş Türkçe tarih metnini Date formatına çeviren fonksiyon
   const parseTurkishDate = (dateStr) => {
     if (!dateStr) return new Date().toISOString().split('T')[0];
     if (dateStr instanceof Date) return dateStr.toISOString().split('T')[0];
@@ -73,28 +73,38 @@ export default function Calendar() {
     };
 
     let cleanStr = String(dateStr).toLowerCase().trim();
+    let foundMonth = '01';
+    let foundYear = '2026';
+    let foundDay = '01';
+
     for (let [monthName, monthNum] of Object.entries(months)) {
       if (cleanStr.includes(monthName)) {
-        cleanStr = cleanStr.replace(monthName, monthNum);
+        foundMonth = monthNum;
+        cleanStr = cleanStr.replace(monthName, '');
         break;
       }
     }
 
-    const parts = cleanStr.replace(/[^0-9]/g, ' ').trim().split(/\s+/);
-    if (parts.length >= 3) {
-      const day = parts[0].padStart(2, '0');
-      const month = parts[1].padStart(2, '0');
-      let year = parts[2];
-      if (year.length === 2) year = '20' + year;
-      return `${year}-${month}-${day}`;
+    const numbers = cleanStr.replace(/[^0-9]/g, ' ').trim().split(/\s+/).filter(Boolean);
+    
+    if (numbers.length >= 2) {
+      for (let num of numbers) {
+        if (num.length === 4 || (num.length === 2 && parseInt(num) > 31)) {
+          foundYear = num.length === 2 ? '20' + num : num;
+        } else {
+          foundDay = num.padStart(2, '0');
+        }
+      }
+    } else if (numbers.length === 1) {
+      foundDay = numbers[0].padStart(2, '0');
     }
 
-    return new Date().toISOString().split('T')[0];
+    return `${foundYear}-${foundMonth}-${foundDay}`;
   };
 
-  // Sınıf Seviyesini Ayrıştıran Fonksiyon (Örn: "12. Sınıf" -> "12")
+  // Sınıf Seviyesini Ayrıştıran Fonksiyon
   const parseGradeLevel = (gradeStr) => {
-    if (!gradeStr) return '12'; // Varsayılan
+    if (!gradeStr) return '12';
     const str = String(gradeStr).toLowerCase();
     if (str.includes('tüm') || str.includes('okul') || str.includes('tümü')) return 'all';
     
@@ -109,7 +119,7 @@ export default function Calendar() {
     if (str.includes('ödev')) return 'homework';
     if (str.includes('grup') || str.includes('değişim')) return 'group_change';
     if (str.includes('toplantı')) return 'meeting';
-    return 'exam'; // Varsayılan Sınav
+    return 'exam';
   };
 
   // Excel Dosyası Yükleme İşleyicisi
@@ -131,7 +141,6 @@ export default function Calendar() {
           return;
         }
 
-        // Excel verilerini veritabanı formatına dönüştür
         const formattedEvents = data.map((row) => ({
           title: row['Sınav Adı'] || row['Etkinlik Adı'] || 'İsimsiz Etkinlik',
           category: parseCategory(row['Kategori']),
@@ -267,7 +276,6 @@ export default function Calendar() {
         </div>
       )}
 
-      {/* Modallar (Detay ve Ekleme pencereleri aynı kalmıştır) */}
       {activeEvent && (
         <div className="modal-overlay">
           <div className="modal-content">
@@ -302,6 +310,103 @@ export default function Calendar() {
                 Kapat
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {isAddModalOpen && (
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <div className="modal-header">
+              <h2 style={{ fontSize: '18px', fontWeight: 'bold', color: '#1e293b', margin: 0 }}>Yeni Takvim Kaydı Ekle</h2>
+              <button onClick={() => setIsAddModalOpen(false)} className="modal-close-btn">&times;</button>
+            </div>
+
+            <form onSubmit={handleAddEvent}>
+              <div className="form-group">
+                <label className="form-label">Etkinlik / Sınav / Ödev Adı</label>
+                <input
+                  type="text"
+                  required
+                  value={newEvent.title}
+                  onChange={(e) => setNewEvent({ ...newEvent, title: e.target.value })}
+                  placeholder="Örn: 12. Sınıf Yaz Ödevi"
+                  className="form-input"
+                />
+              </div>
+
+              <div className="form-row">
+                <div className="form-group" style={{ flex: 1 }}>
+                  <label className="form-label">Kategori</label>
+                  <select
+                    value={newEvent.category}
+                    onChange={(e) => setNewEvent({ ...newEvent, category: e.target.value })}
+                    className="form-select"
+                  >
+                    <option value="exam">Sınav</option>
+                    <option value="homework">Ödev</option>
+                    <option value="group_change">Grup Değişimi</option>
+                    <option value="meeting">Toplantı</option>
+                  </select>
+                </div>
+                <div className="form-group" style={{ flex: 1 }}>
+                  <label className="form-label">Sınıf Seviyesi</label>
+                  <select
+                    value={newEvent.grade_level}
+                    onChange={(e) => setNewEvent({ ...newEvent, grade_level: e.target.value })}
+                    className="form-select"
+                  >
+                    <option value="all">Tüm Okul</option>
+                    <option value="12">12. Sınıf</option>
+                    <option value="11">11. Sınıf</option>
+                    <option value="10">10. Sınıf</option>
+                    <option value="9">9. Sınıf</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="form-row">
+                <div className="form-group" style={{ flex: 1 }}>
+                  <label className="form-label">Tarih</label>
+                  <input
+                    type="date"
+                    required
+                    value={newEvent.event_date}
+                    onChange={(e) => setNewEvent({ ...newEvent, event_date: e.target.value })}
+                    className="form-input"
+                  />
+                </div>
+                <div className="form-group" style={{ flex: 1 }}>
+                  <label className="form-label">Bitiş Tarihi (Opsiyonel)</label>
+                  <input
+                    type="date"
+                    value={newEvent.end_date}
+                    onChange={(e) => setNewEvent({ ...newEvent, end_date: e.target.value })}
+                    className="form-input"
+                  />
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Açıklama / Detay</label>
+                <textarea
+                  rows="3"
+                  value={newEvent.description}
+                  onChange={(e) => setNewEvent({ ...newEvent, description: e.target.value })}
+                  placeholder="Detaylar..."
+                  className="form-textarea"
+                ></textarea>
+              </div>
+
+              <div className="form-actions">
+                <button type="button" onClick={() => setIsAddModalOpen(false)} className="btn-secondary">
+                  İptal
+                </button>
+                <button type="submit" className="btn-primary">
+                  Kaydet
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
