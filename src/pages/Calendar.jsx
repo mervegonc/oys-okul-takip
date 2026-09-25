@@ -46,7 +46,14 @@ export default function Calendar() {
 
   const handleAddEvent = async (e) => {
     e.preventDefault();
-    const { error } = await supabase.from('school_calendar').insert([newEvent]);
+    
+    // Boş gelen end_date değerini null yaparak veritabanı tip hatasını önlüyoruz
+    const payload = {
+      ...newEvent,
+      end_date: newEvent.end_date ? newEvent.end_date : null
+    };
+
+    const { error } = await supabase.from('school_calendar').insert([payload]);
     if (error) {
       alert('Kayıt eklenirken hata oluştu: ' + error.message);
     } else {
