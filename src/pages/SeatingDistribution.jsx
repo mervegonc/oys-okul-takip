@@ -142,14 +142,18 @@ const SeatingDistribution = () => {
     try {
       const assignments = [];
 
+      // Sadece bu sınavın içerisindeki öğrenci ID'lerini küme haline getir
+      const currentExamStudentIds = new Set(students.map(s => String(s.id)));
+
+      // Çakışma Haritası Oluşturma (Yalnızca bu sınavdaki öğrencileri filtreleyerek)
       const conflictPairsMap = {};
       conflictGroups.forEach(cg => {
-        const cgStudents = cg.student_ids || [];
+        const cgStudents = (cg.student_ids || []).map(String).filter(id => currentExamStudentIds.has(id));
         cgStudents.forEach(id1 => {
           if (!conflictPairsMap[id1]) conflictPairsMap[id1] = new Set();
           cgStudents.forEach(id2 => {
-            if (String(id1) !== String(id2)) {
-              conflictPairsMap[id1].add(String(id2));
+            if (id1 !== id2) {
+              conflictPairsMap[id1].add(id2);
             }
           });
         });
@@ -241,14 +245,15 @@ const SeatingDistribution = () => {
             for (const st of shuffledInterleaved) {
               let placed = false;
 
+              // 1. Aşama: Hedef kotası dolmamış VE çakışma kuralına takılmayan salon
               for (const room of groupRooms) {
                 if (room.seats.length >= room.targetQuota) continue;
 
+                const stIdStr = String(st.id);
                 const hasConflict = room.seats.some(existingSt => {
-                  const s1 = String(existingSt.id);
-                  const s2 = String(st.id);
-                  return (conflictPairsMap[s1] && conflictPairsMap[s1].has(s2)) || 
-                         (conflictPairsMap[s2] && conflictPairsMap[s2].has(s1));
+                  const existingIdStr = String(existingSt.id);
+                  return (conflictPairsMap[stIdStr] && conflictPairsMap[stIdStr].has(existingIdStr)) || 
+                         (conflictPairsMap[existingIdStr] && conflictPairsMap[existingIdStr].has(stIdStr));
                 });
 
                 if (!hasConflict) {
@@ -258,9 +263,18 @@ const SeatingDistribution = () => {
                 }
               }
 
+              // 2. Aşama: Kesin çakışmasız bulunamadıysa, çakışmayı yine ihlal etmeden kotayı biraz esnet
               if (!placed) {
                 const availableRooms = groupRooms
-                  .filter(r => r.seats.length < r.totalCap && r.seats.length < r.targetQuota + 2)
+                  .filter(r => {
+                    if (r.seats.length >= r.totalCap || r.seats.length >= r.targetQuota + 2) return false;
+                    const stIdStr = String(st.id);
+                    return !r.seats.some(existingSt => {
+                      const existingIdStr = String(existingSt.id);
+                      return (conflictPairsMap[stIdStr] && conflictPairsMap[stIdStr].has(existingIdStr)) || 
+                             (conflictPairsMap[existingIdStr] && conflictPairsMap[existingIdStr].has(stIdStr));
+                    });
+                  })
                   .sort((a, b) => a.seats.length - b.seats.length);
 
                 if (availableRooms.length > 0) {
@@ -269,6 +283,7 @@ const SeatingDistribution = () => {
                 }
               }
 
+              // 3. Son Çare: Genel kapasite sınırları içerisinde en boş salon
               if (!placed) {
                 const generalRooms = groupRooms
                   .filter(r => r.seats.length < r.totalCap)
@@ -347,11 +362,11 @@ const SeatingDistribution = () => {
             for (const room of groupRooms) {
               if (room.seats.length >= room.targetQuota) continue;
 
+              const stIdStr = String(st.id);
               const hasConflict = room.seats.some(existingSt => {
-                const s1 = String(existingSt.id);
-                const s2 = String(st.id);
-                return (conflictPairsMap[s1] && conflictPairsMap[s1].has(s2)) || 
-                       (conflictPairsMap[s2] && conflictPairsMap[s2].has(s1));
+                const existingIdStr = String(existingSt.id);
+                return (conflictPairsMap[stIdStr] && conflictPairsMap[stIdStr].has(existingIdStr)) || 
+                       (conflictPairsMap[existingIdStr] && conflictPairsMap[existingIdStr].has(stIdStr));
               });
 
               if (!hasConflict) {
@@ -487,6 +502,13 @@ const SeatingDistribution = () => {
     roomSummaryMap[rName]++;
   });
 
+  // Öğrencinin hangi salonda olduğunu bulmak için harita
+  const studentRoomMap = {};
+  distributions.forEach(item => {
+    const rName = rooms.find(r => r.id === item.room_id)?.name || item.room_id;
+    studentRoomMap[String(item.student_id)] = `${rName} (Sıra: ${item.seat_number})`;
+  });
+
   return (
     <div style={{ padding: '1rem', maxWidth: '1400px', margin: '0 auto' }}>
       <h2>🪑 Sınav Oturma Düzeni Paneli</h2>
@@ -618,39 +640,77 @@ const SeatingDistribution = () => {
         </div>
       )}
 
-      {/* ANA İÇERİK: SOL TARAF KÜÇÜK SALON ÖZETİ TABLOSU, SAĞ TARAF GRUP YAPILANDIRMASI */}
-      <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: '1.5rem', alignItems: 'start' }}>
+      {/* ANA İÇERİK: SOL TARAF KÜÇÜK SALON ÖZETİ VE ÖĞRENCİ LİSTESİ, SAĞ TARAF GRUP YAPILANDIRMASI */}
+      <div style={{ display: 'grid', gridTemplateColumns: '360px 1fr', gap: '1.5rem', alignItems: 'start' }}>
         
-        {/* SOL TARAF: KÜÇÜK SALON ÖZETLERİ TABLOSU */}
+        {/* SOL TARAF: KÜÇÜK SALON ÖZETLERİ VE ÖĞRENCİLERİN ATANDIKLARI SALONLAR LİSTESİ */}
         {selectedExamId && (
-          <div style={{ background: '#fff', padding: '1rem', borderRadius: '8px', border: '1px solid #ddd', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
-            <h4 style={{ margin: '0 0 0.8rem 0', borderBottom: '2px solid #007bff', paddingBottom: '0.4rem', color: '#007bff' }}>
-              📊 Salon Özetleri
-            </h4>
-            {Object.keys(roomSummaryMap).length === 0 ? (
-              <p style={{ color: '#666', fontSize: '0.9rem', fontStyle: 'italic' }}>Henüz dağıtım yapılmadı.</p>
-            ) : (
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
-                <thead>
-                  <tr style={{ background: '#f8f9fa', borderBottom: '1px solid #ddd', textAlign: 'left' }}>
-                    <th style={{ padding: '0.5rem' }}>Salon Adı</th>
-                    <th style={{ padding: '0.5rem', textAlign: 'right' }}>Öğrenci</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {Object.entries(roomSummaryMap).map(([rName, count], idx) => (
-                    <tr key={idx} style={{ borderBottom: '1px solid #eee' }}>
-                      <td style={{ padding: '0.5rem' }}>{rName}</td>
-                      <td style={{ padding: '0.5rem', textAlign: 'right', fontWeight: 'bold', color: '#007bff' }}>{count}</td>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            {/* Salon Özetleri Tablosu */}
+            <div style={{ background: '#fff', padding: '1rem', borderRadius: '8px', border: '1px solid #ddd', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
+              <h4 style={{ margin: '0 0 0.8rem 0', borderBottom: '2px solid #007bff', paddingBottom: '0.4rem', color: '#007bff' }}>
+                📊 Salon Özetleri
+              </h4>
+              {Object.keys(roomSummaryMap).length === 0 ? (
+                <p style={{ color: '#666', fontSize: '0.9rem', fontStyle: 'italic' }}>Henüz dağıtım yapılmadı.</p>
+              ) : (
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
+                  <thead>
+                    <tr style={{ background: '#f8f9fa', borderBottom: '1px solid #ddd', textAlign: 'left' }}>
+                      <th style={{ padding: '0.5rem' }}>Salon Adı</th>
+                      <th style={{ padding: '0.5rem', textAlign: 'right' }}>Öğrenci</th>
                     </tr>
-                  ))}
-                  <tr style={{ background: '#f8f9fa', fontWeight: 'bold' }}>
-                    <td style={{ padding: '0.5rem' }}>Toplam</td>
-                    <td style={{ padding: '0.5rem', textAlign: 'right' }}>{distributions.length}</td>
-                  </tr>
-                </tbody>
-              </table>
-            )}
+                  </thead>
+                  <tbody>
+                    {Object.entries(roomSummaryMap).map(([rName, count], idx) => (
+                      <tr key={idx} style={{ borderBottom: '1px solid #eee' }}>
+                        <td style={{ padding: '0.5rem' }}>{rName}</td>
+                        <td style={{ padding: '0.5rem', textAlign: 'right', fontWeight: 'bold', color: '#007bff' }}>{count}</td>
+                      </tr>
+                    ))}
+                    <tr style={{ background: '#f8f9fa', fontWeight: 'bold' }}>
+                      <td style={{ padding: '0.5rem' }}>Toplam</td>
+                      <td style={{ padding: '0.5rem', textAlign: 'right' }}>{distributions.length}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              )}
+            </div>
+
+            {/* Sınav Seviyesindeki Öğrenciler ve Atandıkları Salonlar Listesi */}
+            <div style={{ background: '#fff', padding: '1rem', borderRadius: '8px', border: '1px solid #ddd', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', maxHeight: '500px', overflowY: 'auto' }}>
+              <h4 style={{ margin: '0 0 0.8rem 0', borderBottom: '2px solid #28a745', paddingBottom: '0.4rem', color: '#28a745' }}>
+                👥 Sınav Öğrencileri & Salonları ({students.length})
+              </h4>
+              {students.length === 0 ? (
+                <p style={{ color: '#666', fontSize: '0.9rem', fontStyle: 'italic' }}>Öğrenci bulunamadı.</p>
+              ) : (
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                  <thead>
+                    <tr style={{ background: '#f8f9fa', borderBottom: '1px solid #ddd', textAlign: 'left' }}>
+                      <th style={{ padding: '0.4rem' }}>Öğrenci</th>
+                      <th style={{ padding: '0.4rem' }}>Şube</th>
+                      <th style={{ padding: '0.4rem' }}>Atandığı Salon</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {students.map((st, idx) => {
+                      const stName = `${st.first_name || st.firstName || ''} ${st.last_name || st.lastName || ''}`.trim();
+                      const assignedRoom = studentRoomMap[String(st.id)] || 'Atanmadı';
+                      return (
+                        <tr key={idx} style={{ borderBottom: '1px solid #eee' }}>
+                          <td style={{ padding: '0.4rem' }}>{stName}</td>
+                          <td style={{ padding: '0.4rem' }}>{st.grade}-{st.class}</td>
+                          <td style={{ padding: '0.4rem', fontWeight: 'bold', color: studentRoomMap[String(st.id)] ? '#007bff' : '#dc3545' }}>
+                            {assignedRoom}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
           </div>
         )}
 
