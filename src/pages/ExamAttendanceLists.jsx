@@ -18,9 +18,6 @@ const ExamAttendanceLists = () => {
   const [invigilators, setInvigilators] = useState({});
   const [savedInvigilatorsList, setSavedInvigilatorsList] = useState([]);
 
-  // Geçici TC'leri tutmak için state (Veritabanına asla kaydedilmez, sayfa yenilenince silinir)
-  const [tempTcs, setTempTcs] = useState({});
-
   useEffect(() => {
     fetchExams();
     fetchRooms();
@@ -80,6 +77,8 @@ const ExamAttendanceLists = () => {
   const fetchAllStudentsData = async () => {
     try {
       const { data, error } = await supabase.from('students').select('*');
+      console.log("🔍 [LOG] Students Tablosundan Çekilen Ham Veri:", data);
+
       if (!error && data) {
         const map = {};
         data.forEach(st => {
@@ -88,7 +87,10 @@ const ExamAttendanceLists = () => {
           if (st.student_no) map[String(st.student_no).trim()] = st;
         });
         setStudentMap(map);
+        console.log("🔍 [LOG] Oluşturulan StudentMap:", map);
         return map;
+      } else if (error) {
+        console.error("❌ [LOG] Students tablosu hatası:", error);
       }
     } catch (err) {
       console.error('Öğrenciler tablosundan veri çekilemedi:', err);
@@ -159,8 +161,9 @@ const ExamAttendanceLists = () => {
   const handleSelectExam = async (exam) => {
     setSelectedExam(exam);
     setLoading(true);
-    setTempTcs({}); // Yeni sınav seçildiğinde geçici TC'leri sıfırla
     try {
+      const currentMap = await fetchAllStudentsData();
+
       const { data, error } = await supabase
         .from('seating_plans')
         .select('*')
@@ -171,6 +174,8 @@ const ExamAttendanceLists = () => {
       if (error) throw error;
 
       const plan = data && data.length > 0 ? data[0] : null;
+      console.log("🔍 [LOG] Seçilen Sınav İçin Bulunan Oturma Planı:", plan);
+      
       let parsedAssignments = [];
 
       if (plan) {
@@ -180,56 +185,17 @@ const ExamAttendanceLists = () => {
           parsedAssignments = plan.assignments;
         }
         plan.assignments = parsedAssignments;
+        console.log("🔍 [LOG] Parse Edilen Assignments (Atamalar):", parsedAssignments);
+      } else {
+        console.warn("⚠️ [LOG] Bu sınav için seating_plans tablosunda kayıt bulunamadı!");
       }
       setSeatingPlan(plan);
+
     } catch (err) {
       console.error('Oturma planı alınamadı:', err);
     } finally {
       setLoading(false);
     }
-  };
-
-  // Excel'den Geçici TC Yükleme Fonksiyonu
-  const handleTempTcFileUpload = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-      try {
-        const data = new Uint8Array(evt.target.result);
-        const workbook = XLSX.read(data, { type: 'array' });
-        const firstSheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[firstSheetName];
-        const jsonData = XLSX.utils.sheet_to_json(worksheet);
-
-        const newMap = {};
-        jsonData.forEach(row => {
-          const keys = Object.keys(row);
-          let noKey = keys.find(k => k.toLowerCase().includes('no') || k.toLowerCase().includes('numara'));
-          let nameKey = keys.find(k => k.toLowerCase().includes('ad') || k.toLowerCase().includes('isim') || k.toLowerCase().includes('soyad'));
-          let tcKey = keys.find(k => k.toLowerCase().includes('tc') || k.toLowerCase().includes('kimlik'));
-
-          if (tcKey) {
-            const tcVal = String(row[tcKey] || '').trim();
-            if (noKey && row[noKey]) {
-              newMap[String(row[noKey]).trim()] = tcVal;
-            }
-            if (nameKey && row[nameKey]) {
-              newMap[String(row[nameKey]).trim().toLocaleLowerCase('tr-TR')] = tcVal;
-            }
-          }
-        });
-
-        setTempTcs(newMap);
-        alert(`Başarıyla ${Object.keys(newMap).length} öğrenci için geçici TC yüklendi! Bu veriler sadece bu oturumda görüntülenecektir.`);
-      } catch (err) {
-        console.error('Excel okuma hatası:', err);
-        alert('Excel dosyası okunurken bir hata oluştu.');
-      }
-    };
-    reader.readAsArrayBuffer(file);
-    e.target.value = null; // Reset file input
   };
 
   const handleInvigilatorChange = async (roomName, val) => {
@@ -287,6 +253,7 @@ const ExamAttendanceLists = () => {
     const dbSt = studentMap[rawId] || studentMap[rawTc] || studentMap[rawNo] || {};
 
     const studentNo = dbSt.student_no || st.student_no || st.no || st.studentNo || '-';
+    const tcNo = dbSt.tc_no || dbSt.tc || st.tc || st.tc_no || st.tcNo || '-';
 
     let firstName = dbSt.first_name || st.first_name || st.ad || '';
     let lastName = dbSt.last_name || st.last_name || st.soyad || '';
@@ -315,22 +282,15 @@ const ExamAttendanceLists = () => {
 
     const grade = dbSt.grade || st.grade || st.sinif || '';
     const className = dbSt.class || st.className || st.sube || '';
+    
     const rawField = dbSt.field || st.field || st.alan || st.track || st.department || '';
+    
     const englishLevel = dbSt.english_level || dbSt.ingilizce_seviye || st.englishLevel || st.ing_seviye || '-';
-    const secondLanguage = dbSt.second_lang || dbSt.second_language || st.ikinci_yabanci_dil || st.secondLanguage || '-';
-
-    // TC Çözümleme (Önce DB'ye bakılır, yoksa geçici yüklenen tempTcs'den öğrenci no veya ad-soyad ile eşleştirilir)
-    let tcNo = dbSt.tc_no || dbSt.tc || st.tc || st.tc_no || st.tcNo || '';
-    if (!tcNo) {
-      if (studentNo !== '-' && tempTcs[String(studentNo).trim()]) {
-        tcNo = tempTcs[String(studentNo).trim()];
-      } else if (fullName && tempTcs[String(fullName).trim().toLocaleLowerCase('tr-TR')]) {
-        tcNo = tempTcs[String(fullName).trim().toLocaleLowerCase('tr-TR')];
-      }
-    }
+    const secondLanguage = dbSt.second_lang || dbSt.second_language || dbSt.ikinci_yabanci_dil || st.secondLanguage || st.ikinci_dil || '-';
 
     return {
       studentNo,
+      tcNo,
       fullName,
       surnameFirstFormat,
       nameFirstFormat,
@@ -338,8 +298,7 @@ const ExamAttendanceLists = () => {
       className,
       track: formatTrack(rawField),
       englishLevel,
-      secondLanguage,
-      tcNo: tcNo || '-'
+      secondLanguage
     };
   };
 
@@ -365,7 +324,7 @@ const ExamAttendanceLists = () => {
         if (dbClass && String(dbClass).toUpperCase() !== 'EMPTY') {
           roomCode = dbClass;
         } else {
-          roomCode = foundInDb.room_code || foundInDb.code || foundInDb.sube_kodu || foundInDb.branch_code || '';
+          roomCode = foundInDb.room_code || foundInDb.code || foundInDb.sube_kodu || foundInDb.branch_code || foundInDb.short_code || '';
         }
       }
     }
@@ -420,6 +379,7 @@ const ExamAttendanceLists = () => {
         return false;
       }
     }
+    
     return true;
   });
 
@@ -470,26 +430,50 @@ const ExamAttendanceLists = () => {
     if (activeTab === 'surname') {
       dataToExport = getSortedBySurname().map((st, index) => {
         const det = getStudentDetails(st);
-        return {
+        const item = {
           'Sıra No': index + 1,
           'Öğrenci Soyadı, Adı': det.surnameFirstFormat,
-          'TC Kimlik No': det.tcNo,
-          'Sınıf/Şube': `${det.grade}-${det.className}`,
-          'Salon Adı': formatRoomDisplay(st),
-          'Masa Sıra No': st.seatNumber || st.seat_number || ''
+          'Öğrenci No': det.studentNo,
+          'T.C. Kimlik No': det.tcNo,
+          'Sınıf/Şube': `${det.grade}-${det.className}`
         };
+        if (examCategory === 'akademik_lise') {
+          item['Alan'] = det.track;
+        } else if (examCategory === 'ingilizce_ve_ikinci_dil') {
+          item['İng. Seviye'] = det.englishLevel;
+          item['2. Yab. Dil'] = det.secondLanguage;
+        } else if (examCategory === 'sadece_ikinci_dil') {
+          item['2. Yab. Dil'] = det.secondLanguage;
+        } else if (examCategory === 'sadece_ingilizce') {
+          item['İng. Seviye'] = det.englishLevel;
+        }
+        item['Salon Adı'] = formatRoomDisplay(st);
+        item['Masa Sıra No'] = st.seatNumber || st.seat_number || '';
+        return item;
       });
     } else if (activeTab === 'name') {
       dataToExport = getSortedByName().map((st, index) => {
         const det = getStudentDetails(st);
-        return {
+        const item = {
           'Sıra No': index + 1,
           'Öğrenci Adı Soyadı': det.nameFirstFormat,
-          'TC Kimlik No': det.tcNo,
-          'Sınıf/Şube': `${det.grade}-${det.className}`,
-          'Salon Adı': formatRoomDisplay(st),
-          'Masa Sıra No': st.seatNumber || st.seat_number || ''
+          'Öğrenci No': det.studentNo,
+          'T.C. Kimlik No': det.tcNo,
+          'Sınıf/Şube': `${det.grade}-${det.className}`
         };
+        if (examCategory === 'akademik_lise') {
+          item['Alan'] = det.track;
+        } else if (examCategory === 'ingilizce_ve_ikinci_dil') {
+          item['İng. Seviye'] = det.englishLevel;
+          item['2. Yab. Dil'] = det.secondLanguage;
+        } else if (examCategory === 'sadece_ikinci_dil') {
+          item['2. Yab. Dil'] = det.secondLanguage;
+        } else if (examCategory === 'sadece_ingilizce') {
+          item['İng. Seviye'] = det.englishLevel;
+        }
+        item['Salon Adı'] = formatRoomDisplay(st);
+        item['Masa Sıra No'] = st.seatNumber || st.seat_number || '';
+        return item;
       });
     } else {
       const allSortedAssignments = [];
@@ -499,15 +483,26 @@ const ExamAttendanceLists = () => {
 
       dataToExport = allSortedAssignments.map((st, index) => {
         const det = getStudentDetails(st);
-        return {
+        const item = {
           'Sıra No': index + 1,
           'Salon Adı': formatRoomDisplay(st),
           'Masa Sıra No': st.seatNumber || st.seat_number || '',
           'Öğrenci Adı Soyadı': det.fullName,
-          'TC Kimlik No': det.tcNo,
-          'Sınıf/Şube': `${det.grade}-${det.className}`,
-          'Öğrenci No': det.studentNo
+          'Öğrenci No': det.studentNo,
+          'T.C. Kimlik No': det.tcNo,
+          'Sınıf/Şube': `${det.grade}-${det.className}`
         };
+        if (examCategory === 'akademik_lise') {
+          item['Alan'] = det.track;
+        } else if (examCategory === 'ingilizce_ve_ikinci_dil') {
+          item['İng. Seviye'] = det.englishLevel;
+          item['2. Yab. Dil'] = det.secondLanguage;
+        } else if (examCategory === 'sadece_ikinci_dil') {
+          item['2. Yab. Dil'] = det.secondLanguage;
+        } else if (examCategory === 'sadece_ingilizce') {
+          item['İng. Seviye'] = det.englishLevel;
+        }
+        return item;
       });
     }
 
@@ -558,7 +553,7 @@ const ExamAttendanceLists = () => {
           }
           th, td {
             border: 1px solid #000 !important;
-            padding: 4px 5px !important;
+            padding: 4px 6px !important;
             font-size: 9pt !important;
             color: #000 !important;
             line-height: 1.25 !important;
@@ -596,6 +591,70 @@ const ExamAttendanceLists = () => {
       <div className="no-print">
         <h2>📑 Yoklama ve Sınav Listeleri</h2>
         <p style={{ color: '#666' }}>Sınav salon, kapı, soyad ve isim sıralı listelerini yönetin ve bastırın.</p>
+
+        {selectedExam && assignments.length > 0 && (
+          <div style={{ background: '#fff', border: '1px solid #cbd5e1', padding: '1rem', borderRadius: '8px', marginBottom: '1.5rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+            <h3 style={{ margin: '0 0 0.8rem 0', fontSize: '1rem', color: '#1e293b', borderBottom: '2px solid #e2e8f0', paddingBottom: '0.4rem' }}>
+              📊 Sınav Salonları ve Öğrenci Dağılım Özeti
+            </h3>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '9.5pt' }}>
+                <thead>
+                  <tr style={{ background: '#f1f5f9' }}>
+                    <th style={{ border: '1px solid #cbd5e1', padding: '6px 8px', width: '30%' }}>Salon Adı</th>
+                    <th style={{ border: '1px solid #cbd5e1', padding: '6px 8px', width: '40%' }}>Detay / Dağılım</th>
+                    <th style={{ border: '1px solid #cbd5e1', padding: '6px 8px', textAlign: 'center', width: '30%' }}>Öğrenci Sayısı</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.keys(groupedByRoom).map((roomName) => {
+                    const roomStudents = groupedByRoom[roomName];
+                    const sampleItem = roomStudents[0] || {};
+                    const roomDisplayStr = formatRoomDisplay(sampleItem);
+
+                    let rCore = 0, rExt = 0;
+                    const rLangTotals = {};
+                    roomStudents.forEach(st => {
+                      const det = getStudentDetails(st);
+                      const engUp = String(det.englishLevel || '').trim().toLocaleUpperCase('tr-TR');
+                      if (engUp.includes('CORE')) rCore++;
+                      if (engUp.includes('EXT')) rExt++;
+                      const sLang = String(det.secondLanguage || '').trim().toLocaleUpperCase('tr-TR');
+                      if (sLang && sLang !== '-' && sLang !== 'YOK' && sLang !== 'BOŞ') {
+                        rLangTotals[sLang] = (rLangTotals[sLang] || 0) + 1;
+                      }
+                    });
+
+                    return (
+                      <tr key={roomName}>
+                        <td style={{ border: '1px solid #cbd5e1', padding: '6px 8px', fontWeight: 'bold' }}>{roomDisplayStr.toUpperCase()}</td>
+                        <td style={{ border: '1px solid #cbd5e1', padding: '6px 8px', color: '#475569' }}>
+                          {(examCategory === 'sadece_ingilizce' || examCategory === 'ingilizce_ve_ikinci_dil') && (rCore > 0 || rExt > 0) && (
+                            <span>Core: {rCore}, Ext: {rExt}</span>
+                          )}
+                          {(examCategory === 'sadece_ikinci_dil' || examCategory === 'ingilizce_ve_ikinci_dil') && Object.keys(rLangTotals).length > 0 && (
+                            <span>{Object.entries(rLangTotals).map(([l, c]) => `${l}: ${c}`).join(' | ')}</span>
+                          )}
+                        </td>
+                        <td style={{ border: '1px solid #cbd5e1', padding: '6px 8px', textAlign: 'center', fontWeight: 'bold', color: '#2563eb' }}>
+                          {roomStudents.length}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr style={{ background: '#f8fafc', fontWeight: 'bold' }}>
+                    <td colSpan="2" style={{ border: '1px solid #cbd5e1', padding: '6px 8px', textAlign: 'right' }}>TOPLAM ÖĞRENCİ SAYISI:</td>
+                    <td style={{ border: '1px solid #cbd5e1', padding: '6px 8px', textAlign: 'center', color: '#0f172a' }}>
+                      {assignments.length}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+        )}
 
         {!selectedExam ? (
           <div style={{ marginTop: '1.5rem' }}>
@@ -666,20 +725,7 @@ const ExamAttendanceLists = () => {
                 </label>
               </div>
 
-              {/* GEÇİCİ TC YÜKLEME BUTONU */}
-              <div style={{ display: 'flex', alignItems: 'center', marginTop: '1.2rem', gap: '0.5rem' }}>
-                <label style={{ background: '#0284c7', color: '#fff', padding: '0.5rem 1rem', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                  📂 Geçici TC Yükle (Excel)
-                  <input type="file" accept=".xlsx, .xls" onChange={handleTempTcFileUpload} style={{ display: 'none' }} />
-                </label>
-                {Object.keys(tempTcs).length > 0 && (
-                  <span style={{ fontSize: '0.85rem', color: '#16a34a', fontWeight: 'bold' }}>
-                    ({Object.keys(tempTcs).length} TC Yüklendi)
-                  </span>
-                )}
-              </div>
-
-              <div style={{ marginLeft: 'auto', marginTop: '1.2rem' }}>
+              <div style={{ marginLeft: 'auto' }}>
                 <button
                   onClick={handlePrint}
                   style={{ padding: '0.6rem 1.4rem', background: '#1e293b', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.95rem' }}
@@ -778,6 +824,7 @@ const ExamAttendanceLists = () => {
                 let totalCore = 0;
                 let totalExt = 0;
                 let langTotals = {};
+
                 const engLevelsInRoom = new Set();
                 const langsInRoom = new Set();
 
@@ -801,7 +848,11 @@ const ExamAttendanceLists = () => {
                 const getStyleAndClassForValue = (val, list) => {
                   const upperVal = String(val || '').trim().toLocaleUpperCase('tr-TR');
                   const index = list.indexOf(upperVal);
-                  if (index === -1 || list.length <= 1) return { className: 'gray-level-1', style: {} };
+                  
+                  if (index === -1 || list.length <= 1) {
+                    return { className: 'gray-level-1', style: {} };
+                  }
+                  
                   if (list.length === 2) {
                     if (index === 0) return { className: 'gray-level-1', style: {} };
                     return { className: 'gray-level-2', style: { backgroundColor: '#cbd5e1', color: '#000', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' } };
@@ -816,16 +867,16 @@ const ExamAttendanceLists = () => {
                   <div key={roomName} className="print-card page-break" style={{ background: '#fff', border: '1px solid #cbd5e1', padding: '0.8rem', marginBottom: '1rem', borderRadius: '6px' }}>
                     
                     <div style={{ border: '2px solid #000', padding: '0.5rem', textAlign: 'center', marginBottom: '0.5rem', background: '#fafafa' }}>
-                      <h1 style={{ margin: '0 0 0.2rem 0', fontSize: '12pt', fontWeight: 'bold', textTransform: 'uppercase' }}>
+                      <h1 style={{ margin: '0 0 0.2rem 0', fontSize: '12.5pt', fontWeight: 'bold', textTransform: 'uppercase' }}>
                         {getHeaderTitle(roomDisplayStr, gradeSummary)}
                       </h1>
-                      <div style={{ fontSize: '9pt', fontWeight: 'bold', display: 'flex', justifyContent: 'space-around', borderTop: '1px solid #000', paddingTop: '0.3rem', marginTop: '0.3rem' }}>
+                      <div style={{ fontSize: '9.5pt', fontWeight: 'bold', display: 'flex', justifyContent: 'space-around', borderTop: '1px solid #000', paddingTop: '0.3rem', marginTop: '0.3rem' }}>
                         <span>TARİH: {selectedExam.date}</span>
                         <span>{roomDisplayStr.toUpperCase()}</span>
                       </div>
                     </div>
 
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', fontSize: '9pt', fontWeight: 'bold' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', fontSize: '9.5pt', fontWeight: 'bold' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', width: '60%' }}>
                         <span>GÖZETMEN ADI SOYADI: </span>
                         <input
@@ -834,7 +885,7 @@ const ExamAttendanceLists = () => {
                           placeholder="Ad Soyad yazın veya seçin..."
                           value={invigilators[roomName] || ''}
                           onChange={(e) => handleInvigilatorChange(roomName, e.target.value)}
-                          style={{ border: 'none', borderBottom: '1px solid #000', outline: 'none', fontWeight: 'bold', fontSize: '9pt', flex: 1, padding: '2px' }}
+                          style={{ border: 'none', borderBottom: '1px solid #000', outline: 'none', fontWeight: 'bold', fontSize: '9.5pt', flex: 1, padding: '2px' }}
                         />
                         <datalist id={`invigilator-list-${roomName}`}>
                           {savedInvigilatorsList.map((name, idx) => (
@@ -849,25 +900,24 @@ const ExamAttendanceLists = () => {
                       <thead>
                         <tr style={{ background: '#eee' }}>
                           <th style={{ width: '5%', textAlign: 'center' }}>SIRA</th>
-                          <th style={{ width: '10%', textAlign: 'center' }}>ÖĞR. NO</th>
-                          <th style={{ width: '13%', textAlign: 'center' }}>TC KİMLİK NO</th>
+                          <th style={{ width: '11%', textAlign: 'center' }}>ÖĞR. NO</th>
+                          <th style={{ width: '13%', textAlign: 'center' }}>T.C. KİMLİK NO</th>
                           <th>ÖĞRENCİ ADI SOYADI</th>
-
-                          <th style={{ width: '10%', textAlign: 'center' }}>SINIF / ŞUBE</th>
+                          <th style={{ width: '11%', textAlign: 'center' }}>SINIF / ŞUBE</th>
                           
                           {examCategory === 'akademik_lise' && (
-                            <th style={{ width: '10%', textAlign: 'center' }}>ALAN</th>
+                            <th style={{ width: '11%', textAlign: 'center' }}>ALAN</th>
                           )}
                           {examCategory === 'sadece_ingilizce' && (
-                            <th style={{ width: '12%', textAlign: 'center' }}>İNG. SEVİYE</th>
+                            <th style={{ width: '13%', textAlign: 'center' }}>İNG. SEVİYE</th>
                           )}
                           {examCategory === 'sadece_ikinci_dil' && (
-                            <th style={{ width: '12%', textAlign: 'center' }}>2. YAB. DİL</th>
+                            <th style={{ width: '13%', textAlign: 'center' }}>2. YAB. DİL</th>
                           )}
                           {examCategory === 'ingilizce_ve_ikinci_dil' && (
                             <>
-                              <th style={{ width: '10%', textAlign: 'center' }}>İNG. SEVİYE</th>
-                              <th style={{ width: '10%', textAlign: 'center' }}>2. YAB. DİL</th>
+                              <th style={{ width: '11%', textAlign: 'center' }}>İNG. SEVİYE</th>
+                              <th style={{ width: '11%', textAlign: 'center' }}>2. YAB. DİL</th>
                             </>
                           )}
 
@@ -877,6 +927,7 @@ const ExamAttendanceLists = () => {
                       <tbody>
                         {students.map((st, sIdx) => {
                           const det = getStudentDetails(st);
+                          
                           const engStyle = getStyleAndClassForValue(det.englishLevel, sortedEngLevels);
                           const langStyle = getStyleAndClassForValue(det.secondLanguage, sortedLangs);
 
@@ -884,52 +935,76 @@ const ExamAttendanceLists = () => {
                             <tr key={st.studentId || st.id || sIdx}>
                               <td style={{ textAlign: 'center', fontWeight: 'bold' }}>{st.seatNumber || st.seat_number || (sIdx + 1)}</td>
                               <td style={{ textAlign: 'center', fontWeight: '600' }}>{det.studentNo}</td>
+                              <td style={{ textAlign: 'center', fontWeight: '600' }}>{det.tcNo}</td>
                               <td style={{ fontWeight: '500' }}>{det.fullName}</td>
-                              <td style={{ textAlign: 'center', fontWeight: '600', fontSize: '8.5pt' }}>{det.tcNo}</td>
                               <td style={{ textAlign: 'center' }}>{det.grade}-{det.className}</td>
 
                               {examCategory === 'akademik_lise' && (
-                                <td style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '8.5pt' }}>{det.track}</td>
+                                <td style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '9pt' }}>{det.track}</td>
                               )}
                               {examCategory === 'sadece_ingilizce' && (
-                                <td className={engStyle.className} style={{ textAlign: 'center', fontSize: '8.5pt', ...engStyle.style }}>
+                                <td className={engStyle.className} style={{ textAlign: 'center', fontSize: '9pt', ...engStyle.style }}>
                                   {det.englishLevel}
                                 </td>
                               )}
                               {examCategory === 'sadece_ikinci_dil' && (
-                                <td className={langStyle.className} style={{ textAlign: 'center', fontSize: '8.5pt', ...langStyle.style }}>
+                                <td className={langStyle.className} style={{ textAlign: 'center', fontSize: '9pt', ...langStyle.style }}>
                                   {det.secondLanguage}
                                 </td>
                               )}
                               {examCategory === 'ingilizce_ve_ikinci_dil' && (
                                 <>
-                                  <td className={engStyle.className} style={{ textAlign: 'center', fontSize: '8.5pt', ...engStyle.style }}>
+                                  <td className={engStyle.className} style={{ textAlign: 'center', fontSize: '9pt', ...engStyle.style }}>
                                     {det.englishLevel}
                                   </td>
-                                  <td className={langStyle.className} style={{ textAlign: 'center', fontSize: '8.5pt', ...langStyle.style }}>
+                                  <td className={langStyle.className} style={{ textAlign: 'center', fontSize: '9pt', ...langStyle.style }}>
                                     {det.secondLanguage}
                                   </td>
                                 </>
                               )}
 
-                              <td style={{ textAlign: 'center', color: '#999' }}>[ &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; ]</td>
+                              <td style={{ textAlign: 'center', color: '#999' }}>[ &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; ]</td>
                             </tr>
                           );
                         })}
                       </tbody>
                     </table>
 
-                    <div style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-                      <div style={{ border: '1px solid #000', padding: '0.4rem 0.5rem', fontSize: '8.5pt', borderRadius: '4px', background: '#fafafa', display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
-                        <div><strong>Sınava Katılan:</strong> ....................................................................................................</div>
-                        <div><strong>Sınava Katılmayan:</strong> .................................................................................................</div>
+                    <div style={{ marginTop: '0.6rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                      {(examCategory === 'sadece_ingilizce' || examCategory === 'ingilizce_ve_ikinci_dil') && (
+                        <div style={{ border: '1px dashed #666', padding: '0.4rem 0.6rem', fontSize: '8.5pt', borderRadius: '4px', background: '#f8fafc', display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'center' }}>
+                          <span style={{ color: '#555', fontWeight: 'bold' }}>İNGİLİZCE SEVİYE BİLGİSİ:</span>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem' }}>
+                            {totalCore > 0 && <span>Core = {totalCore}</span>}
+                            {totalExt > 0 && <span>Ext = {totalExt}</span>}
+                          </div>
+                        </div>
+                      )}
+
+                      {(examCategory === 'sadece_ikinci_dil' || examCategory === 'ingilizce_ve_ikinci_dil') && (
+                        <div style={{ border: '1px dashed #666', padding: '0.4rem 0.6rem', fontSize: '8.5pt', borderRadius: '4px', background: '#f8fafc', display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'center' }}>
+                          <span style={{ color: '#555', fontWeight: 'bold' }}>2. DİL DAĞILIMI:</span>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem' }}>
+                            {Object.entries(langTotals).map(([langName, count]) => (
+                              <span key={langName}>{langName} = {count}</span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      <div style={{ border: '1px solid #000', padding: '0.5rem 0.6rem', fontSize: '9pt', borderRadius: '4px', background: '#fafafa', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                          <div><strong>Sınava Katılan:</strong> ....................................................................................................</div>
+                          <div><strong>Sınava Katılmayan:</strong> .................................................................................................</div>
+                        </div>
                       </div>
                     </div>
 
-                    <div style={{ marginTop: '0.5rem', display: 'flex', justifyContent: 'flex-end' }}>
-                      <div style={{ border: '1px solid #000', padding: '0.3rem', textAlign: 'center', width: '160px', borderRadius: '4px' }}>
-                        <div style={{ fontSize: '8pt', fontWeight: 'bold' }}>GÖZETMEN İMZA</div>
-                        <div style={{ height: '14px' }}></div>
+                    <div style={{ marginTop: '0.6rem', display: 'flex', justifyContent: 'flex-end' }}>
+                      <div style={{ border: '1px solid #000', padding: '0.4rem', textAlign: 'center', width: '180px', borderRadius: '4px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                        <div style={{ fontSize: '8.5pt', fontWeight: 'bold' }}>GÖZETMEN İMZA</div>
+                        <div style={{ height: '18px' }}></div>
+                        <div style={{ fontSize: '7.5pt', color: '#444' }}>Teslim Eden / Teslim Alan</div>
                       </div>
                     </div>
                   </div>
@@ -946,10 +1021,10 @@ const ExamAttendanceLists = () => {
                 return (
                   <div key={classKey} className="print-card page-break" style={{ background: '#fff', border: '1px solid #cbd5e1', padding: '1.2rem', marginBottom: '2rem', borderRadius: '6px' }}>
                     <div style={{ border: '2px solid #000', padding: '0.6rem', textAlign: 'center', marginBottom: '1rem', background: '#fafafa' }}>
-                      <h1 style={{ margin: '0 0 0.3rem 0', fontSize: '13pt', fontWeight: 'bold', textTransform: 'uppercase' }}>
+                      <h1 style={{ margin: '0 0 0.3rem 0', fontSize: '14pt', fontWeight: 'bold', textTransform: 'uppercase' }}>
                         {selectedExam.title} - {classKey} ŞUBESİ SINAV YERLERİ
                       </h1>
-                      <div style={{ fontSize: '9.5pt', fontWeight: 'bold', borderTop: '1px solid #000', paddingTop: '0.3rem', marginTop: '0.3rem' }}>
+                      <div style={{ fontSize: '10pt', fontWeight: 'bold', borderTop: '1px solid #000', paddingTop: '0.3rem', marginTop: '0.3rem' }}>
                         TARİH: {selectedExam.date} &nbsp;|&nbsp; ŞUBE ÖĞRENCİ LİSTESİ VE GİDECEĞİ SALONLAR
                       </div>
                     </div>
@@ -957,11 +1032,11 @@ const ExamAttendanceLists = () => {
                     <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                       <thead>
                         <tr style={{ background: '#eee' }}>
-                          <th style={{ width: '8%', textAlign: 'center' }}>SIRA</th>
-                          <th style={{ width: '15%', textAlign: 'center' }}>ÖĞR. NO</th>
-                          <th style={{ width: '20%', textAlign: 'center' }}>TC KİMLİK NO</th>
+                          <th style={{ width: '7%', textAlign: 'center' }}>SIRA</th>
+                          <th style={{ width: '13%', textAlign: 'center' }}>ÖĞR. NO</th>
+                          <th style={{ width: '15%', textAlign: 'center' }}>T.C. KİMLİK NO</th>
                           <th>ÖĞRENCİ ADI SOYADI</th>
-                          <th style={{ width: '30%', textAlign: 'center', background: '#e2e8f0' }}>GİDECEĞİ SALON</th>
+                          <th style={{ width: '25%', textAlign: 'center', background: '#e2e8f0' }}>GİDECEĞİ SALON</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -969,9 +1044,9 @@ const ExamAttendanceLists = () => {
                           <tr key={st.studentId || st.id || idx}>
                             <td style={{ textAlign: 'center', fontWeight: 'bold' }}>{idx + 1}</td>
                             <td style={{ textAlign: 'center', fontWeight: '600' }}>{st.det.studentNo}</td>
-                            <td style={{ fontWeight: '500' }}>{st.det.fullName}</td>
                             <td style={{ textAlign: 'center', fontWeight: '600' }}>{st.det.tcNo}</td>
-                            <td style={{ textAlign: 'center', fontWeight: 'bold', color: '#1d4ed8', background: '#f8fafc', fontSize: '9.5pt' }}>
+                            <td style={{ fontWeight: '500' }}>{st.det.fullName}</td>
+                            <td style={{ textAlign: 'center', fontWeight: 'bold', color: '#1d4ed8', background: '#f8fafc', fontSize: '10pt' }}>
                               {st.roomDisplay.toUpperCase()}
                             </td>
                           </tr>
@@ -987,10 +1062,10 @@ const ExamAttendanceLists = () => {
           {activeTab === 'surname' && (
             <div className="print-card page-break" style={{ background: '#fff', border: '1px solid #cbd5e1', padding: '1.2rem', borderRadius: '6px' }}>
               <div style={{ border: '2px solid #000', padding: '0.6rem', textAlign: 'center', marginBottom: '1rem', background: '#fafafa' }}>
-                <h1 style={{ margin: '0 0 0.3rem 0', fontSize: '13pt', fontWeight: 'bold', textTransform: 'uppercase' }}>
+                <h1 style={{ margin: '0 0 0.3rem 0', fontSize: '14pt', fontWeight: 'bold', textTransform: 'uppercase' }}>
                   {selectedExam.title} - SOYAD SIRALI ÖĞRENCİ LİSTESİ
                 </h1>
-                <div style={{ fontSize: '9.5pt', fontWeight: 'bold', borderTop: '1px solid #000', paddingTop: '0.3rem', marginTop: '0.3rem' }}>
+                <div style={{ fontSize: '10pt', fontWeight: 'bold', borderTop: '1px solid #000', paddingTop: '0.3rem', marginTop: '0.3rem' }}>
                   TARİH: {selectedExam.date} &nbsp;|&nbsp; SINIF SEVİYESİ: {getGradeSummary(assignments)}
                 </div>
               </div>
@@ -1000,7 +1075,8 @@ const ExamAttendanceLists = () => {
                   <tr style={{ background: '#eee' }}>
                     <th style={{ width: '6%', textAlign: 'center' }}>SIRA</th>
                     <th>ÖĞRENCİ SOYADI, ADI</th>
-                    <th style={{ width: '18%', textAlign: 'center' }}>TC KİMLİK NO</th>
+                    <th style={{ width: '13%', textAlign: 'center' }}>ÖĞR. NO</th>
+                    <th style={{ width: '15%', textAlign: 'center' }}>T.C. KİMLİK NO</th>
                     <th style={{ width: '12%', textAlign: 'center' }}>SINIF / ŞUBE</th>
                     <th style={{ width: '22%', textAlign: 'center' }}>SINAV SALONU</th>
                     <th style={{ width: '10%', textAlign: 'center' }}>SIRA NO</th>
@@ -1015,6 +1091,7 @@ const ExamAttendanceLists = () => {
                       <tr key={st.studentId || st.id || idx}>
                         <td style={{ textAlign: 'center', fontWeight: 'bold' }}>{idx + 1}</td>
                         <td style={{ fontWeight: 'bold' }}>{det.surnameFirstFormat}</td>
+                        <td style={{ textAlign: 'center', fontWeight: '600' }}>{det.studentNo}</td>
                         <td style={{ textAlign: 'center', fontWeight: '600' }}>{det.tcNo}</td>
                         <td style={{ textAlign: 'center' }}>{det.grade}-{det.className}</td>
                         <td style={{ textAlign: 'center', fontWeight: '500' }}>{roomDisplay}</td>
@@ -1030,10 +1107,10 @@ const ExamAttendanceLists = () => {
           {activeTab === 'name' && (
             <div className="print-card page-break" style={{ background: '#fff', border: '1px solid #cbd5e1', padding: '1.2rem', borderRadius: '6px' }}>
               <div style={{ border: '2px solid #000', padding: '0.6rem', textAlign: 'center', marginBottom: '1rem', background: '#fafafa' }}>
-                <h1 style={{ margin: '0 0 0.3rem 0', fontSize: '13pt', fontWeight: 'bold', textTransform: 'uppercase' }}>
+                <h1 style={{ margin: '0 0 0.3rem 0', fontSize: '14pt', fontWeight: 'bold', textTransform: 'uppercase' }}>
                   {selectedExam.title} - İSİM SIRALI ÖĞRENCİ LİSTESİ
                 </h1>
-                <div style={{ fontSize: '9.5pt', fontWeight: 'bold', borderTop: '1px solid #000', paddingTop: '0.3rem', marginTop: '0.3rem' }}>
+                <div style={{ fontSize: '10pt', fontWeight: 'bold', borderTop: '1px solid #000', paddingTop: '0.3rem', marginTop: '0.3rem' }}>
                   TARİH: {selectedExam.date} &nbsp;|&nbsp; SINIF SEVİYESİ: {getGradeSummary(assignments)}
                 </div>
               </div>
@@ -1043,7 +1120,8 @@ const ExamAttendanceLists = () => {
                   <tr style={{ background: '#eee' }}>
                     <th style={{ width: '6%', textAlign: 'center' }}>SIRA</th>
                     <th>ÖĞRENCİ ADI SOYADI</th>
-                    <th style={{ width: '18%', textAlign: 'center' }}>TC KİMLİK NO</th>
+                    <th style={{ width: '13%', textAlign: 'center' }}>ÖĞR. NO</th>
+                    <th style={{ width: '15%', textAlign: 'center' }}>T.C. KİMLİK NO</th>
                     <th style={{ width: '12%', textAlign: 'center' }}>SINIF / ŞUBE</th>
                     <th style={{ width: '22%', textAlign: 'center' }}>SINAV SALONU</th>
                     <th style={{ width: '10%', textAlign: 'center' }}>SIRA NO</th>
@@ -1058,6 +1136,7 @@ const ExamAttendanceLists = () => {
                       <tr key={st.studentId || st.id || idx}>
                         <td style={{ textAlign: 'center', fontWeight: 'bold' }}>{idx + 1}</td>
                         <td style={{ fontWeight: 'bold' }}>{det.nameFirstFormat}</td>
+                        <td style={{ textAlign: 'center', fontWeight: '600' }}>{det.studentNo}</td>
                         <td style={{ textAlign: 'center', fontWeight: '600' }}>{det.tcNo}</td>
                         <td style={{ textAlign: 'center' }}>{det.grade}-{det.className}</td>
                         <td style={{ textAlign: 'center', fontWeight: '500' }}>{roomDisplay}</td>
@@ -1074,7 +1153,7 @@ const ExamAttendanceLists = () => {
             <div className="no-print" style={{ background: '#f8fafc', padding: '2.5rem', border: '1px solid #cbd5e1', borderRadius: '8px', textAlign: 'center' }}>
               <h3 style={{ color: '#1e293b', margin: 0 }}>📊 Excel Dışarı Aktar</h3>
               <p style={{ color: '#64748b', margin: '0.5rem 0 1.5rem 0' }}>
-                Aktif sınav verilerini salon, sıra, TC ve öğrenci bilgileriyle birlikte Excel dosyası olarak kaydedin.
+                Aktفif sınav verilerini salon, sıra ve öğrenci bilgileriyle birlikte Excel dosyası olarak kaydedin.
               </p>
               <button
                 onClick={exportToExcel}
