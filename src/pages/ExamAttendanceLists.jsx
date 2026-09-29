@@ -18,6 +18,11 @@ const ExamAttendanceLists = () => {
   const [invigilators, setInvigilators] = useState({});
   const [savedInvigilatorsList, setSavedInvigilatorsList] = useState([]);
 
+  // Geçici TC Eşleme State'i (Veritabanına asla gitmez, sadece ekranda/bellekte yaşar)
+  const [tempTcMap, setTempTcMap] = useState({});
+  const [isTcLoaded, setIsTcLoaded] = useState(false);
+  const [loadedFileName, setLoadedFileName] = useState('');
+
   useEffect(() => {
     fetchExams();
     fetchRooms();
@@ -28,8 +33,137 @@ const ExamAttendanceLists = () => {
     if (selectedExam) {
       fetchExamInvigilators(selectedExam.id);
       fetchSavedInvigilators();
+      // Sınav değiştiğinde geçici TC'leri sıfırla
+      setTempTcMap({});
+      setIsTcLoaded(false);
+      setLoadedFileName('');
     }
   }, [selectedExam]);
+
+  // Excel'den Geçici TC Okuma Fonksiyonu
+  const handleTcExcelUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const bstr = evt.target.result;
+        const workbook = XLSX.read(bstr, { type: 'binary' });
+        const wsname = workbook.SheetNames[0];
+        const ws = workbook.Sheets[wsname];
+        const data = XLSX.utils.sheet_to_json(ws, { header: 1 });
+
+        // Excel kolon başlıklarını veya satırlarını tarayarak TC, Öğrenci No ve Ad Soyad bulmaya çalışalım
+        const newTcMap = {};
+        
+        data.forEach((row) => {
+          if (!row || row.length === 0) return;
+          // Satırdaki hücreleri stringe çevirip inceleyelim
+          const rowStr = row.map(cell => String(cell || '').trim());
+          
+          // Basit bir sezgisel arama: Satır içinde 11 haneli TC formatı var mı? Veya sütun eşleştirmesi
+          let foundTc = '';
+          let foundNo = '';
+          let foundName = '';
+
+          rowStr.forEach(cellVal => {
+            // 11 haneli sayısal değer TC olabilir
+            if (/^\d{11}$/.test(cellVal)) {
+              foundTc = cellVal;
+            }
+            // Öğrenci numarası (genellikle 1 ila 5 basamaklı veya okuluna göre değişir)
+            else if (/^\d{1,6}$/.test(cellVal) && !foundNo && cellVal !== foundTc) {
+              foundNo = cellVal;
+            }
+            // Ad Soyad tespiti (içinde boşluk olan metinsel ifadeler)
+            else if (cellVal.length > 3 && isNaN(cellVal) && !cellVal.includes('@')) {
+              if (!foundName) foundName = cellVal;
+            }
+          });
+
+          // Eğer daha akıllı bir kolon eşlemesi istersek, satırın genel yapısına bakabiliriz.
+          // Alternatif olarak standart esnek yakalama:
+          row.forEach(cell => {
+            const val = String(cell || '').trim();
+            if (/^\d{11}$/.test(val)) foundTc = val;
+          });
+
+          if (foundTc) {
+            // Eşleştirme için hem No hem Ad Soyad anahtarları üretelim
+            if (foundNo) newTcMap[foundNo] = foundTc;
+            if (foundName) newTcMap[foundName.toLocaleUpperCase('tr-TR')] = foundTc;
+            
+            // Satırdaki herhangi bir hücre öğrenci no veya ad soyad ile uyuşuyorsa map'e at
+            row.forEach(cell => {
+              const cVal = String(cell || '').trim();
+              if (cVal) newTcMap[cVal] = foundTc;
+              if (cVal) newTcMap[cVal.toLocaleUpperCase('tr-TR')] = foundTc;
+            });
+          }
+        });
+
+        // Daha robust bir Excel kolon taraması (Başlıklı Excel dosyaları için):
+        // Kolon adlarında 'TC', 'Öğrenci No', 'Ad', 'Soyad' arayalım
+        const headerRowIndex = data.findIndex(row => 
+          row.some(cell => {
+            const s = String(cell || '').trim().toLocaleUpperCase('tr-TR');
+            return s.includes('TC') || s.includes('KIMLIK') || s.includes('NUMARA');
+          })
+        );
+
+        if (headerRowIndex !== -1) {
+          const headers = data[headerRowIndex].map(h => String(h || '').trim().toLocaleUpperCase('tr-TR'));
+          const tcIdx = headers.findIndex(h => h.includes('TC') || h.includes('KİMLİK'));
+          const noIdx = headers.findIndex(h => h.includes('NO') || h.includes('NUMARA'));
+          const nameIdx = headers.findIndex(h => h.includes('AD') || h.includes('ÖĞRENCİ'));
+
+          if (tcIdx !== -1) {
+            for (let i = headerRowIndex + 1; i < data.length; i++) {
+              const r = data[i];
+              if (!r) continue;
+              const tcVal = String(r[tcIdx] || '').trim();
+              if (/^\d{11}$/.test(tcVal)) {
+                if (noIdx !== -1 && r[noIdx]) {
+                  newTcMap[String(r[noIdx]).trim()] = tcVal;
+                }
+                if (nameIdx !== -1 && r[nameIdx]) {
+                  newTcMap[String(r[nameIdx]).trim().toLocaleUpperCase('tr-TR')] = tcVal;
+                }
+                // Tüm hücreleri de anahtar olarak ekleyelim (garanti olsun)
+                r.forEach(cell => {
+                  const c = String(cell || '').trim();
+                  if (c) newTcMap[c] = tcVal;
+                  if (c) newTcMap[c.toLocaleUpperCase('tr-TR')] = tcVal;
+                });
+              }
+            }
+          }
+        }
+
+        setTempTcMap(newTcMap);
+        setIsTcLoaded(true);
+        setLoadedFileName(file.name);
+        alert(`Başarıyla ${Object.keys(newTcMap).length} adet geçici TC eşlemesi yüklendi! Bu veriler veritabanına kaydedilmeyecektir.`);
+      } catch (err) {
+        console.error('Excel okuma hatası:', err);
+        alert('Excel dosyası okunurken bir hata oluştu.');
+      }
+    };
+    reader.readAsBinaryString(file);
+  };
+
+  // Öğrenciye ait geçici TC'yi bulma fonksiyonu
+  const getStudentTc = (st, det) => {
+    if (!isTcLoaded) return '';
+    // Sırasıyla öğrenci no, ad soyad, tam ad ile eşleşme arayalım
+    const noKey = String(det.studentNo || '').trim();
+    const nameKey = String(det.nameFirstFormat || '').trim().toLocaleUpperCase('tr-TR');
+    const fullNameKey = String(det.fullName || '').trim().toLocaleUpperCase('tr-TR');
+    const surnameFirstKey = String(det.surnameFirstFormat || '').trim().toLocaleUpperCase('tr-TR');
+
+    return tempTcMap[noKey] || tempTcMap[nameKey] || tempTcMap[fullNameKey] || tempTcMap[surnameFirstKey] || st.tc || st.tc_no || st.tcNo || '';
+  };
 
   const fetchExamInvigilators = async (examId) => {
     try {
@@ -77,8 +211,6 @@ const ExamAttendanceLists = () => {
   const fetchAllStudentsData = async () => {
     try {
       const { data, error } = await supabase.from('students').select('*');
-      console.log("🔍 [LOG] Students Tablosundan Çekilen Ham Veri:", data);
-
       if (!error && data) {
         const map = {};
         data.forEach(st => {
@@ -87,10 +219,7 @@ const ExamAttendanceLists = () => {
           if (st.student_no) map[String(st.student_no).trim()] = st;
         });
         setStudentMap(map);
-        console.log("🔍 [LOG] Oluşturulan StudentMap:", map);
         return map;
-      } else if (error) {
-        console.error("❌ [LOG] Students tablosu hatası:", error);
       }
     } catch (err) {
       console.error('Öğrenciler tablosundan veri çekilemedi:', err);
@@ -162,7 +291,7 @@ const ExamAttendanceLists = () => {
     setSelectedExam(exam);
     setLoading(true);
     try {
-      const currentMap = await fetchAllStudentsData();
+      await fetchAllStudentsData();
 
       const { data, error } = await supabase
         .from('seating_plans')
@@ -174,8 +303,6 @@ const ExamAttendanceLists = () => {
       if (error) throw error;
 
       const plan = data && data.length > 0 ? data[0] : null;
-      console.log("🔍 [LOG] Seçilen Sınav İçin Bulunan Oturma Planı:", plan);
-      
       let parsedAssignments = [];
 
       if (plan) {
@@ -185,9 +312,6 @@ const ExamAttendanceLists = () => {
           parsedAssignments = plan.assignments;
         }
         plan.assignments = parsedAssignments;
-        console.log("🔍 [LOG] Parse Edilen Assignments (Atamalar):", parsedAssignments);
-      } else {
-        console.warn("⚠️ [LOG] Bu sınav için seating_plans tablosunda kayıt bulunamadı!");
       }
       setSeatingPlan(plan);
 
@@ -281,9 +405,7 @@ const ExamAttendanceLists = () => {
 
     const grade = dbSt.grade || st.grade || st.sinif || '';
     const className = dbSt.class || st.className || st.sube || '';
-    
     const rawField = dbSt.field || st.field || st.alan || st.track || st.department || '';
-    
     const englishLevel = dbSt.english_level || dbSt.ingilizce_seviye || st.englishLevel || st.ing_seviye || '-';
     const secondLanguage = dbSt.second_lang || dbSt.second_language || dbSt.ikinci_yabanci_dil || st.secondLanguage || st.ikinci_dil || '-';
 
@@ -433,15 +555,11 @@ const ExamAttendanceLists = () => {
           'Öğrenci Soyadı, Adı': det.surnameFirstFormat,
           'Sınıf/Şube': `${det.grade}-${det.className}`
         };
+        if (isTcLoaded) {
+          item['TC Kimlik No'] = getStudentTc(st, det);
+        }
         if (examCategory === 'akademik_lise') {
           item['Alan'] = det.track;
-        } else if (examCategory === 'ingilizce_ve_ikinci_dil') {
-          item['İng. Seviye'] = det.englishLevel;
-          item['2. Yab. Dil'] = det.secondLanguage;
-        } else if (examCategory === 'sadece_ikinci_dil') {
-          item['2. Yab. Dil'] = det.secondLanguage;
-        } else if (examCategory === 'sadece_ingilizce') {
-          item['İng. Seviye'] = det.englishLevel;
         }
         item['Salon Adı'] = formatRoomDisplay(st);
         item['Masa Sıra No'] = st.seatNumber || st.seat_number || '';
@@ -455,15 +573,11 @@ const ExamAttendanceLists = () => {
           'Öğrenci Adı Soyadı': det.nameFirstFormat,
           'Sınıf/Şube': `${det.grade}-${det.className}`
         };
+        if (isTcLoaded) {
+          item['TC Kimlik No'] = getStudentTc(st, det);
+        }
         if (examCategory === 'akademik_lise') {
           item['Alan'] = det.track;
-        } else if (examCategory === 'ingilizce_ve_ikinci_dil') {
-          item['İng. Seviye'] = det.englishLevel;
-          item['2. Yab. Dil'] = det.secondLanguage;
-        } else if (examCategory === 'sadece_ikinci_dil') {
-          item['2. Yab. Dil'] = det.secondLanguage;
-        } else if (examCategory === 'sadece_ingilizce') {
-          item['İng. Seviye'] = det.englishLevel;
         }
         item['Salon Adı'] = formatRoomDisplay(st);
         item['Masa Sıra No'] = st.seatNumber || st.seat_number || '';
@@ -481,20 +595,13 @@ const ExamAttendanceLists = () => {
           'Sıra No': index + 1,
           'Salon Adı': formatRoomDisplay(st),
           'Masa Sıra No': st.seatNumber || st.seat_number || '',
-          'Öğrenci Adı Soyadı': det.fullName,
-          'Sınıf/Şube': `${det.grade}-${det.className}`
+          'Öğrenci No': det.studentNo,
         };
-        if (examCategory === 'akademik_lise') {
-          item['Alan'] = det.track;
-        } else if (examCategory === 'ingilizce_ve_ikinci_dil') {
-          item['İng. Seviye'] = det.englishLevel;
-          item['2. Yab. Dil'] = det.secondLanguage;
-        } else if (examCategory === 'sadece_ikinci_dil') {
-          item['2. Yab. Dil'] = det.secondLanguage;
-        } else if (examCategory === 'sadece_ingilizce') {
-          item['İng. Seviye'] = det.englishLevel;
+        if (isTcLoaded) {
+          item['TC Kimlik No'] = getStudentTc(st, det);
         }
-        item['Öğrenci No'] = det.studentNo;
+        item['Öğrenci Adı Soyadı'] = det.fullName;
+        item['Sınıf/Şube'] = `${det.grade}-${det.className}`;
         return item;
       });
     }
@@ -547,7 +654,7 @@ const ExamAttendanceLists = () => {
           th, td {
             border: 1px solid #000 !important;
             padding: 4px 6px !important;
-            font-size: 9.5pt !important;
+            font-size: 9pt !important;
             color: #000 !important;
             line-height: 1.25 !important;
           }
@@ -697,6 +804,7 @@ const ExamAttendanceLists = () => {
               ← Sınav Seçimine Dön
             </button>
 
+            {/* Üst Kontrol Paneli: TC Yükleme ve Diğer Seçenekler */}
             <div style={{ background: '#f8fafc', padding: '1.2rem', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '1.5rem', display: 'flex', flexWrap: 'wrap', gap: '1.5rem', alignItems: 'center' }}>
               <div>
                 <label style={{ fontWeight: 'bold', fontSize: '0.85rem', display: 'block' }}>Sınav / Liste Kategorisi:</label>
@@ -709,6 +817,27 @@ const ExamAttendanceLists = () => {
                   <option value="akademik_ortaokul_sozel">Akademik Ortaokul Sözel</option>
                   <option value="akademik_ortaokul_sayisal">Akademik Ortaokul Sayısal</option>
                 </select>
+              </div>
+
+              {/* GEÇİCİ TC YÜKLEME BUTONU */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                <label style={{ fontWeight: 'bold', fontSize: '0.85rem', color: '#d97706' }}>Geçici TC Listesi Yükle (Veritabanına Kaydolmaz):</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <label style={{ padding: '0.4rem 0.8rem', background: isTcLoaded ? '#16a34a' : '#d97706', color: '#fff', borderRadius: '4px', cursor: 'pointer', fontSize: '0.9rem', fontWeight: 'bold', display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
+                    <span>{isTcLoaded ? '✅ TC Listesi Yüklü' : '📂 TC Excel Seç'}</span>
+                    <input type="file" accept=".xlsx, .xls" onChange={handleTcExcelUpload} style={{ display: 'none' }} />
+                  </label>
+                  {isTcLoaded && (
+                    <button 
+                      onClick={() => { setTempTcMap({}); setIsTcLoaded(false); setLoadedFileName(''); }}
+                      style={{ padding: '0.4rem 0.6rem', background: '#ef4444', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem' }}
+                      title="Yüklenen TC'leri Temizle"
+                    >
+                      Kaldır
+                    </button>
+                  )}
+                </div>
+                {loadedFileName && <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Dosya: {loadedFileName}</span>}
               </div>
 
               <div style={{ display: 'flex', alignItems: 'center', marginTop: '1.2rem', gap: '1.2rem' }}>
@@ -817,7 +946,6 @@ const ExamAttendanceLists = () => {
                 let totalCore = 0;
                 let totalExt = 0;
                 let langTotals = {};
-
                 const engLevelsInRoom = new Set();
                 const langsInRoom = new Set();
 
@@ -860,16 +988,16 @@ const ExamAttendanceLists = () => {
                   <div key={roomName} className="print-card page-break" style={{ background: '#fff', border: '1px solid #cbd5e1', padding: '0.8rem', marginBottom: '1rem', borderRadius: '6px' }}>
                     
                     <div style={{ border: '2px solid #000', padding: '0.5rem', textAlign: 'center', marginBottom: '0.5rem', background: '#fafafa' }}>
-                      <h1 style={{ margin: '0 0 0.2rem 0', fontSize: '12.5pt', fontWeight: 'bold', textTransform: 'uppercase' }}>
+                      <h1 style={{ margin: '0 0 0.2rem 0', fontSize: '12pt', fontWeight: 'bold', textTransform: 'uppercase' }}>
                         {getHeaderTitle(roomDisplayStr, gradeSummary)}
                       </h1>
-                      <div style={{ fontSize: '9.5pt', fontWeight: 'bold', display: 'flex', justifyContent: 'space-around', borderTop: '1px solid #000', paddingTop: '0.3rem', marginTop: '0.3rem' }}>
+                      <div style={{ fontSize: '9pt', fontWeight: 'bold', display: 'flex', justifyContent: 'space-around', borderTop: '1px solid #000', paddingTop: '0.3rem', marginTop: '0.3rem' }}>
                         <span>TARİH: {selectedExam.date}</span>
                         <span>{roomDisplayStr.toUpperCase()}</span>
                       </div>
                     </div>
 
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', fontSize: '9.5pt', fontWeight: 'bold' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', fontSize: '9pt', fontWeight: 'bold' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', width: '60%' }}>
                         <span>GÖZETMEN ADI SOYADI: </span>
                         <input
@@ -878,7 +1006,7 @@ const ExamAttendanceLists = () => {
                           placeholder="Ad Soyad yazın veya seçin..."
                           value={invigilators[roomName] || ''}
                           onChange={(e) => handleInvigilatorChange(roomName, e.target.value)}
-                          style={{ border: 'none', borderBottom: '1px solid #000', outline: 'none', fontWeight: 'bold', fontSize: '9.5pt', flex: 1, padding: '2px' }}
+                          style={{ border: 'none', borderBottom: '1px solid #000', outline: 'none', fontWeight: 'bold', fontSize: '9pt', flex: 1, padding: '2px' }}
                         />
                         <datalist id={`invigilator-list-${roomName}`}>
                           {savedInvigilatorsList.map((name, idx) => (
@@ -892,33 +1020,38 @@ const ExamAttendanceLists = () => {
                     <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                       <thead>
                         <tr style={{ background: '#eee' }}>
-                          <th style={{ width: '6%', textAlign: 'center' }}>SIRA</th>
-                          <th style={{ width: '13%', textAlign: 'center' }}>ÖĞR. NO</th>
+                          <th style={{ width: '5%', textAlign: 'center' }}>SIRA</th>
+                          <th style={{ width: '11%', textAlign: 'center' }}>ÖĞR. NO</th>
+                          {/* TC Kolonu: Sadece geçici Excel yüklendiyse tabloda görünür */}
+                          {isTcLoaded && (
+                            <th style={{ width: '14%', textAlign: 'center' }}>TC KİMLİK NO</th>
+                          )}
                           <th>ÖĞRENCİ ADI SOYADI</th>
-                          <th style={{ width: '13%', textAlign: 'center' }}>SINIF / ŞUBE</th>
+                          <th style={{ width: '11%', textAlign: 'center' }}>SINIF / ŞUBE</th>
                           
                           {examCategory === 'akademik_lise' && (
-                            <th style={{ width: '12%', textAlign: 'center' }}>ALAN</th>
+                            <th style={{ width: '11%', textAlign: 'center' }}>ALAN</th>
                           )}
                           {examCategory === 'sadece_ingilizce' && (
-                            <th style={{ width: '14%', textAlign: 'center' }}>İNG. SEVİYE</th>
+                            <th style={{ width: '13%', textAlign: 'center' }}>İNG. SEVİYE</th>
                           )}
                           {examCategory === 'sadece_ikinci_dil' && (
-                            <th style={{ width: '14%', textAlign: 'center' }}>2. YAB. DİL</th>
+                            <th style={{ width: '13%', textAlign: 'center' }}>2. YAB. DİL</th>
                           )}
                           {examCategory === 'ingilizce_ve_ikinci_dil' && (
                             <>
-                              <th style={{ width: '12%', textAlign: 'center' }}>İNG. SEVİYE</th>
-                              <th style={{ width: '12%', textAlign: 'center' }}>2. YAB. DİL</th>
+                              <th style={{ width: '11%', textAlign: 'center' }}>İNG. SEVİYE</th>
+                              <th style={{ width: '11%', textAlign: 'center' }}>2. YAB. DİL</th>
                             </>
                           )}
 
-                          <th style={{ width: '18%', textAlign: 'center' }}>YOKLAMA +/-</th>
+                          <th style={{ width: '15%', textAlign: 'center' }}>YOKLAMA +/-</th>
                         </tr>
                       </thead>
                       <tbody>
                         {students.map((st, sIdx) => {
                           const det = getStudentDetails(st);
+                          const studentTc = getStudentTc(st, det);
                           
                           const engStyle = getStyleAndClassForValue(det.englishLevel, sortedEngLevels);
                           const langStyle = getStyleAndClassForValue(det.secondLanguage, sortedLangs);
@@ -927,43 +1060,46 @@ const ExamAttendanceLists = () => {
                             <tr key={st.studentId || st.id || sIdx}>
                               <td style={{ textAlign: 'center', fontWeight: 'bold' }}>{st.seatNumber || st.seat_number || (sIdx + 1)}</td>
                               <td style={{ textAlign: 'center', fontWeight: '600' }}>{det.studentNo}</td>
+                              {isTcLoaded && (
+                                <td style={{ textAlign: 'center', fontFamily: 'monospace', fontSize: '8.5pt' }}>{studentTc || '-'}</td>
+                              )}
                               <td style={{ fontWeight: '500' }}>{det.fullName}</td>
                               <td style={{ textAlign: 'center' }}>{det.grade}-{det.className}</td>
 
                               {examCategory === 'akademik_lise' && (
-                                <td style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '9pt' }}>{det.track}</td>
+                                <td style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '8.5pt' }}>{det.track}</td>
                               )}
                               {examCategory === 'sadece_ingilizce' && (
-                                <td className={engStyle.className} style={{ textAlign: 'center', fontSize: '9pt', ...engStyle.style }}>
+                                <td className={engStyle.className} style={{ textAlign: 'center', fontSize: '8.5pt', ...engStyle.style }}>
                                   {det.englishLevel}
                                 </td>
                               )}
                               {examCategory === 'sadece_ikinci_dil' && (
-                                <td className={langStyle.className} style={{ textAlign: 'center', fontSize: '9pt', ...langStyle.style }}>
+                                <td className={langStyle.className} style={{ textAlign: 'center', fontSize: '8.5pt', ...langStyle.style }}>
                                   {det.secondLanguage}
                                 </td>
                               )}
                               {examCategory === 'ingilizce_ve_ikinci_dil' && (
                                 <>
-                                  <td className={engStyle.className} style={{ textAlign: 'center', fontSize: '9pt', ...engStyle.style }}>
+                                  <td className={engStyle.className} style={{ textAlign: 'center', fontSize: '8.5pt', ...engStyle.style }}>
                                     {det.englishLevel}
                                   </td>
-                                  <td className={langStyle.className} style={{ textAlign: 'center', fontSize: '9pt', ...langStyle.style }}>
+                                  <td className={langStyle.className} style={{ textAlign: 'center', fontSize: '8.5pt', ...langStyle.style }}>
                                     {det.secondLanguage}
                                   </td>
                                 </>
                               )}
 
-                              <td style={{ textAlign: 'center', color: '#999' }}>[ &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; ]</td>
+                              <td style={{ textAlign: 'center', color: '#999' }}>[ &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; ]</td>
                             </tr>
                           );
                         })}
                       </tbody>
                     </table>
 
-                    <div style={{ marginTop: '0.6rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                    <div style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
                       {(examCategory === 'sadece_ingilizce' || examCategory === 'ingilizce_ve_ikinci_dil') && (
-                        <div style={{ border: '1px dashed #666', padding: '0.4rem 0.6rem', fontSize: '8.5pt', borderRadius: '4px', background: '#f8fafc', display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'center' }}>
+                        <div style={{ border: '1px dashed #666', padding: '0.3rem 0.5rem', fontSize: '8pt', borderRadius: '4px', background: '#f8fafc', display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'center' }}>
                           <span style={{ color: '#555', fontWeight: 'bold' }}>İNGİLİZCE SEVİYE BİLGİSİ:</span>
                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem' }}>
                             {totalCore > 0 && <span>Core = {totalCore}</span>}
@@ -973,7 +1109,7 @@ const ExamAttendanceLists = () => {
                       )}
 
                       {(examCategory === 'sadece_ikinci_dil' || examCategory === 'ingilizce_ve_ikinci_dil') && (
-                        <div style={{ border: '1px dashed #666', padding: '0.4rem 0.6rem', fontSize: '8.5pt', borderRadius: '4px', background: '#f8fafc', display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'center' }}>
+                        <div style={{ border: '1px dashed #666', padding: '0.3rem 0.5rem', fontSize: '8pt', borderRadius: '4px', background: '#f8fafc', display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'center' }}>
                           <span style={{ color: '#555', fontWeight: 'bold' }}>2. DİL DAĞILIMI:</span>
                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem' }}>
                             {Object.entries(langTotals).map(([langName, count]) => (
@@ -983,19 +1119,19 @@ const ExamAttendanceLists = () => {
                         </div>
                       )}
 
-                      <div style={{ border: '1px solid #000', padding: '0.5rem 0.6rem', fontSize: '9pt', borderRadius: '4px', background: '#fafafa', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                      <div style={{ border: '1px solid #000', padding: '0.4rem 0.5rem', fontSize: '8.5pt', borderRadius: '4px', background: '#fafafa', display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.1rem' }}>
                           <div><strong>Sınava Katılan:</strong> ....................................................................................................</div>
                           <div><strong>Sınava Katılmayan:</strong> .................................................................................................</div>
                         </div>
                       </div>
                     </div>
 
-                    <div style={{ marginTop: '0.6rem', display: 'flex', justifyContent: 'flex-end' }}>
-                      <div style={{ border: '1px solid #000', padding: '0.4rem', textAlign: 'center', width: '180px', borderRadius: '4px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-                        <div style={{ fontSize: '8.5pt', fontWeight: 'bold' }}>GÖZETMEN İMZA</div>
-                        <div style={{ height: '18px' }}></div>
-                        <div style={{ fontSize: '7.5pt', color: '#444' }}>Teslim Eden / Teslim Alan</div>
+                    <div style={{ marginTop: '0.5rem', display: 'flex', justifyContent: 'flex-end' }}>
+                      <div style={{ border: '1px solid #000', padding: '0.3rem', textAlign: 'center', width: '160px', borderRadius: '4px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                        <div style={{ fontSize: '8pt', fontWeight: 'bold' }}>GÖZETMEN İMZA</div>
+                        <div style={{ height: '15px' }}></div>
+                        <div style={{ fontSize: '7pt', color: '#444' }}>Teslim Eden / Teslim Alan</div>
                       </div>
                     </div>
                   </div>
@@ -1012,10 +1148,10 @@ const ExamAttendanceLists = () => {
                 return (
                   <div key={classKey} className="print-card page-break" style={{ background: '#fff', border: '1px solid #cbd5e1', padding: '1.2rem', marginBottom: '2rem', borderRadius: '6px' }}>
                     <div style={{ border: '2px solid #000', padding: '0.6rem', textAlign: 'center', marginBottom: '1rem', background: '#fafafa' }}>
-                      <h1 style={{ margin: '0 0 0.3rem 0', fontSize: '14pt', fontWeight: 'bold', textTransform: 'uppercase' }}>
+                      <h1 style={{ margin: '0 0 0.3rem 0', fontSize: '13pt', fontWeight: 'bold', textTransform: 'uppercase' }}>
                         {selectedExam.title} - {classKey} ŞUBESİ SINAV YERLERİ
                       </h1>
-                      <div style={{ fontSize: '10pt', fontWeight: 'bold', borderTop: '1px solid #000', paddingTop: '0.3rem', marginTop: '0.3rem' }}>
+                      <div style={{ fontSize: '9.5pt', fontWeight: 'bold', borderTop: '1px solid #000', paddingTop: '0.3rem', marginTop: '0.3rem' }}>
                         TARİH: {selectedExam.date} &nbsp;|&nbsp; ŞUBE ÖĞRENCİ LİSTESİ VE GİDECEĞİ SALONLAR
                       </div>
                     </div>
@@ -1023,10 +1159,13 @@ const ExamAttendanceLists = () => {
                     <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                       <thead>
                         <tr style={{ background: '#eee' }}>
-                          <th style={{ width: '8%', textAlign: 'center' }}>SIRA</th>
-                          <th style={{ width: '15%', textAlign: 'center' }}>ÖĞR. NO</th>
+                          <th style={{ width: '7%', textAlign: 'center' }}>SIRA</th>
+                          <th style={{ width: '14%', textAlign: 'center' }}>ÖĞR. NO</th>
+                          {isTcLoaded && (
+                            <th style={{ width: '15%', textAlign: 'center' }}>TC KİMLİK NO</th>
+                          )}
                           <th>ÖĞRENCİ ADI SOYADI</th>
-                          <th style={{ width: '30%', textAlign: 'center', background: '#e2e8f0' }}>GİDECEĞİ SALON</th>
+                          <th style={{ width: '28%', textAlign: 'center', background: '#e2e8f0' }}>GİDECEĞİ SALON</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1034,8 +1173,11 @@ const ExamAttendanceLists = () => {
                           <tr key={st.studentId || st.id || idx}>
                             <td style={{ textAlign: 'center', fontWeight: 'bold' }}>{idx + 1}</td>
                             <td style={{ textAlign: 'center', fontWeight: '600' }}>{st.det.studentNo}</td>
+                            {isTcLoaded && (
+                              <td style={{ textAlign: 'center', fontFamily: 'monospace', fontSize: '8.5pt' }}>{getStudentTc(st, st.det) || '-'}</td>
+                            )}
                             <td style={{ fontWeight: '500' }}>{st.det.fullName}</td>
-                            <td style={{ textAlign: 'center', fontWeight: 'bold', color: '#1d4ed8', background: '#f8fafc', fontSize: '10pt' }}>
+                            <td style={{ textAlign: 'center', fontWeight: 'bold', color: '#1d4ed8', background: '#f8fafc', fontSize: '9.5pt' }}>
                               {st.roomDisplay.toUpperCase()}
                             </td>
                           </tr>
@@ -1051,10 +1193,10 @@ const ExamAttendanceLists = () => {
           {activeTab === 'surname' && (
             <div className="print-card page-break" style={{ background: '#fff', border: '1px solid #cbd5e1', padding: '1.2rem', borderRadius: '6px' }}>
               <div style={{ border: '2px solid #000', padding: '0.6rem', textAlign: 'center', marginBottom: '1rem', background: '#fafafa' }}>
-                <h1 style={{ margin: '0 0 0.3rem 0', fontSize: '14pt', fontWeight: 'bold', textTransform: 'uppercase' }}>
+                <h1 style={{ margin: '0 0 0.3rem 0', fontSize: '13pt', fontWeight: 'bold', textTransform: 'uppercase' }}>
                   {selectedExam.title} - SOYAD SIRALI ÖĞRENCİ LİSTESİ
                 </h1>
-                <div style={{ fontSize: '10pt', fontWeight: 'bold', borderTop: '1px solid #000', paddingTop: '0.3rem', marginTop: '0.3rem' }}>
+                <div style={{ fontSize: '9.5pt', fontWeight: 'bold', borderTop: '1px solid #000', paddingTop: '0.3rem', marginTop: '0.3rem' }}>
                   TARİH: {selectedExam.date} &nbsp;|&nbsp; SINIF SEVİYESİ: {getGradeSummary(assignments)}
                 </div>
               </div>
@@ -1064,9 +1206,12 @@ const ExamAttendanceLists = () => {
                   <tr style={{ background: '#eee' }}>
                     <th style={{ width: '6%', textAlign: 'center' }}>SIRA</th>
                     <th>ÖĞRENCİ SOYADI, ADI</th>
-                    <th style={{ width: '15%', textAlign: 'center' }}>SINIF / ŞUBE</th>
-                    <th style={{ width: '25%', textAlign: 'center' }}>SINAV SALONU</th>
-                    <th style={{ width: '12%', textAlign: 'center' }}>SIRA NO</th>
+                    {isTcLoaded && (
+                      <th style={{ width: '15%', textAlign: 'center' }}>TC KİMLİK NO</th>
+                    )}
+                    <th style={{ width: '14%', textAlign: 'center' }}>SINIF / ŞUBE</th>
+                    <th style={{ width: '24%', textAlign: 'center' }}>SINAV SALONU</th>
+                    <th style={{ width: '10%', textAlign: 'center' }}>SIRA NO</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1078,6 +1223,9 @@ const ExamAttendanceLists = () => {
                       <tr key={st.studentId || st.id || idx}>
                         <td style={{ textAlign: 'center', fontWeight: 'bold' }}>{idx + 1}</td>
                         <td style={{ fontWeight: 'bold' }}>{det.surnameFirstFormat}</td>
+                        {isTcLoaded && (
+                          <td style={{ textAlign: 'center', fontFamily: 'monospace', fontSize: '8.5pt' }}>{getStudentTc(st, det) || '-'}</td>
+                        )}
                         <td style={{ textAlign: 'center' }}>{det.grade}-{det.className}</td>
                         <td style={{ textAlign: 'center', fontWeight: '500' }}>{roomDisplay}</td>
                         <td style={{ textAlign: 'center', fontWeight: 'bold' }}>{st.seatNumber || st.seat_number || '-'}</td>
@@ -1092,10 +1240,10 @@ const ExamAttendanceLists = () => {
           {activeTab === 'name' && (
             <div className="print-card page-break" style={{ background: '#fff', border: '1px solid #cbd5e1', padding: '1.2rem', borderRadius: '6px' }}>
               <div style={{ border: '2px solid #000', padding: '0.6rem', textAlign: 'center', marginBottom: '1rem', background: '#fafafa' }}>
-                <h1 style={{ margin: '0 0 0.3rem 0', fontSize: '14pt', fontWeight: 'bold', textTransform: 'uppercase' }}>
+                <h1 style={{ margin: '0 0 0.3rem 0', fontSize: '13pt', fontWeight: 'bold', textTransform: 'uppercase' }}>
                   {selectedExam.title} - İSİM SIRALI ÖĞRENCİ LİSTESİ
                 </h1>
-                <div style={{ fontSize: '10pt', fontWeight: 'bold', borderTop: '1px solid #000', paddingTop: '0.3rem', marginTop: '0.3rem' }}>
+                <div style={{ fontSize: '9.5pt', fontWeight: 'bold', borderTop: '1px solid #000', paddingTop: '0.3rem', marginTop: '0.3rem' }}>
                   TARİH: {selectedExam.date} &nbsp;|&nbsp; SINIF SEVİYESİ: {getGradeSummary(assignments)}
                 </div>
               </div>
@@ -1105,9 +1253,12 @@ const ExamAttendanceLists = () => {
                   <tr style={{ background: '#eee' }}>
                     <th style={{ width: '6%', textAlign: 'center' }}>SIRA</th>
                     <th>ÖĞRENCİ ADI SOYADI</th>
-                    <th style={{ width: '15%', textAlign: 'center' }}>SINIF / ŞUBE</th>
-                    <th style={{ width: '25%', textAlign: 'center' }}>SINAV SALONU</th>
-                    <th style={{ width: '12%', textAlign: 'center' }}>SIRA NO</th>
+                    {isTcLoaded && (
+                      <th style={{ width: '15%', textAlign: 'center' }}>TC KİMLİK NO</th>
+                    )}
+                    <th style={{ width: '14%', textAlign: 'center' }}>SINIF / ŞUBE</th>
+                    <th style={{ width: '24%', textAlign: 'center' }}>SINAV SALONU</th>
+                    <th style={{ width: '10%', textAlign: 'center' }}>SIRA NO</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1119,6 +1270,9 @@ const ExamAttendanceLists = () => {
                       <tr key={st.studentId || st.id || idx}>
                         <td style={{ textAlign: 'center', fontWeight: 'bold' }}>{idx + 1}</td>
                         <td style={{ fontWeight: 'bold' }}>{det.nameFirstFormat}</td>
+                        {isTcLoaded && (
+                          <td style={{ textAlign: 'center', fontFamily: 'monospace', fontSize: '8.5pt' }}>{getStudentTc(st, det) || '-'}</td>
+                        )}
                         <td style={{ textAlign: 'center' }}>{det.grade}-{det.className}</td>
                         <td style={{ textAlign: 'center', fontWeight: '500' }}>{roomDisplay}</td>
                         <td style={{ textAlign: 'center', fontWeight: 'bold' }}>{st.seatNumber || st.seat_number || '-'}</td>
@@ -1134,7 +1288,7 @@ const ExamAttendanceLists = () => {
             <div className="no-print" style={{ background: '#f8fafc', padding: '2.5rem', border: '1px solid #cbd5e1', borderRadius: '8px', textAlign: 'center' }}>
               <h3 style={{ color: '#1e293b', margin: 0 }}>📊 Excel Dışarı Aktar</h3>
               <p style={{ color: '#64748b', margin: '0.5rem 0 1.5rem 0' }}>
-                Aktif sınav verilerini salon, sıra ve öğrenci bilgileriyle birlikte Excel dosyası olarak kaydedin.
+                Aktif sınav verilerini salon, sıra ve öğrenci bilgileriyle birlikte Excel dosyası olarak kaydedin. {isTcLoaded ? '(Geçici TC\'ler de dahildir)' : ''}
               </p>
               <button
                 onClick={exportToExcel}
