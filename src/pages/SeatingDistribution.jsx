@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabase';
-import { FaSync, FaPlus, FaTrash, FaCheckSquare, FaSquare, FaInfoCircle } from 'react-icons/fa';
+import { FaSync, FaPlus, FaTrash, FaCheckSquare, FaSquare } from 'react-icons/fa';
 
 const SeatingDistribution = () => {
   const [exams, setExams] = useState([]);
@@ -32,7 +32,6 @@ const SeatingDistribution = () => {
         const { data: roomData } = await supabase.from('rooms').select('*').order('name', { ascending: true });
         setRooms(roomData || []);
 
-        // Ortak Çakışma Gruplarını Çek
         const { data: conflictData } = await supabase.from('conflict_groups').select('*');
         setConflictGroups(conflictData || []);
       } catch (error) {
@@ -133,8 +132,6 @@ const SeatingDistribution = () => {
   const runDistribution = async () => {
     if (!selectedExamId) return setMessage('Hata: Lütfen bir sınav seçin.');
 
-    const currentExam = exams.find(e => e.id === selectedExamId);
-
     if (!(examMode === 'ortaokul_akademik' && keepInOwnClassroom) && groups.length === 0) {
       return setMessage('Hata: Dağıtım için en az bir grup oluşturmalısınız.');
     }
@@ -158,11 +155,8 @@ const SeatingDistribution = () => {
         });
       });
 
-      // =========================================================================
-      // MOD 1 & MOD 3: LİSE AKADEMİK VE ORTAOKUL AKADEMİK
-      // =========================================================================
+      // LİSE & ORTAOKUL AKADEMİK
       if (examMode === 'lise_akademik' || examMode === 'ortaokul_akademik') {
-
         if (examMode === 'ortaokul_akademik' && keepInOwnClassroom) {
           const classGrouped = {};
           students.forEach(st => {
@@ -199,7 +193,6 @@ const SeatingDistribution = () => {
               .filter(r => group.roomIds.includes(r.id))
               .map(r => ({
                 ...r,
-                // Salon kapasitesi en fazla 24 olabilir veya odanın kendi kapasitesi alınır
                 totalCap: Math.min(24, Number(r.capacity || 24) + Number(r.extra_seats_added || r.extraSeatsAdded || 0)),
                 seats: []
               }));
@@ -210,10 +203,10 @@ const SeatingDistribution = () => {
             const totalCapacity = groupRooms.reduce((sum, r) => sum + r.totalCap, 0);
 
             if (totalCapacity < totalGroupStudents) {
-              throw new Error(`"${group.name}" grubundaki öğrenci sayısı (${totalGroupStudents}) seçilen salonların toplam kapasitesini (${totalCapacity}) aşıyor! Lütfen daha fazla salon seçin.`);
+              throw new Error(`"${group.name}" grubundaki öğrenci sayısı (${totalGroupStudents}) seçilen salonların toplam kapasitesini (${totalCapacity}) aşıyor!`);
             }
 
-            // KESİN HOMOJEN DAĞITIM KOTASI HESAPLAMA (Grup İçi Eşit Dağılım)
+            // KESİN HOMOJEN DAĞITIM KOTASI HESAPLAMA
             const numRooms = groupRooms.length;
             const baseQuota = Math.floor(totalGroupStudents / numRooms);
             const remainder = totalGroupStudents % numRooms;
@@ -222,7 +215,6 @@ const SeatingDistribution = () => {
               room.targetQuota = baseQuota + (idx < remainder ? 1 : 0);
             });
 
-            // Sınıfları kendi içinde karıştırarak interleave et
             const classQueues = {};
             group.classes.forEach(cls => {
               classQueues[cls] = shuffleArray(groupStudents.filter(s => `${s.grade}-${s.class}` === cls));
@@ -244,13 +236,11 @@ const SeatingDistribution = () => {
               interleavedList.push(classQueues[chosenClass].shift());
             }
 
-            // ÇAKIŞMA KONTROLÜ İLE HOMOJEN YERLEŞTİRME
             const shuffledInterleaved = shuffleArray(interleavedList);
 
             for (const st of shuffledInterleaved) {
               let placed = false;
 
-              // 1. Aşama: Hedef kotası dolmamış VE çakışması olmayan salon
               for (const room of groupRooms) {
                 if (room.seats.length >= room.targetQuota) continue;
 
@@ -268,7 +258,6 @@ const SeatingDistribution = () => {
                 }
               }
 
-              // 2. Aşama: Hedef kotayı en fazla 1-2 kişi esneterek en boş salona koy
               if (!placed) {
                 const availableRooms = groupRooms
                   .filter(r => r.seats.length < r.totalCap && r.seats.length < r.targetQuota + 2)
@@ -280,7 +269,6 @@ const SeatingDistribution = () => {
                 }
               }
 
-              // 3. Son Çare: Max 24 veya genel kapasite sınırları içinde en boş salon
               if (!placed) {
                 const generalRooms = groupRooms
                   .filter(r => r.seats.length < r.totalCap)
@@ -309,9 +297,7 @@ const SeatingDistribution = () => {
         }
       }
 
-      // =========================================================================
-      // MOD 2: LİSE YABANCI DİL SINAVI
-      // =========================================================================
+      // LİSE YABANCI DİL
       else if (examMode === 'lise_yabanci_dil') {
         for (const group of groups) {
           const groupStudents = students.filter(s => group.classes.includes(`${s.grade}-${s.class}`));
@@ -402,9 +388,7 @@ const SeatingDistribution = () => {
         }
       }
 
-      // =========================================================================
-      // MOD 4: ORTAOKUL YABANCI DİL SINAVI (KESİNLİKLE HER SALONDA TEK DİL)
-      // =========================================================================
+      // ORTAOKUL YABANCI DİL
       else if (examMode === 'ortaokul_yabanci_dil') {
         for (const group of groups) {
           const groupStudents = students.filter(s => group.classes.includes(`${s.grade}-${s.class}`));
@@ -447,8 +431,7 @@ const SeatingDistribution = () => {
 
               if (roomIndex >= groupRooms.length) {
                 throw new Error(
-                  `Kapasite/Salon Yetersiz! "${lang}" dili öğrencileri için boş salon kalmadı.\n` +
-                  `Her salonda SADECE TEK DİL konulduğu için lütfen "${group.name}" grubuna daha fazla salon seçin.`
+                  `Kapasite/Salon Yetersiz! "${lang}" dili öğrencileri için boş salon kalmadı.`
                 );
               }
 
@@ -473,7 +456,7 @@ const SeatingDistribution = () => {
       }
 
       if (assignments.length === 0) {
-        throw new Error('Dağıtılabilecek hiçbir öğrenci bulunamadı! Seçtiğiniz şubelerin ve salonların doğruluğunu kontrol edin.');
+        throw new Error('Dağıtılabilecek hiçbir öğrenci bulunamadı!');
       }
 
       await supabase.from('seating_plans').delete().eq('exam_id', selectedExamId);
@@ -496,11 +479,19 @@ const SeatingDistribution = () => {
     }
   };
 
+  // Salon özetlerini hesaplamak için yardımcı nesne
+  const roomSummaryMap = {};
+  distributions.forEach(item => {
+    const rName = rooms.find(r => r.id === item.room_id)?.name || item.room_id;
+    if (!roomSummaryMap[rName]) roomSummaryMap[rName] = 0;
+    roomSummaryMap[rName]++;
+  });
+
   return (
     <div style={{ padding: '1rem', maxWidth: '1400px', margin: '0 auto' }}>
       <h2>🪑 Sınav Oturma Düzeni Paneli</h2>
 
-      {/* MOD SEÇİM EKRANI */}
+      {/* MOD SEÇİMİ */}
       <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
         <button
           onClick={() => setExamMode('lise_akademik')}
@@ -588,7 +579,7 @@ const SeatingDistribution = () => {
         </select>
       </div>
 
-      {/* MOD 2: YABANCI DİL SINAVI İÇİN SIRALAMA AYARI */}
+      {/* YABANCI DİL / ORTAOKUL EK SEÇENEKLERİ */}
       {selectedExamId && examMode === 'lise_yabanci_dil' && (
         <div style={{ background: '#eef6ff', padding: '1rem', borderRadius: '8px', border: '1px solid #b6d4fe', marginBottom: '1.5rem' }}>
           <h4 style={{ margin: '0 0 0.5rem 0', color: '#055160' }}>📊 Excel Tipi Sıralama Düzeni</h4>
@@ -615,7 +606,6 @@ const SeatingDistribution = () => {
         </div>
       )}
 
-      {/* MOD 3: ORTAOKUL AKADEMİK ÖZEL SEÇENEĞİ */}
       {selectedExamId && examMode === 'ortaokul_akademik' && (
         <div style={{ background: '#fff3cd', padding: '1rem', borderRadius: '8px', border: '1px solid #ffeeba', marginBottom: '1.5rem' }}>
           <label
@@ -628,84 +618,124 @@ const SeatingDistribution = () => {
         </div>
       )}
 
-      {/* GRUP VE SALON YAPILANDIRMASI */}
-      {selectedExamId && !(examMode === 'ortaokul_akademik' && keepInOwnClassroom) && (
-        <div style={{ marginBottom: '2rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-            <h4>Grup & Salon Yapılandırması</h4>
-            <button onClick={addGroup} style={{ padding: '0.4rem 1rem', background: '#28a745', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
-              <FaPlus /> Grup Ekle
-            </button>
-          </div>
-
-          {groups.map(group => (
-            <div key={group.id} style={{ background: '#fff', padding: '1rem', borderRadius: '8px', border: '1px solid #ddd', marginBottom: '1rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                <strong>{group.name}</strong>
-                <button onClick={() => removeGroup(group.id)} style={{ color: '#dc3545', border: 'none', background: 'none', cursor: 'pointer' }}>
-                  <FaTrash /> Sil
-                </button>
-              </div>
-
-              <div style={{ marginBottom: '0.8rem' }}>
-                <small style={{ fontWeight: 'bold' }}>Şubeler:</small>
-                <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginTop: '0.3rem' }}>
-                  {allClasses.map(cls => (
-                    <button
-                      key={cls}
-                      onClick={() => toggleClassForGroup(group.id, cls)}
-                      style={{
-                        padding: '0.2rem 0.6rem',
-                        background: group.classes.includes(cls) ? '#007bff' : '#f1f1f1',
-                        color: group.classes.includes(cls) ? '#fff' : '#333',
-                        border: 'none',
-                        borderRadius: '4px',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      {cls}
-                    </button>
+      {/* ANA İÇERİK: SOL TARAF KÜÇÜK SALON ÖZETİ TABLOSU, SAĞ TARAF GRUP YAPILANDIRMASI */}
+      <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: '1.5rem', alignItems: 'start' }}>
+        
+        {/* SOL TARAF: KÜÇÜK SALON ÖZETLERİ TABLOSU */}
+        {selectedExamId && (
+          <div style={{ background: '#fff', padding: '1rem', borderRadius: '8px', border: '1px solid #ddd', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
+            <h4 style={{ margin: '0 0 0.8rem 0', borderBottom: '2px solid #007bff', paddingBottom: '0.4rem', color: '#007bff' }}>
+              📊 Salon Özetleri
+            </h4>
+            {Object.keys(roomSummaryMap).length === 0 ? (
+              <p style={{ color: '#666', fontSize: '0.9rem', fontStyle: 'italic' }}>Henüz dağıtım yapılmadı.</p>
+            ) : (
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
+                <thead>
+                  <tr style={{ background: '#f8f9fa', borderBottom: '1px solid #ddd', textAlign: 'left' }}>
+                    <th style={{ padding: '0.5rem' }}>Salon Adı</th>
+                    <th style={{ padding: '0.5rem', textAlign: 'right' }}>Öğrenci</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.entries(roomSummaryMap).map(([rName, count], idx) => (
+                    <tr key={idx} style={{ borderBottom: '1px solid #eee' }}>
+                      <td style={{ padding: '0.5rem' }}>{rName}</td>
+                      <td style={{ padding: '0.5rem', textAlign: 'right', fontWeight: 'bold', color: '#007bff' }}>{count}</td>
+                    </tr>
                   ))}
-                </div>
-              </div>
+                  <tr style={{ background: '#f8f9fa', fontWeight: 'bold' }}>
+                    <td style={{ padding: '0.5rem' }}>Toplam</td>
+                    <td style={{ padding: '0.5rem', textAlign: 'right' }}>{distributions.length}</td>
+                  </tr>
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
 
-              <div>
-                <small style={{ fontWeight: 'bold' }}>Salonlar (Max 24):</small>
-                <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginTop: '0.3rem' }}>
-                  {rooms.map(room => {
-                    const totalCap = Math.min(24, Number(room.capacity || 24) + Number(room.extra_seats_added || room.extraSeatsAdded || 0));
-                    return (
+        {/* SAĞ TARAF: GRUP VE SALON YAPILANDIRMASI */}
+        {selectedExamId && !(examMode === 'ortaokul_akademik' && keepInOwnClassroom) && (
+          <div style={{ background: '#fff', padding: '1rem', borderRadius: '8px', border: '1px solid #ddd' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h4 style={{ margin: 0 }}>Grup & Salon Yapılandırması</h4>
+              <button onClick={addGroup} style={{ padding: '0.4rem 1rem', background: '#28a745', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
+                <FaPlus /> Grup Ekle
+              </button>
+            </div>
+
+            {groups.map(group => (
+              <div key={group.id} style={{ background: '#f9f9f9', padding: '1rem', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '1rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                  <strong>{group.name}</strong>
+                  <button onClick={() => removeGroup(group.id)} style={{ color: '#dc3545', border: 'none', background: 'none', cursor: 'pointer' }}>
+                    <FaTrash /> Sil
+                  </button>
+                </div>
+
+                <div style={{ marginBottom: '0.8rem' }}>
+                  <small style={{ fontWeight: 'bold' }}>Şubeler:</small>
+                  <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginTop: '0.3rem' }}>
+                    {allClasses.map(cls => (
                       <button
-                        key={room.id}
-                        onClick={() => toggleRoomForGroup(group.id, room.id)}
+                        key={cls}
+                        onClick={() => toggleClassForGroup(group.id, cls)}
                         style={{
                           padding: '0.2rem 0.6rem',
-                          background: group.roomIds.includes(room.id) ? '#17a2b8' : '#f1f1f1',
-                          color: group.roomIds.includes(room.id) ? '#fff' : '#333',
-                          border: 'none',
+                          background: group.classes.includes(cls) ? '#007bff' : '#fff',
+                          color: group.classes.includes(cls) ? '#fff' : '#333',
+                          border: '1px solid #ccc',
                           borderRadius: '4px',
                           cursor: 'pointer'
                         }}
                       >
-                        {room.name} ({totalCap} Kişi)
+                        {cls}
                       </button>
-                    );
-                  })}
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <small style={{ fontWeight: 'bold' }}>Salonlar (Max 24):</small>
+                  <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginTop: '0.3rem' }}>
+                    {rooms.map(room => {
+                      const totalCap = Math.min(24, Number(room.capacity || 24) + Number(room.extra_seats_added || room.extraSeatsAdded || 0));
+                      return (
+                        <button
+                          key={room.id}
+                          onClick={() => toggleRoomForGroup(group.id, room.id)}
+                          style={{
+                            padding: '0.2rem 0.6rem',
+                            background: group.roomIds.includes(room.id) ? '#17a2b8' : '#fff',
+                            color: group.roomIds.includes(room.id) ? '#fff' : '#333',
+                            border: '1px solid #ccc',
+                            borderRadius: '4px',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          {room.name} ({totalCap} Kişi)
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
-        </div>
-      )}
+            ))}
+          </div>
+        )}
+
+      </div>
 
       {selectedExamId && (
-        <button
-          onClick={runDistribution}
-          disabled={loading}
-          style={{ padding: '0.8rem 2rem', background: '#007bff', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '1rem', fontWeight: 'bold' }}
-        >
-          <FaSync /> {loading ? 'Dağıtılıyor...' : 'Dağıtımı Başlat'}
-        </button>
+        <div style={{ marginTop: '1.5rem' }}>
+          <button
+            onClick={runDistribution}
+            disabled={loading}
+            style={{ padding: '0.8rem 2rem', background: '#007bff', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '1rem', fontWeight: 'bold' }}
+          >
+            <FaSync /> {loading ? 'Dağıtılıyor...' : 'Dağıtımı Başlat'}
+          </button>
+        </div>
       )}
 
       {message && (
@@ -723,7 +753,7 @@ const SeatingDistribution = () => {
         </div>
       )}
 
-      {/* SONUÇ TABLOSU */}
+      {/* DETAYLI DAĞITIM TABLOSU */}
       {distributions.length > 0 && (
         <div style={{ marginTop: '2rem' }}>
           <h3>Dağıtım Listesi ({distributions.length} Öğrenci)</h3>
