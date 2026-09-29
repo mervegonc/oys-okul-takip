@@ -4,9 +4,10 @@ import { FaPlus, FaTrash, FaEdit } from 'react-icons/fa';
 
 const Exams = () => {
   const [exams, setExams] = useState([]);
+  const [availableGrades, setAvailableGrades] = useState([]); // Dinamik sınıflar
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [editingExamId, setEditingExamId] = useState(null); // Düzenlenen sınavın ID'si
+  const [editingExamId, setEditingExamId] = useState(null);
   const [formData, setFormData] = useState({
     title: '',
     date: '',
@@ -19,13 +20,9 @@ const Exams = () => {
     customFooter: '',
   });
 
-  const gradeOptions = {
-    high: [9, 10, 11, 12],
-    middle: [5, 6, 7, 8],
-  };
-
   useEffect(() => {
     fetchExams();
+    fetchGradesFromStudents(); // Öğrenciler tablosundan sınıfları dinamik çek
   }, []);
 
   const fetchExams = async () => {
@@ -40,6 +37,30 @@ const Exams = () => {
       console.error('Sınavlar alınamadı:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Öğrenciler tablosundaki mevcut sınıf seviyelerini dinamik olarak çeken fonksiyon
+  const fetchGradesFromStudents = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('students')
+        .select('grade'); // Sınıf sütununun adı 'grade' (veya tablonuzda ne geçiyorsa)
+
+      if (error) throw error;
+
+      if (data && data.length > 0) {
+        // Benzersiz (tekrar etmeyen) sınıf numaralarını al ve sırala
+        const uniqueGrades = [...new Set(data.map(item => item.grade))]
+          .filter(g => g !== null && g !== undefined)
+          .sort((a, b) => a - b);
+        
+        setAvailableGrades(uniqueGrades);
+      }
+    } catch (error) {
+      console.error('Sınıf listesi öğrencilerden çekilemedi:', error);
+      // Hata durumunda yedek statik liste bırakalım
+      setAvailableGrades([5, 6, 7, 8, 9, 10, 11, 12]);
     }
   };
 
@@ -59,7 +80,6 @@ const Exams = () => {
     setFormData({ ...formData, gradeLevels: updated });
   };
 
-  // Yeni Sınav Ekleme Modunu Aç
   const handleOpenNewForm = () => {
     setEditingExamId(null);
     setFormData({
@@ -76,7 +96,6 @@ const Exams = () => {
     setShowForm(true);
   };
 
-  // Sınav Düzenleme Modunu Aç
   const handleEditClick = (exam) => {
     setEditingExamId(exam.id);
     setFormData({
@@ -114,7 +133,6 @@ const Exams = () => {
       };
 
       if (editingExamId) {
-        // Güncelleme İşlemi (Update)
         const { error } = await supabase
           .from('exams')
           .update(payload)
@@ -123,7 +141,6 @@ const Exams = () => {
         if (error) throw error;
         alert('Sınav başarıyla güncellendi.');
       } else {
-        // Yeni Kayıt İşlemi (Insert)
         payload.created_at = new Date().toISOString();
         const { error } = await supabase
           .from('exams')
@@ -211,7 +228,7 @@ const Exams = () => {
                 name="title"
                 value={formData.title}
                 onChange={handleChange}
-                placeholder="Örn: TYT Deneme 1"
+                placeholder="Örn: 8. Sınıf Deneme"
                 style={{ width: '100%', padding: '0.5rem', border: '1px solid #ddd', borderRadius: '4px' }}
                 required
               />
@@ -248,15 +265,15 @@ const Exams = () => {
                 onChange={handleChange}
                 style={{ width: '100%', padding: '0.5rem', border: '1px solid #ddd', borderRadius: '4px' }}
               >
-                <option value="high">Lise (9-12)</option>
-                <option value="middle">Ortaokul (5-8)</option>
+                <option value="high">Lise</option>
+                <option value="middle">Ortaokul</option>
               </select>
             </div>
             <div style={{ gridColumn: 'span 2' }}>
-              <label>Sınıf Seviyeleri (birden fazla seçebilirsiniz)</label>
+              <label>Sınıf Seviyeleri (Öğrenciler tablosundan dinamik gelir)</label>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: '0.3rem' }}>
-                {gradeOptions[formData.level].map((grade) => (
-                  <label key={grade} style={{ fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.3rem', cursor: 'pointer' }}>
+                {availableGrades.map((grade) => (
+                  <label key={grade} style={{ fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.3rem', cursor: 'pointer', background: '#fff', padding: '4px 8px', border: '1px solid #ddd', borderRadius: '4px' }}>
                     <input
                       type="checkbox"
                       checked={formData.gradeLevels.includes(grade)}
@@ -264,6 +281,7 @@ const Exams = () => {
                     /> {grade}. Sınıf
                   </label>
                 ))}
+                {availableGrades.length === 0 && <span style={{ color: '#777', fontSize: '0.9rem' }}>Öğrenciler tablosunda sınıf bulunamadı.</span>}
               </div>
             </div>
             <div>
