@@ -850,8 +850,9 @@ const ExamAttendanceLists = () => {
                         <tr style={{ background: '#eee' }}>
                           <th style={{ width: '5%', textAlign: 'center' }}>SIRA</th>
                           <th style={{ width: '10%', textAlign: 'center' }}>ÖĞR. NO</th>
-                          <th>ÖĞRENCİ ADI SOYADI</th>
                           <th style={{ width: '13%', textAlign: 'center' }}>TC KİMLİK NO</th>
+                          <th>ÖĞRENCİ ADI SOYADI</th>
+
                           <th style={{ width: '10%', textAlign: 'center' }}>SINIF / ŞUBE</th>
                           
                           {examCategory === 'akademik_lise' && (
@@ -958,8 +959,8 @@ const ExamAttendanceLists = () => {
                         <tr style={{ background: '#eee' }}>
                           <th style={{ width: '8%', textAlign: 'center' }}>SIRA</th>
                           <th style={{ width: '15%', textAlign: 'center' }}>ÖĞR. NO</th>
-                          <th>ÖĞRENCİ ADI SOYADI</th>
                           <th style={{ width: '20%', textAlign: 'center' }}>TC KİMLİK NO</th>
+                          <th>ÖĞRENCİ ADI SOYADI</th>
                           <th style={{ width: '30%', textAlign: 'center', background: '#e2e8f0' }}>GİDECEĞİ SALON</th>
                         </tr>
                       </thead>
