@@ -416,6 +416,7 @@ const InvigilatorPayrollReport = () => {
   const [examDetails, setExamDetails] = useState(null);
   const [reportData, setReportData] = useState([]);
   const [globalFee, setGlobalFee] = useState('');
+  const [approverSelection, setApproverSelection] = useState('hulya'); // 'hulya', 'engin', 'both'
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -566,16 +567,31 @@ const InvigilatorPayrollReport = () => {
         </div>
 
         {selectedExamId && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#f1f5f9', padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-            <label style={{ fontWeight: '600', fontSize: '0.9rem', color: '#334155' }}>Ortak Seans Ücreti (TL):</label>
-            <input 
-              type="number" 
-              placeholder="Örn: 500"
-              value={globalFee}
-              onChange={(e) => handleGlobalFeeChange(e.target.value)}
-              style={{ padding: '6px 10px', width: '100px', borderRadius: '6px', border: '1px solid #cbd5e1', background: '#fff' }}
-            />
-          </div>
+          <>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#f1f5f9', padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+              <label style={{ fontWeight: '600', fontSize: '0.9rem', color: '#334155' }}>Ortak Seans Ücreti (TL):</label>
+              <input 
+                type="number" 
+                placeholder="Örn: 500"
+                value={globalFee}
+                onChange={(e) => handleGlobalFeeChange(e.target.value)}
+                style={{ padding: '6px 10px', width: '100px', borderRadius: '6px', border: '1px solid #cbd5e1', background: '#fff' }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#f1f5f9', padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+              <label style={{ fontWeight: '600', fontSize: '0.9rem', color: '#334155' }}>Onaylayan Yönetici:</label>
+              <select 
+                value={approverSelection}
+                onChange={(e) => setApproverSelection(e.target.value)}
+                style={{ padding: '6px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', background: '#fff', fontSize: '0.9rem' }}
+              >
+                <option value="hulya">Lise Müdürü Hülya Erten</option>
+                <option value="engin">Ortaokul Müdürü Engin Nalbant</option>
+                <option value="both">İkisi de (Biri Sağda, Biri Solda)</option>
+              </select>
+            </div>
+          </>
         )}
 
         {selectedExamId && (
@@ -653,12 +669,23 @@ const InvigilatorPayrollReport = () => {
             Genel Toplam Tutar: {grandTotal.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL
           </div>
 
-          <div style={{ display: 'flex', justifyContent: 'flex-end', pageBreakInside: 'avoid' }}>
-            <div style={{ textAlign: 'center', width: '160px' }}>
-              <p style={{ margin: '0 0 25px 0', fontWeight: '700', fontSize: '0.85rem', color: '#475569', letterSpacing: '0.05em' }}>ONAYLAYAN</p>
-              <p style={{ margin: 0, fontWeight: '700', fontSize: '0.95rem', color: '#0f172a' }}>Hülya ERTEN</p>
-              <p style={{ margin: '2px 0 0 0', fontSize: '0.8rem', color: '#64748b' }}>Okul Müdürü</p>
-            </div>
+          {/* Dinamik Onay Alanı */}
+          <div style={{ display: 'flex', justifyContent: approverSelection === 'both' ? 'space-between' : 'flex-end', pageBreakInside: 'avoid' }}>
+            {(approverSelection === 'hulya' || approverSelection === 'both') && (
+              <div style={{ textAlign: 'center', width: '160px' }}>
+                <p style={{ margin: '0 0 25px 0', fontWeight: '700', fontSize: '0.85rem', color: '#475569', letterSpacing: '0.05em' }}>ONAYLAYAN</p>
+                <p style={{ margin: 0, fontWeight: '700', fontSize: '0.95rem', color: '#0f172a' }}>Hülya ERTEN</p>
+                <p style={{ margin: '2px 0 0 0', fontSize: '0.8rem', color: '#64748b' }}>Okul Müdürü</p>
+              </div>
+            )}
+            
+            {(approverSelection === 'engin' || approverSelection === 'both') && (
+              <div style={{ textAlign: 'center', width: '160px' }}>
+                <p style={{ margin: '0 0 25px 0', fontWeight: '700', fontSize: '0.85rem', color: '#475569', letterSpacing: '0.05em' }}>ONAYLAYAN</p>
+                <p style={{ margin: 0, fontWeight: '700', fontSize: '0.95rem', color: '#0f172a' }}>Engin NALBANT</p>
+                <p style={{ margin: '2px 0 0 0', fontSize: '0.8rem', color: '#64748b' }}>Okul Müdürü</p>
+              </div>
+            )}
           </div>
         </div>
       ) : (
