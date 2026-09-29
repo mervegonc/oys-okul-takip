@@ -590,7 +590,7 @@ const ExamAttendanceLists = () => {
 
       <div className="no-print">
         <h2>📑 Yoklama ve Sınav Listeleri</h2>
-        <p style={{ color: '#666' }}>Sınav salon, kapı, soyad ve isim sıralı listelerini yönetin ve bastırın.</p>
+        <p style={{ color: '#666' }}>Sınav salon, kapı, soyad ve isim sıralı listelerini yönetin, bastırın ve Excel'e aktarın.</p>
 
         {selectedExam && assignments.length > 0 && (
           <div style={{ background: '#fff', border: '1px solid #cbd5e1', padding: '1rem', borderRadius: '8px', marginBottom: '1.5rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
@@ -725,7 +725,13 @@ const ExamAttendanceLists = () => {
                 </label>
               </div>
 
-              <div style={{ marginLeft: 'auto' }}>
+              <div style={{ marginLeft: 'auto', display: 'flex', gap: '0.8rem' }}>
+                <button
+                  onClick={exportToExcel}
+                  style={{ padding: '0.6rem 1.2rem', background: '#16a34a', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.95rem' }}
+                >
+                  📥 Excel'e Aktar
+                </button>
                 <button
                   onClick={handlePrint}
                   style={{ padding: '0.6rem 1.4rem', background: '#1e293b', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.95rem' }}
@@ -804,7 +810,7 @@ const ExamAttendanceLists = () => {
                   cursor: 'pointer'
                 }}
               >
-                📊 Excel Dışarı Aktar
+                📊 Excel Dışarı Aktar Ekranı
               </button>
             </div>
           </div>
@@ -1153,7 +1159,7 @@ const ExamAttendanceLists = () => {
             <div className="no-print" style={{ background: '#f8fafc', padding: '2.5rem', border: '1px solid #cbd5e1', borderRadius: '8px', textAlign: 'center' }}>
               <h3 style={{ color: '#1e293b', margin: 0 }}>📊 Excel Dışarı Aktar</h3>
               <p style={{ color: '#64748b', margin: '0.5rem 0 1.5rem 0' }}>
-                Aktفif sınav verilerini salon, sıra ve öğrenci bilgileriyle birlikte Excel dosyası olarak kaydedin.
+                Aktif sınav verilerini salon, sıra ve öğrenci bilgileriyle birlikte Excel dosyası olarak kaydedin.
               </p>
               <button
                 onClick={exportToExcel}
