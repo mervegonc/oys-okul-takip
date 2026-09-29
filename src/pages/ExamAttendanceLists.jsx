@@ -40,7 +40,7 @@ const ExamAttendanceLists = () => {
     }
   }, [selectedExam]);
 
-  // Excel'den Geçici TC Okuma Fonksiyonu
+  // Excel'den Geçici TC Okuma Fonksiyonu (Düzeltilmiş)
   const handleTcExcelUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -54,97 +54,84 @@ const ExamAttendanceLists = () => {
         const ws = workbook.Sheets[wsname];
         const data = XLSX.utils.sheet_to_json(ws, { header: 1 });
 
-        // Excel kolon başlıklarını veya satırlarını tarayarak TC, Öğrenci No ve Ad Soyad bulmaya çalışalım
         const newTcMap = {};
-        
-        data.forEach((row) => {
-          if (!row || row.length === 0) return;
-          // Satırdaki hücreleri stringe çevirip inceleyelim
-          const rowStr = row.map(cell => String(cell || '').trim());
-          
-          // Basit bir sezgisel arama: Satır içinde 11 haneli TC formatı var mı? Veya sütun eşleştirmesi
-          let foundTc = '';
-          let foundNo = '';
-          let foundName = '';
+        let loadedStudentCount = 0;
 
-          rowStr.forEach(cellVal => {
-            // 11 haneli sayısal değer TC olabilir
-            if (/^\d{11}$/.test(cellVal)) {
-              foundTc = cellVal;
-            }
-            // Öğrenci numarası (genellikle 1 ila 5 basamaklı veya okuluna göre değişir)
-            else if (/^\d{1,6}$/.test(cellVal) && !foundNo && cellVal !== foundTc) {
-              foundNo = cellVal;
-            }
-            // Ad Soyad tespiti (içinde boşluk olan metinsel ifadeler)
-            else if (cellVal.length > 3 && isNaN(cellVal) && !cellVal.includes('@')) {
-              if (!foundName) foundName = cellVal;
-            }
-          });
-
-          // Eğer daha akıllı bir kolon eşlemesi istersek, satırın genel yapısına bakabiliriz.
-          // Alternatif olarak standart esnek yakalama:
-          row.forEach(cell => {
-            const val = String(cell || '').trim();
-            if (/^\d{11}$/.test(val)) foundTc = val;
-          });
-
-          if (foundTc) {
-            // Eşleştirme için hem No hem Ad Soyad anahtarları üretelim
-            if (foundNo) newTcMap[foundNo] = foundTc;
-            if (foundName) newTcMap[foundName.toLocaleUpperCase('tr-TR')] = foundTc;
-            
-            // Satırdaki herhangi bir hücre öğrenci no veya ad soyad ile uyuşuyorsa map'e at
-            row.forEach(cell => {
-              const cVal = String(cell || '').trim();
-              if (cVal) newTcMap[cVal] = foundTc;
-              if (cVal) newTcMap[cVal.toLocaleUpperCase('tr-TR')] = foundTc;
-            });
-          }
-        });
-
-        // Daha robust bir Excel kolon taraması (Başlıklı Excel dosyaları için):
-        // Kolon adlarında 'TC', 'Öğrenci No', 'Ad', 'Soyad' arayalım
-        const headerRowIndex = data.findIndex(row => 
-          row.some(cell => {
+        // Başlık satırını bulmaya çalışalım
+        let headerRowIndex = data.findIndex(row => 
+          row && row.some(cell => {
             const s = String(cell || '').trim().toLocaleUpperCase('tr-TR');
-            return s.includes('TC') || s.includes('KIMLIK') || s.includes('NUMARA');
+            return s.includes('TC') || s.includes('KIMLIK') || s.includes('NUMARA') || s.includes('NO');
           })
         );
 
         if (headerRowIndex !== -1) {
           const headers = data[headerRowIndex].map(h => String(h || '').trim().toLocaleUpperCase('tr-TR'));
           const tcIdx = headers.findIndex(h => h.includes('TC') || h.includes('KİMLİK'));
-          const noIdx = headers.findIndex(h => h.includes('NO') || h.includes('NUMARA'));
-          const nameIdx = headers.findIndex(h => h.includes('AD') || h.includes('ÖĞRENCİ'));
+          const noIdx = headers.findIndex(h => h.includes('NO') || h.includes('NUMARA') || h.includes('ÖĞRENCİ NO'));
+          const nameIdx = headers.findIndex(h => h.includes('AD') || h.includes('SOYAD') || h.includes('ÖĞRENCİ'));
 
           if (tcIdx !== -1) {
             for (let i = headerRowIndex + 1; i < data.length; i++) {
               const r = data[i];
               if (!r) continue;
               const tcVal = String(r[tcIdx] || '').trim();
+              
               if (/^\d{11}$/.test(tcVal)) {
+                loadedStudentCount++;
                 if (noIdx !== -1 && r[noIdx]) {
                   newTcMap[String(r[noIdx]).trim()] = tcVal;
                 }
                 if (nameIdx !== -1 && r[nameIdx]) {
                   newTcMap[String(r[nameIdx]).trim().toLocaleUpperCase('tr-TR')] = tcVal;
                 }
-                // Tüm hücreleri de anahtar olarak ekleyelim (garanti olsun)
+                // Garanti olması için satırdaki tüm dolu hücreleri bu TC'ye bağlayalım
                 r.forEach(cell => {
                   const c = String(cell || '').trim();
-                  if (c) newTcMap[c] = tcVal;
-                  if (c) newTcMap[c.toLocaleUpperCase('tr-TR')] = tcVal;
+                  if (c) {
+                    newTcMap[c] = tcVal;
+                    newTcMap[c.toLocaleUpperCase('tr-TR')] = tcVal;
+                  }
                 });
               }
             }
           }
         }
 
+        // Eğer başlık bulunamazsa veya akıllı okuma yapılamazsa genel tarama
+        if (loadedStudentCount === 0) {
+          data.forEach((row) => {
+            if (!row || row.length === 0) return;
+            let foundTc = '';
+            let foundNo = '';
+            let foundName = '';
+
+            row.forEach(cellVal => {
+              const val = String(cellVal || '').trim();
+              if (/^\d{11}$/.test(val)) foundTc = val;
+              else if (/^\d{1,6}$/.test(val) && !foundNo) foundNo = val;
+              else if (val.length > 3 && isNaN(val) && !foundName) foundName = val;
+            });
+
+            if (foundTc) {
+              loadedStudentCount++;
+              if (foundNo) newTcMap[foundNo] = foundTc;
+              if (foundName) newTcMap[foundName.toLocaleUpperCase('tr-TR')] = foundTc;
+              row.forEach(cell => {
+                const c = String(cell || '').trim();
+                if (c) {
+                  newTcMap[c] = foundTc;
+                  newTcMap[c.toLocaleUpperCase('tr-TR')] = foundTc;
+                }
+              });
+            }
+          });
+        }
+
         setTempTcMap(newTcMap);
         setIsTcLoaded(true);
         setLoadedFileName(file.name);
-        alert(`Başarıyla ${Object.keys(newTcMap).length} adet geçici TC eşlemesi yüklendi! Bu veriler veritabanına kaydedilmeyecektir.`);
+        alert(`Başarıyla ${loadedStudentCount} öğrencinin TC eşlemesi yüklendi! Bu veriler veritabanına kaydedilmeyecektir.`);
       } catch (err) {
         console.error('Excel okuma hatası:', err);
         alert('Excel dosyası okunurken bir hata oluştu.');
@@ -153,6 +140,7 @@ const ExamAttendanceLists = () => {
     reader.readAsBinaryString(file);
   };
 
+    
   // Öğrenciye ait geçici TC'yi bulma fonksiyonu
   const getStudentTc = (st, det) => {
     if (!isTcLoaded) return '';
