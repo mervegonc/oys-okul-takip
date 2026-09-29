@@ -172,7 +172,7 @@ const SeatingDistribution = () => {
   const runDistribution = async () => {
     if (!selectedExamId) return setMessage('Hata: Lütfen bir sınav seçin.');
 
-    if (!(examMode === 'ortaokul_akademik' && keepInOwnClassroom) && groups.length === 0) {
+    if (groups.length === 0) {
       return setMessage('Hata: Dağıtım için en az bir grup oluşturmalısınız.');
     }
 
@@ -196,152 +196,157 @@ const SeatingDistribution = () => {
         });
       });
 
-      // LİSE & ORTAOKUL AKADEMİK
-      if (examMode === 'lise_akademik' || examMode === 'ortaokul_akademik') {
-        if (examMode === 'ortaokul_akademik' && keepInOwnClassroom) {
-          const classGrouped = {};
-          students.forEach(st => {
-            const clsKey = `${st.grade}-${st.class}`;
-            if (!classGrouped[clsKey]) classGrouped[clsKey] = [];
-            classGrouped[clsKey].push(st);
-          });
+      // ORTAOKUL AKADEMİK - KENDİ ŞUBESİNDE (Kullanıcının seçtiği salonlarla eşleşerek, sadece sıra no karışır)
+      if (examMode === 'ortaokul_akademik' && keepInOwnClassroom) {
+        for (const group of groups) {
+          const groupRooms = rooms.filter(r => group.roomIds.includes(r.id));
+          if (groupRooms.length === 0) throw new Error(`"${group.name}" için hiç salon seçilmedi!`);
+          if (group.classes.length === 0) throw new Error(`"${group.name}" için hiç şube seçilmedi!`);
 
-          let roomIdx = 0;
-          for (const clsKey of Object.keys(classGrouped)) {
-            const clsStudents = classGrouped[clsKey];
-            const targetRoom = rooms[roomIdx % rooms.length];
+          if (group.classes.length !== groupRooms.length) {
+            throw new Error(`"${group.name}" grubunda seçilen şube sayısı (${group.classes.length}) ile salon sayısı (${group.roomIds.length}) eşleşmeli! Her şube için bir salon seçmelisiniz.`);
+          }
 
-            clsStudents.forEach((st, idx) => {
+          group.classes.forEach((cls, idx) => {
+            const targetRoom = groupRooms[idx];
+            const clsStudents = students.filter(s => `${s.grade}-${s.class}` === cls);
+
+            if (clsStudents.length === 0) return;
+
+            const shuffledClassStudents = shuffleArray(clsStudents);
+
+            shuffledClassStudents.forEach((st, seatIdx) => {
               assignments.push({
                 student_id: st.id,
                 room_id: targetRoom.id,
+                seat_number: seatIdx + 1,
+                student_name: `${st.first_name || st.firstName || ''} ${st.last_name || st.lastName || ''}`.trim(),
+                class: st.class,
+                grade: st.grade,
+              });
+            });
+          });
+        }
+      } 
+      // LİSE & ORTAOKUL AKADEMİK (KARMA)
+      else if (examMode === 'lise_akademik' || examMode === 'ortaokul_akademik') {
+        for (const group of groups) {
+          const groupStudents = students.filter(s => group.classes.includes(`${s.grade}-${s.class}`));
+          if (groupStudents.length === 0) {
+            throw new Error(`"${group.name}" grubunda seçilen şubelerde öğrenci bulunamadı!`);
+          }
+
+          const groupRooms = rooms
+            .filter(r => group.roomIds.includes(r.id))
+            .map(r => ({
+              ...r,
+              totalCap: Math.min(24, Number(r.capacity || 24) + Number(r.extra_seats_added || r.extraSeatsAdded || 0)),
+              seats: []
+            }));
+
+          if (groupRooms.length === 0) throw new Error(`"${group.name}" için salon seçilmedi.`);
+
+          const totalGroupStudents = groupStudents.length;
+          const totalCapacity = groupRooms.reduce((sum, r) => sum + r.totalCap, 0);
+
+          if (totalCapacity < totalGroupStudents) {
+            throw new Error(`"${group.name}" grubundaki öğrenci sayısı (${totalGroupStudents}) seçilen salonların toplam kapasitesini (${totalCapacity}) aşıyor!`);
+          }
+
+          const numRooms = groupRooms.length;
+          const baseQuota = Math.floor(totalGroupStudents / numRooms);
+          const remainder = totalGroupStudents % numRooms;
+
+          groupRooms.forEach((room, idx) => {
+            room.targetQuota = baseQuota + (idx < remainder ? 1 : 0);
+          });
+
+          const classQueues = {};
+          group.classes.forEach(cls => {
+            classQueues[cls] = shuffleArray(groupStudents.filter(s => `${s.grade}-${s.class}` === cls));
+          });
+
+          const interleavedList = [];
+          while (interleavedList.length < totalGroupStudents) {
+            const availClasses = group.classes.filter(cls => classQueues[cls] && classQueues[cls].length > 0);
+            if (availClasses.length === 0) break;
+
+            const lastClass = interleavedList.length > 0 
+              ? `${interleavedList[interleavedList.length - 1].grade}-${interleavedList[interleavedList.length - 1].class}` 
+              : null;
+
+            let candidateClasses = availClasses.filter(c => c !== lastClass);
+            if (candidateClasses.length === 0) candidateClasses = availClasses;
+
+            const chosenClass = candidateClasses[Math.floor(Math.random() * candidateClasses.length)];
+            interleavedList.push(classQueues[chosenClass].shift());
+          }
+
+          const shuffledInterleaved = shuffleArray(interleavedList);
+
+          for (const st of shuffledInterleaved) {
+            let placed = false;
+
+            for (const room of groupRooms) {
+              if (room.seats.length >= room.targetQuota) continue;
+
+              const stIdStr = String(st.id);
+              const hasConflict = room.seats.some(existingSt => {
+                const existingIdStr = String(existingSt.id);
+                return (conflictPairsMap[stIdStr] && conflictPairsMap[stIdStr].has(existingIdStr)) || 
+                       (conflictPairsMap[existingIdStr] && conflictPairsMap[existingIdStr].has(stIdStr));
+              });
+
+              if (!hasConflict) {
+                room.seats.push(st);
+                placed = true;
+                break;
+              }
+            }
+
+            if (!placed) {
+              const availableRooms = groupRooms
+                .filter(r => {
+                  if (r.seats.length >= r.totalCap || r.seats.length >= r.targetQuota + 2) return false;
+                  const stIdStr = String(st.id);
+                  return !r.seats.some(existingSt => {
+                    const existingIdStr = String(existingSt.id);
+                    return (conflictPairsMap[stIdStr] && conflictPairsMap[stIdStr].has(existingIdStr)) || 
+                           (conflictPairsMap[existingIdStr] && conflictPairsMap[existingIdStr].has(stIdStr));
+                  });
+                })
+                .sort((a, b) => a.seats.length - b.seats.length);
+
+              if (availableRooms.length > 0) {
+                availableRooms[0].seats.push(st);
+                placed = true;
+              }
+            }
+
+            if (!placed) {
+              const generalRooms = groupRooms
+                .filter(r => r.seats.length < r.totalCap)
+                .sort((a, b) => a.seats.length - b.seats.length);
+
+              if (generalRooms.length > 0) {
+                generalRooms[0].seats.push(st);
+                placed = true;
+              }
+            }
+          }
+
+          groupRooms.forEach(room => {
+            room.seats.forEach((st, idx) => {
+              assignments.push({
+                student_id: st.id,
+                room_id: room.id,
                 seat_number: idx + 1,
                 student_name: `${st.first_name || st.firstName || ''} ${st.last_name || st.lastName || ''}`.trim(),
                 class: st.class,
                 grade: st.grade,
               });
             });
-            roomIdx++;
-          }
-        } else {
-          for (const group of groups) {
-            const groupStudents = students.filter(s => group.classes.includes(`${s.grade}-${s.class}`));
-            if (groupStudents.length === 0) {
-              throw new Error(`"${group.name}" grubunda seçilen şubelerde öğrenci bulunamadı!`);
-            }
-
-            const groupRooms = rooms
-              .filter(r => group.roomIds.includes(r.id))
-              .map(r => ({
-                ...r,
-                totalCap: Math.min(24, Number(r.capacity || 24) + Number(r.extra_seats_added || r.extraSeatsAdded || 0)),
-                seats: []
-              }));
-
-            if (groupRooms.length === 0) throw new Error(`"${group.name}" için salon seçilmedi.`);
-
-            const totalGroupStudents = groupStudents.length;
-            const totalCapacity = groupRooms.reduce((sum, r) => sum + r.totalCap, 0);
-
-            if (totalCapacity < totalGroupStudents) {
-              throw new Error(`"${group.name}" grubundaki öğrenci sayısı (${totalGroupStudents}) seçilen salonların toplam kapasitesini (${totalCapacity}) aşıyor!`);
-            }
-
-            const numRooms = groupRooms.length;
-            const baseQuota = Math.floor(totalGroupStudents / numRooms);
-            const remainder = totalGroupStudents % numRooms;
-
-            groupRooms.forEach((room, idx) => {
-              room.targetQuota = baseQuota + (idx < remainder ? 1 : 0);
-            });
-
-            const classQueues = {};
-            group.classes.forEach(cls => {
-              classQueues[cls] = shuffleArray(groupStudents.filter(s => `${s.grade}-${s.class}` === cls));
-            });
-
-            const interleavedList = [];
-            while (interleavedList.length < totalGroupStudents) {
-              const availClasses = group.classes.filter(cls => classQueues[cls] && classQueues[cls].length > 0);
-              if (availClasses.length === 0) break;
-
-              const lastClass = interleavedList.length > 0 
-                ? `${interleavedList[interleavedList.length - 1].grade}-${interleavedList[interleavedList.length - 1].class}` 
-                : null;
-
-              let candidateClasses = availClasses.filter(c => c !== lastClass);
-              if (candidateClasses.length === 0) candidateClasses = availClasses;
-
-              const chosenClass = candidateClasses[Math.floor(Math.random() * candidateClasses.length)];
-              interleavedList.push(classQueues[chosenClass].shift());
-            }
-
-            const shuffledInterleaved = shuffleArray(interleavedList);
-
-            for (const st of shuffledInterleaved) {
-              let placed = false;
-
-              for (const room of groupRooms) {
-                if (room.seats.length >= room.targetQuota) continue;
-
-                const stIdStr = String(st.id);
-                const hasConflict = room.seats.some(existingSt => {
-                  const existingIdStr = String(existingSt.id);
-                  return (conflictPairsMap[stIdStr] && conflictPairsMap[stIdStr].has(existingIdStr)) || 
-                         (conflictPairsMap[existingIdStr] && conflictPairsMap[existingIdStr].has(stIdStr));
-                });
-
-                if (!hasConflict) {
-                  room.seats.push(st);
-                  placed = true;
-                  break;
-                }
-              }
-
-              if (!placed) {
-                const availableRooms = groupRooms
-                  .filter(r => {
-                    if (r.seats.length >= r.totalCap || r.seats.length >= r.targetQuota + 2) return false;
-                    const stIdStr = String(st.id);
-                    return !r.seats.some(existingSt => {
-                      const existingIdStr = String(existingSt.id);
-                      return (conflictPairsMap[stIdStr] && conflictPairsMap[stIdStr].has(existingIdStr)) || 
-                             (conflictPairsMap[existingIdStr] && conflictPairsMap[existingIdStr].has(stIdStr));
-                    });
-                  })
-                  .sort((a, b) => a.seats.length - b.seats.length);
-
-                if (availableRooms.length > 0) {
-                  availableRooms[0].seats.push(st);
-                  placed = true;
-                }
-              }
-
-              if (!placed) {
-                const generalRooms = groupRooms
-                  .filter(r => r.seats.length < r.totalCap)
-                  .sort((a, b) => a.seats.length - b.seats.length);
-
-                if (generalRooms.length > 0) {
-                  generalRooms[0].seats.push(st);
-                  placed = true;
-                }
-              }
-            }
-
-            groupRooms.forEach(room => {
-              room.seats.forEach((st, idx) => {
-                assignments.push({
-                  student_id: st.id,
-                  room_id: room.id,
-                  seat_number: idx + 1,
-                  student_name: `${st.first_name || st.firstName || ''} ${st.last_name || st.lastName || ''}`.trim(),
-                  class: st.class,
-                  grade: st.grade,
-                });
-              });
-            });
-          }
+          });
         }
       }
 
@@ -517,7 +522,7 @@ const SeatingDistribution = () => {
       if (insertError) throw insertError;
 
       setDistributions(assignments);
-      setMessage(`Dağıtım başarıyla tamamlandı! ${assignments.length} öğrenci homojen olarak yerleştirildi.`);
+      setMessage(`Dağıtım başarıyla tamamlandı! ${assignments.length} öğrenci yerleştirildi.`);
     } catch (err) {
       console.error(err);
       setDistributions([]);
@@ -695,7 +700,7 @@ const SeatingDistribution = () => {
             style={{ cursor: 'pointer', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#856404' }}
           >
             {keepInOwnClassroom ? <FaCheckSquare size={20} color="#fd7e14" /> : <FaSquare size={20} color="#ccc" />}
-            Herkes Kendi Şubesinde Sınava Girsin (Karma Yapma)
+            Herkes Kendi Şubesinde Sınava Girsin (Sadece Sıra Karışsın)
           </label>
         </div>
       )}
@@ -785,7 +790,7 @@ const SeatingDistribution = () => {
         )}
 
         {/* SAĞ TARAF: GRUP VE SALON YAPILANDIRMASI */}
-        {selectedExamId && !(examMode === 'ortaokul_akademik' && keepInOwnClassroom) && (
+        {selectedExamId && (
           <div style={{ background: '#fff', padding: '1rem', borderRadius: '8px', border: '1px solid #ddd' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
               <h4 style={{ margin: 0 }}>Grup & Salon Yapılandırması</h4>
