@@ -41,6 +41,7 @@ const SeatingDistribution = () => {
     fetchData();
   }, []);
 
+  // Sınav seçildiğinde öğrencileri ve daha önce yapılmış dağılımı kontrol et
   useEffect(() => {
     if (!selectedExamId) {
       setStudents([]);
@@ -52,31 +53,70 @@ const SeatingDistribution = () => {
 
     const exam = exams.find(e => e.id === selectedExamId);
 
-    const fetchStudents = async () => {
+    const fetchExamDataAndPlan = async () => {
       if (!exam) return;
       const gradeLevels = exam.grade_levels || exam.gradeLevels || [];
       if (gradeLevels.length === 0) return;
 
       try {
-        const { data, error } = await supabase
+        // 1. Öğrencileri Çek
+        const { data: studentData, error: studentError } = await supabase
           .from('students')
           .select('*')
           .in('grade', gradeLevels.map(String));
 
-        if (error) throw error;
-        setStudents(data || []);
+        if (studentError) throw studentError;
+        const fetchedStudents = studentData || [];
+        setStudents(fetchedStudents);
 
-        const classSet = new Set((data || []).map(s => `${s.grade}-${s.class}`));
-        setAllClasses(Array.from(classSet).sort());
-        setGroups([]);
-        setDistributions([]);
-        setMessage(`${data?.length || 0} öğrenci veritabanından çekildi.`);
+        const classSet = new Set(fetchedStudents.map(s => `${s.grade}-${s.class}`));
+        const sortedClasses = Array.from(classSet).sort();
+        setAllClasses(sortedClasses);
+
+        // 2. Bu sınav için daha önce yapılmış bir oturma planı (seating_plans) var mı kontrol et
+        const { data: planData, error: planError } = await supabase
+          .from('seating_plans')
+          .select('*')
+          .eq('exam_id', selectedExamId)
+          .maybeSingle();
+
+        if (planError) console.error('Plan kontrol hatası:', planError);
+
+        if (planData && planData.assignments && planData.assignments.length > 0) {
+          setDistributions(planData.assignments);
+
+          // Kayıtlı atamalardaki salon ve şubeleri analiz ederek grupları otomatik oluştur
+          const usedRoomIds = Array.from(new Set(planData.assignments.map(a => a.room_id)));
+          const usedClasses = Array.from(new Set(planData.assignments.map(a => `${a.grade}-${a.class}`))).sort();
+
+          setGroups([
+            {
+              id: Date.now(),
+              name: 'Grup 1 (Önceki Dağıtımdan Yüklendi)',
+              classes: usedClasses,
+              roomIds: usedRoomIds
+            }
+          ]);
+
+          setMessage(`Bu sınav daha önce karılmış! ${planData.assignments.length} öğrencinin önceki oturma düzeni ve salon ayarları otomatik olarak yüklendi.`);
+        } else {
+          setDistributions([]);
+          setGroups([
+            {
+              id: Date.now(),
+              name: 'Grup 1',
+              classes: sortedClasses,
+              roomIds: []
+            }
+          ]);
+          setMessage(`${fetchedStudents.length} öğrenci veritabanından çekildi. Yeni dağıtım yapabilirsiniz.`);
+        }
       } catch (err) {
-        console.error('Öğrenci çekme hatası:', err);
+        console.error('Veri yükleme hatası:', err);
       }
     };
 
-    fetchStudents();
+    fetchExamDataAndPlan();
   }, [selectedExamId, exams]);
 
   const addGroup = () => {
