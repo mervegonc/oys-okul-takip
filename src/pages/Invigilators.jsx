@@ -675,7 +675,7 @@ const InvigilatorPayrollReport = () => {
               <div style={{ textAlign: 'center', width: '160px' }}>
                 <p style={{ margin: '0 0 25px 0', fontWeight: '700', fontSize: '0.85rem', color: '#475569', letterSpacing: '0.05em' }}>ONAYLAYAN</p>
                 <p style={{ margin: 0, fontWeight: '700', fontSize: '0.95rem', color: '#0f172a' }}>Hülya ERTEN</p>
-                <p style={{ margin: '2px 0 0 0', fontSize: '0.8rem', color: '#64748b' }}>Okul Müdürü</p>
+                <p style={{ margin: '2px 0 0 0', fontSize: '0.8rem', color: '#64748b' }}>Lise Müdürü</p>
               </div>
             )}
             
@@ -683,7 +683,7 @@ const InvigilatorPayrollReport = () => {
               <div style={{ textAlign: 'center', width: '160px' }}>
                 <p style={{ margin: '0 0 25px 0', fontWeight: '700', fontSize: '0.85rem', color: '#475569', letterSpacing: '0.05em' }}>ONAYLAYAN</p>
                 <p style={{ margin: 0, fontWeight: '700', fontSize: '0.95rem', color: '#0f172a' }}>Engin NALBANT</p>
-                <p style={{ margin: '2px 0 0 0', fontSize: '0.8rem', color: '#64748b' }}>Okul Müdürü</p>
+                <p style={{ margin: '2px 0 0 0', fontSize: '0.8rem', color: '#64748b' }}>Ortaokul Müdürü</p>
               </div>
             )}
           </div>
