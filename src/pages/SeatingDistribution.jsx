@@ -9,7 +9,7 @@ const SeatingDistribution = () => {
   const [students, setStudents] = useState([]);
   const [allClasses, setAllClasses] = useState([]);
   const [groups, setGroups] = useState([]);
-  const [conflictGroups, setConflictGroups] = useState([]); // Ortak Çakışma Grupları
+  const [conflictGroups, setConflictGroups] = useState([]);
   const [distributions, setDistributions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
@@ -125,7 +125,6 @@ const SeatingDistribution = () => {
     return list;
   };
 
-  // Yardımcı Dil Okuma Fonksiyonu
   const getStudentLanguage = (st) => {
     return st.second_lang || st.second_language || st.yabanci_dil || st.foreign_language || 'Belirtilmedi';
   };
@@ -135,25 +134,18 @@ const SeatingDistribution = () => {
     if (!selectedExamId) return setMessage('Hata: Lütfen bir sınav seçin.');
 
     const currentExam = exams.find(e => e.id === selectedExamId);
-    const examGrades = currentExam ? (currentExam.grade_levels || currentExam.gradeLevels || []).map(String) : [];
 
     if (!(examMode === 'ortaokul_akademik' && keepInOwnClassroom) && groups.length === 0) {
       return setMessage('Hata: Dağıtım için en az bir grup oluşturmalısınız.');
     }
 
     setLoading(true);
-    setMessage('Dağıtım hesaplanıyor ve çakışma kuralları uygulanıyor...');
+    setMessage('Dağıtım hesaplanıyor ve homojen/çakışma kuralları uygulanıyor...');
 
     try {
       const assignments = [];
 
-      // Sınavın sınıf düzeylerine denk gelen ortak çakışma gruplarını tespit et
-      // (ConflictGroups tablosundaki öğrencilerin bu sınavın hedef sınıf seviyesinde olup olmadığına bakılır)
-      const activeConflictStudentIds = new Set();
-      // Alternatif olarak, aynı salona düşmemesi gerekenler için eşleme matrisi oluşturalım:
-      // Aynı çakışma grubunda olan öğrenci ID setleri listesi
-      const conflictPairsMap = {}; // studentId -> Set(conflictPartnerIds)
-
+      const conflictPairsMap = {};
       conflictGroups.forEach(cg => {
         const cgStudents = cg.student_ids || [];
         cgStudents.forEach(id1 => {
@@ -207,20 +199,36 @@ const SeatingDistribution = () => {
               .filter(r => group.roomIds.includes(r.id))
               .map(r => ({
                 ...r,
-                totalCap: Number(r.capacity || 0) + Number(r.extra_seats_added || r.extraSeatsAdded || 0),
+                // Salon kapasitesi en fazla 24 olabilir veya odanın kendi kapasitesi alınır
+                totalCap: Math.min(24, Number(r.capacity || 24) + Number(r.extra_seats_added || r.extraSeatsAdded || 0)),
                 seats: []
               }));
 
             if (groupRooms.length === 0) throw new Error(`"${group.name}" için salon seçilmedi.`);
 
+            const totalGroupStudents = groupStudents.length;
+            const totalCapacity = groupRooms.reduce((sum, r) => sum + r.totalCap, 0);
+
+            if (totalCapacity < totalGroupStudents) {
+              throw new Error(`"${group.name}" grubundaki öğrenci sayısı (${totalGroupStudents}) seçilen salonların toplam kapasitesini (${totalCapacity}) aşıyor! Lütfen daha fazla salon seçin.`);
+            }
+
+            // KESİN HOMOJEN DAĞITIM KOTASI HESAPLAMA (Grup İçi Eşit Dağılım)
+            const numRooms = groupRooms.length;
+            const baseQuota = Math.floor(totalGroupStudents / numRooms);
+            const remainder = totalGroupStudents % numRooms;
+
+            groupRooms.forEach((room, idx) => {
+              room.targetQuota = baseQuota + (idx < remainder ? 1 : 0);
+            });
+
+            // Sınıfları kendi içinde karıştırarak interleave et
             const classQueues = {};
             group.classes.forEach(cls => {
               classQueues[cls] = shuffleArray(groupStudents.filter(s => `${s.grade}-${s.class}` === cls));
             });
 
             const interleavedList = [];
-            const totalGroupStudents = groupStudents.length;
-
             while (interleavedList.length < totalGroupStudents) {
               const availClasses = group.classes.filter(cls => classQueues[cls] && classQueues[cls].length > 0);
               if (availClasses.length === 0) break;
@@ -236,24 +244,16 @@ const SeatingDistribution = () => {
               interleavedList.push(classQueues[chosenClass].shift());
             }
 
-            const totalCapacity = groupRooms.reduce((sum, r) => sum + r.totalCap, 0);
-            if (totalCapacity < totalGroupStudents) {
-              throw new Error(`"${group.name}" grubundaki öğrenci sayısı (${totalGroupStudents}) seçilen salonların toplam kapasitesini (${totalCapacity}) aşıyor!`);
-            }
-
-            // ÇAKIŞMA KONTROLÜ İLE SALONLARA DAĞITIM
-            // Strateji: Salonlara dağıtırken, aynı odada halihazırda bulunan bir öğrenciyle 
-            // çakışma grubu olan (conflictPairsMap) bir öğrenci aynı odaya eklenmemeye çalışılır.
-            let studentIdx = 0;
+            // ÇAKIŞMA KONTROLÜ İLE HOMOJEN YERLEŞTİRME
             const shuffledInterleaved = shuffleArray(interleavedList);
 
             for (const st of shuffledInterleaved) {
               let placed = false;
-              // Önce çakışma kuralını bozmayacak (bu öğrencide çakışanı olmayan) uygun bir salon ara
-              for (const room of groupRooms) {
-                if (room.seats.length >= room.totalCap) continue;
 
-                // Bu odadaki mevcut öğrencilerle çakışma var mı kontrol et
+              // 1. Aşama: Hedef kotası dolmamış VE çakışması olmayan salon
+              for (const room of groupRooms) {
+                if (room.seats.length >= room.targetQuota) continue;
+
                 const hasConflict = room.seats.some(existingSt => {
                   const s1 = String(existingSt.id);
                   const s2 = String(st.id);
@@ -268,10 +268,10 @@ const SeatingDistribution = () => {
                 }
               }
 
-              // Eğer tüm salonlarda çakışma ihtimali varsa, kapasitesi en uygun (en boş) salona zorunlu yerleştir
+              // 2. Aşama: Hedef kotayı en fazla 1-2 kişi esneterek en boş salona koy
               if (!placed) {
                 const availableRooms = groupRooms
-                  .filter(r => r.seats.length < r.totalCap)
+                  .filter(r => r.seats.length < r.totalCap && r.seats.length < r.targetQuota + 2)
                   .sort((a, b) => a.seats.length - b.seats.length);
 
                 if (availableRooms.length > 0) {
@@ -280,8 +280,16 @@ const SeatingDistribution = () => {
                 }
               }
 
+              // 3. Son Çare: Max 24 veya genel kapasite sınırları içinde en boş salon
               if (!placed) {
-                throw new Error(`Çakışma kuralları ve kapasite sınırları nedeniyle tüm öğrenciler salonlara yerleştirilemedi.`);
+                const generalRooms = groupRooms
+                  .filter(r => r.seats.length < r.totalCap)
+                  .sort((a, b) => a.seats.length - b.seats.length);
+
+                if (generalRooms.length > 0) {
+                  generalRooms[0].seats.push(st);
+                  placed = true;
+                }
               }
             }
 
@@ -313,11 +321,20 @@ const SeatingDistribution = () => {
             .filter(r => group.roomIds.includes(r.id))
             .map(r => ({
               ...r,
-              totalCap: Number(r.capacity || 0) + Number(r.extra_seats_added || r.extraSeatsAdded || 0),
+              totalCap: Math.min(24, Number(r.capacity || 24) + Number(r.extra_seats_added || r.extraSeatsAdded || 0)),
               seats: []
             }));
 
           if (groupRooms.length === 0) throw new Error(`"${group.name}" için salon seçilmedi.`);
+
+          const totalGroupStudents = groupStudents.length;
+          const numRooms = groupRooms.length;
+          const baseQuota = Math.floor(totalGroupStudents / numRooms);
+          const remainder = totalGroupStudents % numRooms;
+
+          groupRooms.forEach((room, idx) => {
+            room.targetQuota = baseQuota + (idx < remainder ? 1 : 0);
+          });
 
           const sortedStudents = [...groupStudents].sort((a, b) => {
             if (langPrimaryFilter === 'second_lang') {
@@ -339,11 +356,10 @@ const SeatingDistribution = () => {
             }
           });
 
-          // Çakışma kurallarına dikkat ederek dil sınıfı listesini yerleştir
           for (const st of sortedStudents) {
             let placed = false;
             for (const room of groupRooms) {
-              if (room.seats.length >= room.totalCap) continue;
+              if (room.seats.length >= room.targetQuota) continue;
 
               const hasConflict = room.seats.some(existingSt => {
                 const s1 = String(existingSt.id);
@@ -400,7 +416,7 @@ const SeatingDistribution = () => {
             .filter(r => group.roomIds.includes(r.id))
             .map(r => ({
               ...r,
-              totalCap: Number(r.capacity || 0) + Number(r.extra_seats_added || r.extraSeatsAdded || 0),
+              totalCap: Math.min(24, Number(r.capacity || 24) + Number(r.extra_seats_added || r.extraSeatsAdded || 0)),
               seats: []
             }));
 
@@ -460,7 +476,6 @@ const SeatingDistribution = () => {
         throw new Error('Dağıtılabilecek hiçbir öğrenci bulunamadı! Seçtiğiniz şubelerin ve salonların doğruluğunu kontrol edin.');
       }
 
-      // Supabase Veritabanına Yaz
       await supabase.from('seating_plans').delete().eq('exam_id', selectedExamId);
       const { error: insertError } = await supabase.from('seating_plans').insert({
         exam_id: selectedExamId,
@@ -471,7 +486,7 @@ const SeatingDistribution = () => {
       if (insertError) throw insertError;
 
       setDistributions(assignments);
-      setMessage(`Dağıtım başarıyla tamamlandı! Çakışma kuralları gözetilerek ${assignments.length} öğrenci yerleştirildi.`);
+      setMessage(`Dağıtım başarıyla tamamlandı! ${assignments.length} öğrenci homojen olarak yerleştirildi.`);
     } catch (err) {
       console.error(err);
       setDistributions([]);
@@ -480,21 +495,6 @@ const SeatingDistribution = () => {
       setLoading(false);
     }
   };
-
-  const getRoomSummary = () => {
-    const summary = {};
-    distributions.forEach(item => {
-      const roomName = rooms.find(r => r.id === item.room_id)?.name || item.room_id;
-      if (!summary[roomName]) {
-        summary[roomName] = { count: 0, languages: new Set() };
-      }
-      summary[roomName].count++;
-      if (item.second_language) summary[roomName].languages.add(item.second_language);
-    });
-    return summary;
-  };
-
-  const roomSummary = getRoomSummary();
 
   return (
     <div style={{ padding: '1rem', maxWidth: '1400px', margin: '0 auto' }}>
@@ -592,9 +592,6 @@ const SeatingDistribution = () => {
       {selectedExamId && examMode === 'lise_yabanci_dil' && (
         <div style={{ background: '#eef6ff', padding: '1rem', borderRadius: '8px', border: '1px solid #b6d4fe', marginBottom: '1.5rem' }}>
           <h4 style={{ margin: '0 0 0.5rem 0', color: '#055160' }}>📊 Excel Tipi Sıralama Düzeni</h4>
-          <p style={{ margin: '0 0 0.8rem 0', fontSize: '0.85rem', color: '#555' }}>
-            Öğrenciler karma yapılmadan sırayla dizilir (Ortak çakışma kuralları gözetilir).
-          </p>
           <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
             <label style={{ cursor: 'pointer', fontWeight: 'bold' }}>
               <input
@@ -650,7 +647,6 @@ const SeatingDistribution = () => {
                 </button>
               </div>
 
-              {/* Şubeler */}
               <div style={{ marginBottom: '0.8rem' }}>
                 <small style={{ fontWeight: 'bold' }}>Şubeler:</small>
                 <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginTop: '0.3rem' }}>
@@ -673,12 +669,11 @@ const SeatingDistribution = () => {
                 </div>
               </div>
 
-              {/* Salonlar */}
               <div>
-                <small style={{ fontWeight: 'bold' }}>Salonlar:</small>
+                <small style={{ fontWeight: 'bold' }}>Salonlar (Max 24):</small>
                 <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginTop: '0.3rem' }}>
                   {rooms.map(room => {
-                    const totalCap = Number(room.capacity || 0) + Number(room.extra_seats_added || room.extraSeatsAdded || 0);
+                    const totalCap = Math.min(24, Number(room.capacity || 24) + Number(room.extra_seats_added || room.extraSeatsAdded || 0));
                     return (
                       <button
                         key={room.id}
@@ -703,7 +698,6 @@ const SeatingDistribution = () => {
         </div>
       )}
 
-      {/* ÇALIŞTIR BUTONU */}
       {selectedExamId && (
         <button
           onClick={runDistribution}
