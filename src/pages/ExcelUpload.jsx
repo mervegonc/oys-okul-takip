@@ -25,8 +25,7 @@ const ExcelUpload = ({ onUploadComplete }) => {
         const data = XLSX.utils.sheet_to_json(ws);
 
         if (uploadType === 'students') {
-          const formattedStudents = data.map(row => {
-            // Excel'deki olası başlık varyasyonlarını kontrol ediyoruz
+    const formattedStudents = data.map(row => {
             let studentNo = String(row['Okul Numarası'] || row['Öğrenci No'] || row['student_no'] || '').trim();
             let firstName = String(row['Adı'] || row['Ad'] || row['first_name'] || '').trim();
             let lastName = String(row['Soyadı'] || row['Soyad'] || row['last_name'] || '').trim();
@@ -34,7 +33,6 @@ const ExcelUpload = ({ onUploadComplete }) => {
             let gender = String(row['Cinsiyet'] || row['gender'] || '').trim();
             let secondLang = String(row['Yabancı Dil Bilgisi'] || row['2. Yabancı Dil'] || row['second_lang'] || '').trim();
 
-            // Sınıf ve Şube verilerini ayırma (Örn: "8 M" gelirse Sınıf: 8, Şube: M yapılır)
             let grade = String(row['Sınıf'] || row['grade'] || '').trim();
             let sube = String(row['Şube'] || row['class'] || '').trim();
 
@@ -48,19 +46,20 @@ const ExcelUpload = ({ onUploadComplete }) => {
               sube = parts[1];
             }
 
+            // Çakışmayı önlemek için benzersiz bir id veya anahtar oluşturabiliriz
+            // Eğer veritabanında primary key 'student_no' ise, farklı sınıflardaki aynı no çakışır.
             return {
               student_no: studentNo,
-              tc_no: String(row['TC Kimlik No'] || row['tc_no'] || '').trim(),
-              first_name: firstName,
-              last_name: lastName,
               grade: grade,
               class: sube,
-              field: field,
+              first_name: firstName,
+              last_name: lastName,
+              field: field || null,
               gender: gender,
               english_level: String(row['İngilizce Seviye'] || row['english_level'] || 'Core').trim(),
               second_lang: secondLang || 'None'
             };
-          }).filter(s => s.first_name || s.student_no); // Boş satırları ele
+          }).filter(s => s.first_name || s.student_no);
 
           const { error } = await supabase.from('students').upsert(formattedStudents, { onConflict: 'student_no' });
           if (error) throw error;
