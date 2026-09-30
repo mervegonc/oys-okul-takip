@@ -5,7 +5,7 @@ import * as XLSX from 'xlsx';
 
 const ExcelUpload = ({ onUploadComplete }) => {
   const [loading, setLoading] = useState(false);
-  const [uploadType, setUploadType] = useState('students'); // 'students', 'exams'
+  const [uploadType, setUploadType] = useState('students');
   const [message, setMessage] = useState('');
 
   const handleFileUpload = (e) => {
@@ -24,8 +24,9 @@ const ExcelUpload = ({ onUploadComplete }) => {
         const ws = workbook.Sheets[wsname];
         const data = XLSX.utils.sheet_to_json(ws);
 
+        console.log("Excel'den okunan ham satır sayısı:", data.length);
+
         if (uploadType === 'students') {
-          // Excel verilerini veritabanı sütunlarına tam uyumlu hale getiriyoruz
           const formattedStudents = data.map(row => ({
             student_no: String(row['Okul Numarası'] || row['Öğrenci No'] || '').trim(),
             first_name: String(row['Adı'] || row['Ad'] || '').trim(),
@@ -36,13 +37,29 @@ const ExcelUpload = ({ onUploadComplete }) => {
             gender: String(row['Cinsiyet'] || '').trim(),
             english_level: String(row['İngilizce Seviye'] || 'Core').trim(),
             second_lang: row['Yabancı Dil Bilgisi'] && String(row['Yabancı Dil Bilgisi']).trim() !== 'nan' ? String(row['Yabancı Dil Bilgisi']).trim() : 'None'
-          })).filter(s => s.first_name && s.student_no); // Eksik satırları eliyoruz
+          }));
 
-          // Doğrudan insert kullanarak tüm öğrencileri yüklüyoruz (Supabase otomatik id atayacak)
-          const { error } = await supabase.from('students').insert(formattedStudents);
+          console.log("Formatlanan öğrenci sayısı:", formattedStudents.length);
           
-          if (error) throw error;
-          setMessage(`Başarıyla ${formattedStudents.length} öğrenci yüklendi!`);
+          // Filtrelenmiş halini görelim
+          const validStudents = formattedStudents.filter(s => s.first_name && s.student_no);
+          console.log("Filtreleme sonrası geçerli öğrenci sayısı:", validStudents.length);
+
+          const chunkSize = 100;
+          let successCount = 0;
+
+          for (let i = 0; i < validStudents.length; i += chunkSize) {
+            const chunk = validStudents.slice(i, i + chunkSize);
+            const { error } = await supabase.from('students').insert(chunk);
+            
+            if (error) {
+              console.error(`Paket ${i} yüklenirken Supabase hatası:`, error);
+              throw new Error(`Satır ${i} aralığında hata: ${error.message}`);
+            }
+            successCount += chunk.length;
+          }
+
+          setMessage(`Başarıyla ${successCount} öğrenci yüklendi!`);
 
         } else if (uploadType === 'exams') {
           const formattedExams = data.map(row => ({
