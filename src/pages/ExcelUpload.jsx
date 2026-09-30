@@ -25,17 +25,42 @@ const ExcelUpload = ({ onUploadComplete }) => {
         const data = XLSX.utils.sheet_to_json(ws);
 
         if (uploadType === 'students') {
-          const formattedStudents = data.map(row => ({
-            student_no: String(row['Öğrenci No'] || row['student_no'] || '').trim(),
-            tc_no: String(row['TC Kimlik No'] || row['tc_no'] || '').trim(),
-            first_name: String(row['Adı'] || row['first_name'] || '').trim(),
-            last_name: String(row['Soyadı'] || row['last_name'] || '').trim(),
-            grade: String(row['Sınıf'] || row['grade'] || '').trim(),
-            class: String(row['Şube'] || row['class'] || '').trim(),
-            field: String(row['Alan'] || row['field'] || '').trim(),
-            english_level: String(row['İngilizce Seviye'] || row['english_level'] || '').trim(),
-            second_lang: String(row['2. Yabancı Dil'] || row['second_lang'] || '').trim()
-          }));
+          const formattedStudents = data.map(row => {
+            // Excel'deki olası başlık varyasyonlarını kontrol ediyoruz
+            let studentNo = String(row['Okul Numarası'] || row['Öğrenci No'] || row['student_no'] || '').trim();
+            let firstName = String(row['Adı'] || row['Ad'] || row['first_name'] || '').trim();
+            let lastName = String(row['Soyadı'] || row['Soyad'] || row['last_name'] || '').trim();
+            let field = String(row['Alanı'] || row['Alan'] || row['field'] || '').trim();
+            let gender = String(row['Cinsiyet'] || row['gender'] || '').trim();
+            let secondLang = String(row['Yabancı Dil Bilgisi'] || row['2. Yabancı Dil'] || row['second_lang'] || '').trim();
+
+            // Sınıf ve Şube verilerini ayırma (Örn: "8 M" gelirse Sınıf: 8, Şube: M yapılır)
+            let grade = String(row['Sınıf'] || row['grade'] || '').trim();
+            let sube = String(row['Şube'] || row['class'] || '').trim();
+
+            if (!grade && sube && sube.includes(' ')) {
+              const parts = sube.split(' ');
+              grade = parts[0];
+              sube = parts[1];
+            } else if (grade && !sube && grade.includes(' ')) {
+              const parts = grade.split(' ');
+              grade = parts[0];
+              sube = parts[1];
+            }
+
+            return {
+              student_no: studentNo,
+              tc_no: String(row['TC Kimlik No'] || row['tc_no'] || '').trim(),
+              first_name: firstName,
+              last_name: lastName,
+              grade: grade,
+              class: sube,
+              field: field,
+              gender: gender,
+              english_level: String(row['İngilizce Seviye'] || row['english_level'] || 'Core').trim(),
+              second_lang: secondLang || 'None'
+            };
+          }).filter(s => s.first_name || s.student_no); // Boş satırları ele
 
           const { error } = await supabase.from('students').upsert(formattedStudents, { onConflict: 'student_no' });
           if (error) throw error;
