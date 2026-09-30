@@ -5,7 +5,7 @@ import * as XLSX from 'xlsx';
 
 const ExcelUpload = ({ onUploadComplete }) => {
   const [loading, setLoading] = useState(false);
-  const [uploadType, setUploadType] = useState('students'); // 'students', 'exams', 'grades'
+  const [uploadType, setUploadType] = useState('students'); // 'students', 'exams'
   const [message, setMessage] = useState('');
 
   const handleFileUpload = (e) => {
@@ -25,51 +25,31 @@ const ExcelUpload = ({ onUploadComplete }) => {
         const data = XLSX.utils.sheet_to_json(ws);
 
         if (uploadType === 'students') {
-    const formattedStudents = data.map(row => {
-            let studentNo = String(row['Okul Numarası'] || row['Öğrenci No'] || row['student_no'] || '').trim();
-            let firstName = String(row['Adı'] || row['Ad'] || row['first_name'] || '').trim();
-            let lastName = String(row['Soyadı'] || row['Soyad'] || row['last_name'] || '').trim();
-            let field = String(row['Alanı'] || row['Alan'] || row['field'] || '').trim();
-            let gender = String(row['Cinsiyet'] || row['gender'] || '').trim();
-            let secondLang = String(row['Yabancı Dil Bilgisi'] || row['2. Yabancı Dil'] || row['second_lang'] || '').trim();
+          // Excel verilerini veritabanı sütunlarına tam uyumlu hale getiriyoruz
+          const formattedStudents = data.map(row => ({
+            student_no: String(row['Okul Numarası'] || row['Öğrenci No'] || '').trim(),
+            first_name: String(row['Adı'] || row['Ad'] || '').trim(),
+            last_name: String(row['Soyadı'] || row['Soyad'] || '').trim(),
+            grade: String(row['Sınıf'] || '').trim(),
+            class: String(row['Şube'] || '').trim(),
+            field: row['Alanı'] && String(row['Alanı']).trim() !== 'nan' ? String(row['Alanı']).trim() : null,
+            gender: String(row['Cinsiyet'] || '').trim(),
+            english_level: String(row['İngilizce Seviye'] || 'Core').trim(),
+            second_lang: row['Yabancı Dil Bilgisi'] && String(row['Yabancı Dil Bilgisi']).trim() !== 'nan' ? String(row['Yabancı Dil Bilgisi']).trim() : 'None'
+          })).filter(s => s.first_name && s.student_no); // Eksik satırları eliyoruz
 
-            let grade = String(row['Sınıf'] || row['grade'] || '').trim();
-            let sube = String(row['Şube'] || row['class'] || '').trim();
-
-            if (!grade && sube && sube.includes(' ')) {
-              const parts = sube.split(' ');
-              grade = parts[0];
-              sube = parts[1];
-            } else if (grade && !sube && grade.includes(' ')) {
-              const parts = grade.split(' ');
-              grade = parts[0];
-              sube = parts[1];
-            }
-
-            // Çakışmayı önlemek için benzersiz bir id veya anahtar oluşturabiliriz
-            // Eğer veritabanında primary key 'student_no' ise, farklı sınıflardaki aynı no çakışır.
-            return {
-              student_no: studentNo,
-              grade: grade,
-              class: sube,
-              first_name: firstName,
-              last_name: lastName,
-              field: field || null,
-              gender: gender,
-              english_level: String(row['İngilizce Seviye'] || row['english_level'] || 'Core').trim(),
-              second_lang: secondLang || 'None'
-            };
-          }).filter(s => s.first_name || s.student_no);
-
-          const { error } = await supabase.from('students').upsert(formattedStudents, { onConflict: 'student_no' });
+          // Doğrudan insert kullanarak tüm öğrencileri yüklüyoruz (Supabase otomatik id atayacak)
+          const { error } = await supabase.from('students').insert(formattedStudents);
+          
           if (error) throw error;
           setMessage(`Başarıyla ${formattedStudents.length} öğrenci yüklendi!`);
+
         } else if (uploadType === 'exams') {
           const formattedExams = data.map(row => ({
             title: String(row['Sınav Adı'] || row['title'] || '').trim(),
             date: String(row['Tarih'] || row['date'] || '').trim(),
             description: String(row['Açıklama'] || row['description'] || '').trim()
-          }));
+          })).filter(e => e.title);
 
           const { error } = await supabase.from('exams').insert(formattedExams);
           if (error) throw error;
