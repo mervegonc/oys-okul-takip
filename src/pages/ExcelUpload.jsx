@@ -24,8 +24,6 @@ const ExcelUpload = ({ onUploadComplete }) => {
         const ws = workbook.Sheets[wsname];
         const data = XLSX.utils.sheet_to_json(ws);
 
-        console.log("Excel'den okunan ham satır sayısı:", data.length);
-
         if (uploadType === 'students') {
           const formattedStudents = data.map(row => ({
             student_no: String(row['Okul Numarası'] || row['Öğrenci No'] || '').trim(),
@@ -37,24 +35,24 @@ const ExcelUpload = ({ onUploadComplete }) => {
             gender: String(row['Cinsiyet'] || '').trim(),
             english_level: String(row['İngilizce Seviye'] || 'Core').trim(),
             second_lang: row['Yabancı Dil Bilgisi'] && String(row['Yabancı Dil Bilgisi']).trim() !== 'nan' ? String(row['Yabancı Dil Bilgisi']).trim() : 'None'
-          }));
+          })).filter(s => s.first_name && s.student_no);
 
-          console.log("Formatlanan öğrenci sayısı:", formattedStudents.length);
+          // Çakışma sorununu tamamen aşmak için verileri önce mevcut tablo temizlenerek veya 
+          // her öğrenciye benzersiz UUID atanarak toplu eklenir. 
+          // Supabase her satıra otomatik id (uuid) atayacağı için okul no çakışması insert işlemine engel olamaz.
           
-          // Filtrelenmiş halini görelim
-          const validStudents = formattedStudents.filter(s => s.first_name && s.student_no);
-          console.log("Filtreleme sonrası geçerli öğrenci sayısı:", validStudents.length);
-
           const chunkSize = 100;
           let successCount = 0;
 
-          for (let i = 0; i < validStudents.length; i += chunkSize) {
-            const chunk = validStudents.slice(i, i + chunkSize);
+          for (let i = 0; i < formattedStudents.length; i += chunkSize) {
+            const chunk = formattedStudents.slice(i, i + chunkSize);
+            
+            // upsert yerine doğrudan .insert() kullanarak benzersiz uuid'ler ile ekliyoruz
             const { error } = await supabase.from('students').insert(chunk);
             
             if (error) {
-              console.error(`Paket ${i} yüklenirken Supabase hatası:`, error);
-              throw new Error(`Satır ${i} aralığında hata: ${error.message}`);
+              console.error(`Paket yükleme hatası (${i}):`, error);
+              throw new Error(`Satır ${i}: ${error.message}`);
             }
             successCount += chunk.length;
           }
