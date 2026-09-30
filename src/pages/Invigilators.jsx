@@ -3,6 +3,17 @@ import { supabase } from '../supabase';
 
 const Invigilators = () => {
   const [activeTab, setActiveTab] = useState('management');
+  const [exams, setExams] = useState([]);
+  const [selectedExamId, setSelectedExamId] = useState('');
+
+  useEffect(() => {
+    fetchExams();
+  }, []);
+
+  const fetchExams = async () => {
+    const { data, error } = await supabase.from('exams').select('*').order('date', { ascending: false });
+    if (!error && data) setExams(data);
+  };
 
   return (
     <div style={{ padding: '2rem', maxWidth: '1200px', margin: '0 auto', fontFamily: 'Inter, system-ui, sans-serif' }}>
@@ -43,19 +54,41 @@ const Invigilators = () => {
         }
       `}</style>
 
+      {/* Üst Ortak Sınav Seçim Alanı (Tek Sefer Seçim) */}
+      <div style={{ margin: '0 0 1.5rem 0', display: 'flex', alignItems: 'center', gap: '1rem', background: '#f8fafc', padding: '1.25rem', borderRadius: '12px', border: '1px solid #cbd5e1' }} className="no-print">
+        <label style={{ fontWeight: '700', color: '#1e293b', fontSize: '1rem' }}>Sınav Seç (Genel):</label>
+        <select 
+          value={selectedExamId} 
+          onChange={(e) => setSelectedExamId(e.target.value)}
+          style={{ padding: '0.65rem 1rem', width: '400px', borderRadius: '8px', border: '1px solid #94a3b8', fontSize: '0.95rem', background: '#fff', fontWeight: '600' }}
+        >
+          <option value="">-- Lütfen Önce Bir Sınav Seçiniz --</option>
+          {exams.map(exam => (
+            <option key={exam.id} value={exam.id}>
+              {exam.name || exam.title || `Sınav #${exam.id}`} ({exam.date})
+            </option>
+          ))}
+        </select>
+        {selectedExamId && (
+          <span style={{ fontSize: '0.85rem', color: '#16a34a', fontWeight: '600' }}>
+            ✓ Sınav seçildi, sekmeler arasında veri kaybetmeden geçiş yapabilirsiniz.
+          </span>
+        )}
+      </div>
+
       {/* Sekmeler */}
-      <div style={{ display: 'flex', gap: '0.75rem', borderBottom: '2px solid #e2e8f0', paddingBottom: '1rem', marginBottom: '2rem' }} className="no-print">
+      <div style={{ display: 'flex', gap: '0.75rem', borderBottom: '2px solid #e2e8f0', paddingBottom: '1rem', marginBottom: '2rem', flexWrap: 'wrap' }} className="no-print">
         <button
           onClick={() => setActiveTab('management')}
           style={{
-            padding: '10px 20px',
+            padding: '10px 18px',
             background: activeTab === 'management' ? '#2563eb' : '#f1f5f9',
             color: activeTab === 'management' ? '#fff' : '#475569',
             border: 'none',
             borderRadius: '8px',
             cursor: 'pointer',
             fontWeight: '600',
-            fontSize: '0.95rem',
+            fontSize: '0.9rem',
             transition: 'all 0.2s'
           }}
         >
@@ -64,14 +97,14 @@ const Invigilators = () => {
         <button
           onClick={() => setActiveTab('payroll')}
           style={{
-            padding: '10px 20px',
+            padding: '10px 18px',
             background: activeTab === 'payroll' ? '#2563eb' : '#f1f5f9',
             color: activeTab === 'payroll' ? '#fff' : '#475569',
             border: 'none',
             borderRadius: '8px',
             cursor: 'pointer',
             fontWeight: '600',
-            fontSize: '0.95rem',
+            fontSize: '0.9rem',
             transition: 'all 0.2s'
           }}
         >
@@ -80,32 +113,47 @@ const Invigilators = () => {
         <button
           onClick={() => setActiveTab('attendance')}
           style={{
-            padding: '10px 20px',
+            padding: '10px 18px',
             background: activeTab === 'attendance' ? '#2563eb' : '#f1f5f9',
             color: activeTab === 'attendance' ? '#fff' : '#475569',
             border: 'none',
             borderRadius: '8px',
             cursor: 'pointer',
             fontWeight: '600',
-            fontSize: '0.95rem',
+            fontSize: '0.9rem',
             transition: 'all 0.2s'
           }}
         >
           Yoklama Listesi
         </button>
+        <button
+          onClick={() => setActiveTab('security')}
+          style={{
+            padding: '10px 18px',
+            background: activeTab === 'security' ? '#9333ea' : '#f1f5f9',
+            color: activeTab === 'security' ? '#fff' : '#475569',
+            border: 'none',
+            borderRadius: '8px',
+            cursor: 'pointer',
+            fontWeight: '600',
+            fontSize: '0.9rem',
+            transition: 'all 0.2s'
+          }}
+        >
+          Güvenlik Toplu Yoklama (Tarih Bazlı)
+        </button>
       </div>
 
-      {activeTab === 'management' && <InvigilatorManagement />}
-      {activeTab === 'payroll' && <InvigilatorPayrollReport />}
-      {activeTab === 'attendance' && <InvigilatorAttendanceReport />}
+      {activeTab === 'management' && <InvigilatorManagement exams={exams} selectedExamId={selectedExamId} />}
+      {activeTab === 'payroll' && <InvigilatorPayrollReport exams={exams} selectedExamId={selectedExamId} />}
+      {activeTab === 'attendance' && <InvigilatorAttendanceReport exams={exams} selectedExamId={selectedExamId} />}
+      {activeTab === 'security' && <SecurityDateAttendanceReport exams={exams} />}
     </div>
   );
 };
 
 // 1. ALT BİLEŞEN: Gözetmen Yönetimi
-const InvigilatorManagement = () => {
-  const [exams, setExams] = useState([]);
-  const [selectedExamId, setSelectedExamId] = useState('');
+const InvigilatorManagement = ({ exams, selectedExamId }) => {
   const [examRooms, setExamRooms] = useState([]);
   const [newStaffRoom, setNewStaffRoom] = useState('K.G.');
   const [newStaffName, setNewStaffName] = useState('');
@@ -115,10 +163,6 @@ const InvigilatorManagement = () => {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    fetchExams();
-  }, []);
-
-  useEffect(() => {
     if (selectedExamId) {
       fetchExamRoomsAndInvigilators(selectedExamId);
     } else {
@@ -126,11 +170,6 @@ const InvigilatorManagement = () => {
       setInvigilatorsData({});
     }
   }, [selectedExamId]);
-
-  const fetchExams = async () => {
-    const { data, error } = await supabase.from('exams').select('*').order('date', { ascending: false });
-    if (!error && data) setExams(data);
-  };
 
   const fetchExamRoomsAndInvigilators = async (examId) => {
     setLoading(true);
@@ -263,23 +302,7 @@ const InvigilatorManagement = () => {
     <div>
       <div className="no-print" style={{ marginBottom: '1.5rem' }}>
         <h2 style={{ fontSize: '1.5rem', fontWeight: '700', color: '#1e293b', marginBottom: '0.25rem' }}>Sınav Gözetmen ve Personel Yönetimi</h2>
-        <p style={{ color: '#64748b', fontSize: '0.95rem' }}>Sınav salonlarına gözetmen atayabilir, salon dışı kat görevlisi (K.G.) ekleyebilirsiniz.</p>
-      </div>
-
-      <div style={{ margin: '1.5rem 0', display: 'flex', alignItems: 'center', gap: '1rem', background: '#fff', padding: '1.25rem', borderRadius: '12px', border: '1px solid #e2e8f0' }} className="no-print">
-        <label style={{ fontWeight: '600', color: '#334155' }}>Sınav Seçin:</label>
-        <select 
-          value={selectedExamId} 
-          onChange={(e) => setSelectedExamId(e.target.value)}
-          style={{ padding: '0.65rem 1rem', width: '350px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.95rem', background: '#f8fafc' }}
-        >
-          <option value="">-- Sınav Seçiniz --</option>
-          {exams.map(exam => (
-            <option key={exam.id} value={exam.id}>
-              {exam.name || exam.title || `Sınav #${exam.id}`} ({exam.date})
-            </option>
-          ))}
-        </select>
+        <p style={{ color: '#64748b', fontSize: '0.95rem' }}>Yukarıdan seçilen sınavın salonlarına gözetmen atayabilir, salon dışı kat görevlisi (K.G.) ekleyebilirsiniz.</p>
       </div>
 
       {loading ? (
@@ -403,26 +426,20 @@ const InvigilatorManagement = () => {
           </div>
         </div>
       ) : (
-        <p style={{ color: '#64748b', textAlign: 'center', padding: '2rem' }}>Lütfen işlem yapmak istediğiniz sınavı seçin.</p>
+        <p style={{ color: '#64748b', textAlign: 'center', padding: '2rem' }}>Lütfen üst kısımdan işlem yapmak istediğiniz sınavı seçin.</p>
       )}
     </div>
   );
 };
 
 // 2. ALT BİLEŞEN: İmza ve Ücret Tutanağı
-const InvigilatorPayrollReport = () => {
-  const [exams, setExams] = useState([]);
-  const [selectedExamId, setSelectedExamId] = useState('');
+const InvigilatorPayrollReport = ({ exams, selectedExamId }) => {
   const [examDetails, setExamDetails] = useState(null);
   const [reportData, setReportData] = useState([]);
   const [globalFee, setGlobalFee] = useState('');
-  const [approverSelection, setApproverSelection] = useState('hulya'); // 'hulya', 'engin', 'both'
+  const [approverSelection, setApproverSelection] = useState('hulya');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    fetchExams();
-  }, []);
 
   useEffect(() => {
     if (selectedExamId) {
@@ -433,12 +450,7 @@ const InvigilatorPayrollReport = () => {
       setReportData([]);
       setExamDetails(null);
     }
-  }, [selectedExamId]);
-
-  const fetchExams = async () => {
-    const { data, error } = await supabase.from('exams').select('*').order('date', { ascending: false });
-    if (!error && data) setExams(data);
-  };
+  }, [selectedExamId, exams]);
 
   const fetchReportData = async (examId) => {
     setLoading(true);
@@ -546,63 +558,43 @@ const InvigilatorPayrollReport = () => {
     <div>
       <div className="no-print" style={{ marginBottom: '1.5rem' }}>
         <h2 style={{ fontSize: '1.5rem', fontWeight: '700', color: '#1e293b', marginBottom: '0.25rem' }}>Gözetmen İmza ve Ücret Tutanağı</h2>
-        <p style={{ color: '#64748b', fontSize: '0.95rem' }}>Sınav ücret tutanağını listeleyebilir, ortak seans ücreti belirleyip yazdırabilirsiniz.</p>
+        <p style={{ color: '#64748b', fontSize: '0.95rem' }}>Seçili sınavın ücret tutanağını listeleyebilir, ortak seans ücreti belirleyip yazdırabilirsiniz.</p>
       </div>
 
-      <div style={{ margin: '1.5rem 0', display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap', background: '#fff', padding: '1.25rem', borderRadius: '12px', border: '1px solid #e2e8f0' }} className="no-print">
-        <div>
-          <label style={{ fontWeight: '600', marginRight: '0.5rem', color: '#334155' }}>Sınav Seçin:</label>
-          <select 
-            value={selectedExamId} 
-            onChange={(e) => setSelectedExamId(e.target.value)}
-            style={{ padding: '0.65rem 1rem', width: '250px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.95rem', background: '#f8fafc' }}
-          >
-            <option value="">-- Sınav Seçiniz --</option>
-            {exams.map(exam => (
-              <option key={exam.id} value={exam.id}>
-                {exam.name || exam.title || `Sınav #${exam.id}`} ({exam.date})
-              </option>
-            ))}
-          </select>
-        </div>
+      {selectedExamId && (
+        <div style={{ margin: '1.5rem 0', display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap', background: '#fff', padding: '1.25rem', borderRadius: '12px', border: '1px solid #e2e8f0' }} className="no-print">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#f1f5f9', padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+            <label style={{ fontWeight: '600', fontSize: '0.9rem', color: '#334155' }}>Ortak Seans Ücreti (TL):</label>
+            <input 
+              type="number" 
+              placeholder="Örn: 500"
+              value={globalFee}
+              onChange={(e) => handleGlobalFeeChange(e.target.value)}
+              style={{ padding: '6px 10px', width: '100px', borderRadius: '6px', border: '1px solid #cbd5e1', background: '#fff' }}
+            />
+          </div>
 
-        {selectedExamId && (
-          <>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#f1f5f9', padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-              <label style={{ fontWeight: '600', fontSize: '0.9rem', color: '#334155' }}>Ortak Seans Ücreti (TL):</label>
-              <input 
-                type="number" 
-                placeholder="Örn: 500"
-                value={globalFee}
-                onChange={(e) => handleGlobalFeeChange(e.target.value)}
-                style={{ padding: '6px 10px', width: '100px', borderRadius: '6px', border: '1px solid #cbd5e1', background: '#fff' }}
-              />
-            </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#f1f5f9', padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+            <label style={{ fontWeight: '600', fontSize: '0.9rem', color: '#334155' }}>Onaylayan Yönetici:</label>
+            <select 
+              value={approverSelection}
+              onChange={(e) => setApproverSelection(e.target.value)}
+              style={{ padding: '6px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', background: '#fff', fontSize: '0.9rem' }}
+            >
+              <option value="hulya">Lise Müdürü Hülya Erten</option>
+              <option value="engin">Ortaokul Müdürü Engin Nalbant</option>
+              <option value="both">İkisi de (Biri Sağda, Biri Solda)</option>
+            </select>
+          </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#f1f5f9', padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-              <label style={{ fontWeight: '600', fontSize: '0.9rem', color: '#334155' }}>Onaylayan Yönetici:</label>
-              <select 
-                value={approverSelection}
-                onChange={(e) => setApproverSelection(e.target.value)}
-                style={{ padding: '6px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', background: '#fff', fontSize: '0.9rem' }}
-              >
-                <option value="hulya">Lise Müdürü Hülya Erten</option>
-                <option value="engin">Ortaokul Müdürü Engin Nalbant</option>
-                <option value="both">İkisi de (Biri Sağda, Biri Solda)</option>
-              </select>
-            </div>
-          </>
-        )}
-
-        {selectedExamId && (
           <button 
             onClick={() => window.print()}
             style={{ padding: '0.65rem 1.25rem', background: '#2563eb', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', marginLeft: 'auto' }}
           >
             Yazdır / PDF Al
           </button>
-        )}
-      </div>
+        </div>
+      )}
 
       {loading ? (
         <p style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>Yükleniyor...</p>
@@ -669,7 +661,6 @@ const InvigilatorPayrollReport = () => {
             Genel Toplam Tutar: {grandTotal.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL
           </div>
 
-          {/* Dinamik Onay Alanı */}
           <div style={{ display: 'flex', justifyContent: approverSelection === 'both' ? 'space-between' : 'flex-end', pageBreakInside: 'avoid' }}>
             {(approverSelection === 'hulya' || approverSelection === 'both') && (
               <div style={{ textAlign: 'center', width: '160px' }}>
@@ -689,23 +680,17 @@ const InvigilatorPayrollReport = () => {
           </div>
         </div>
       ) : (
-        <p style={{ color: '#64748b', textAlign: 'center', padding: '2rem' }}>Lütfen incelemek için bir sınav seçin.</p>
+        <p style={{ color: '#64748b', textAlign: 'center', padding: '2rem' }}>Lütfen üst kısımdan incelemek için bir sınav seçin.</p>
       )}
     </div>
   );
 };
 
 // 3. ALT BİLEŞEN: Gözetmen Yoklama Listesi
-const InvigilatorAttendanceReport = () => {
-  const [exams, setExams] = useState([]);
-  const [selectedExamId, setSelectedExamId] = useState('');
+const InvigilatorAttendanceReport = ({ exams, selectedExamId }) => {
   const [examDetails, setExamDetails] = useState(null);
   const [reportData, setReportData] = useState([]);
   const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    fetchExams();
-  }, []);
 
   useEffect(() => {
     if (selectedExamId) {
@@ -716,12 +701,7 @@ const InvigilatorAttendanceReport = () => {
       setReportData([]);
       setExamDetails(null);
     }
-  }, [selectedExamId]);
-
-  const fetchExams = async () => {
-    const { data, error } = await supabase.from('exams').select('*').order('date', { ascending: false });
-    if (!error && data) setExams(data);
-  };
+  }, [selectedExamId, exams]);
 
   const fetchReportData = async (examId) => {
     setLoading(true);
@@ -772,33 +752,19 @@ const InvigilatorAttendanceReport = () => {
     <div>
       <div className="no-print" style={{ marginBottom: '1.5rem' }}>
         <h2 style={{ fontSize: '1.5rem', fontWeight: '700', color: '#1e293b', marginBottom: '0.25rem' }}>Gözetmen Yoklama Listesi</h2>
-        <p style={{ color: '#64748b', fontSize: '0.95rem' }}>Sınav salonları ve kat görevlileri için yoklama çizelgesini görüntüleyebilir ve yazdırabilirsiniz.</p>
+        <p style={{ color: '#64748b', fontSize: '0.95rem' }}>Seçili sınavın salon ve kat görevlileri için yoklama çizelgesini görüntüleyebilir ve yazdırabilirsiniz.</p>
       </div>
 
-      <div style={{ margin: '1.5rem 0', display: 'flex', gap: '1rem', alignItems: 'center', background: '#fff', padding: '1.25rem', borderRadius: '12px', border: '1px solid #e2e8f0' }} className="no-print">
-        <label style={{ fontWeight: '600', color: '#334155' }}>Sınav Seçin:</label>
-        <select 
-          value={selectedExamId} 
-          onChange={(e) => setSelectedExamId(e.target.value)}
-          style={{ padding: '0.65rem 1rem', width: '350px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.95rem', background: '#f8fafc' }}
-        >
-          <option value="">-- Sınav Seçiniz --</option>
-          {exams.map(exam => (
-            <option key={exam.id} value={exam.id}>
-              {exam.name || exam.title || `Sınav #${exam.id}`} ({exam.date})
-            </option>
-          ))}
-        </select>
-
-        {selectedExamId && (
+      {selectedExamId && (
+        <div style={{ margin: '1.5rem 0', display: 'flex', justifyContent: 'flex-end', background: '#fff', padding: '1rem', borderRadius: '12px', border: '1px solid #e2e8f0' }} className="no-print">
           <button 
             onClick={() => window.print()}
-            style={{ padding: '0.65rem 1.25rem', background: '#2563eb', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', marginLeft: 'auto' }}
+            style={{ padding: '0.65rem 1.25rem', background: '#2563eb', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600' }}
           >
             Yazdır / PDF Al
           </button>
-        )}
-      </div>
+        </div>
+      )}
 
       {loading ? (
         <p style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>Yükleniyor...</p>
@@ -835,7 +801,227 @@ const InvigilatorAttendanceReport = () => {
           </table>
         </div>
       ) : (
-        <p style={{ color: '#64748b', textAlign: 'center', padding: '2rem' }}>Lütfen yoklama listesi için bir sınav seçin.</p>
+        <p style={{ color: '#64748b', textAlign: 'center', padding: '2rem' }}>Lütfen üst kısımdan bir sınav seçin.</p>
+      )}
+    </div>
+  );
+};
+
+// 4. ALT BİLEŞEN: Güvenlik İçin Tarihe Göre Çoklu Sınav Toplu Listesi
+const SecurityDateAttendanceReport = ({ exams }) => {
+  const [selectedDate, setSelectedDate] = useState('');
+  const [selectedExamIds, setSelectedExamIds] = useState([]);
+  const [combinedReportList, setCombinedReportList] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  // Sistemdeki benzersiz tarihleri bul
+  const uniqueDates = [...new Set(exams.map(e => e.date))].filter(Boolean).sort();
+
+  // Tarih seçildiğinde o tarihteki sınavları otomatik listele
+  const examsForSelectedDate = exams.filter(e => e.date === selectedDate);
+
+  const handleToggleExamSelection = (examId) => {
+    setSelectedExamIds(prev => 
+      prev.includes(examId) ? prev.filter(id => id !== examId) : [...prev, examId]
+    );
+  };
+
+  const handleSelectAllForDate = () => {
+    if (selectedExamIds.length === examsForSelectedDate.length) {
+      setSelectedExamIds([]);
+    } else {
+      setSelectedExamIds(examsForSelectedDate.map(e => e.id));
+    }
+  };
+
+  const handleGenerateReport = async () => {
+    if (selectedExamIds.length === 0) {
+      alert('Lütfen en az bir sınav seçin.');
+      return;
+    }
+    setLoading(true);
+    let masterList = [];
+
+    for (const examId of selectedExamIds) {
+      const currentExam = exams.find(e => e.id === examId);
+      const examTitle = currentExam?.name || currentExam?.title || `Sınav #${examId}`;
+      const examTime = currentExam?.time || currentExam?.start_time || '';
+
+      // Salon ID'leri ve İsimleri
+      const { data: seatingData } = await supabase.from('seating_plans').select('assignments').eq('exam_id', examId);
+      const roomIds = new Set();
+      if (seatingData) {
+        seatingData.forEach(row => {
+          if (Array.isArray(row.assignments)) {
+            row.assignments.forEach(item => { if (item.room_id) roomIds.add(item.room_id); });
+          }
+        });
+      }
+
+      let roomNames = [];
+      if (roomIds.size > 0) {
+        const { data: roomsData } = await supabase.from('rooms').select('*').in('id', Array.from(roomIds));
+        if (roomsData) {
+          const roomMap = {};
+          roomsData.forEach(r => { roomMap[r.id] = r.name || r.room_name || r.title || `Salon ${r.id.slice(0, 4)}`; });
+          roomNames = [...new Set(Array.from(roomIds).map(id => roomMap[id]).filter(Boolean))];
+        }
+      }
+
+      // Gözetmen Bilgileri
+      const { data: invData } = await supabase.from('exam_invigilators').select('*').eq('exam_id', examId);
+      const invMap = {};
+      const allAssignedNames = [];
+      if (invData) {
+        invData.forEach(item => {
+          allAssignedNames.push(item.room_name);
+          invMap[item.room_name] = item.invigilator_name || '';
+        });
+      }
+
+      const combinedNames = [...new Set([...roomNames, ...allAssignedNames])];
+
+      combinedNames.forEach(roomName => {
+        masterList.push({
+          examName: examTitle,
+          examTime: examTime,
+          roomName: roomName,
+          invigilator: invMap[roomName] || 'Atanmamış'
+        });
+      });
+    }
+
+    setCombinedReportList(masterList);
+    setLoading(false);
+  };
+
+  return (
+    <div>
+      <div className="no-print" style={{ marginBottom: '1.5rem' }}>
+        <h2 style={{ fontSize: '1.5rem', fontWeight: '700', color: '#1e293b', marginBottom: '0.25rem' }}>Güvenlik Kapı Giriş / Yoklama Listesi (Çoklu Sınav)</h2>
+        <p style={{ color: '#64748b', fontSize: '0.95rem' }}>Belirli bir tarihteki birden fazla sınavı seçerek kapıdaki güvenliğe tek bir toplu liste verebilirsiniz.</p>
+      </div>
+
+      <div style={{ background: '#fff', padding: '1.5rem', borderRadius: '12px', border: '1px solid #e2e8f0', marginBottom: '1.5rem' }} className="no-print">
+        <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap' }}>
+          <div>
+            <label style={{ display: 'block', fontWeight: '600', marginBottom: '0.5rem', color: '#334155' }}>1. Tarih Seçin:</label>
+            <select 
+              value={selectedDate} 
+              onChange={(e) => {
+                setSelectedDate(e.target.value);
+                setSelectedExamIds([]);
+                setCombinedReportList([]);
+              }}
+              style={{ padding: '0.65rem 1rem', width: '220px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f8fafc', fontWeight: '600' }}
+            >
+              <option value="">-- Tarih Seçiniz --</option>
+              {uniqueDates.map(date => (
+                <option key={date} value={date}>{date}</option>
+              ))}
+            </select>
+          </div>
+
+          {selectedDate && (
+            <div style={{ flex: 1 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                <label style={{ fontWeight: '600', color: '#334155' }}>2. Bu Tarihteki Sınavları Seçin (Birden Fazla Seçilebilir):</label>
+                <button 
+                  onClick={handleSelectAllForDate}
+                  style={{ background: 'none', border: 'none', color: '#2563eb', cursor: 'pointer', fontWeight: '600', fontSize: '0.85rem' }}
+                >
+                  {selectedExamIds.length === examsForSelectedDate.length ? 'Tümünün Seçimini Kaldır' : 'Tümünü Seç'}
+                </button>
+              </div>
+              <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                {examsForSelectedDate.length === 0 ? (
+                  <p style={{ color: '#64748b', fontSize: '0.9rem' }}>Bu tarihte kayıtlı sınav bulunamadı.</p>
+                ) : (
+                  examsForSelectedDate.map(exam => {
+                    const isSelected = selectedExamIds.includes(exam.id);
+                    return (
+                      <button
+                        key={exam.id}
+                        onClick={() => handleToggleExamSelection(exam.id)}
+                        style={{
+                          padding: '8px 14px',
+                          borderRadius: '8px',
+                          border: isSelected ? '2px solid #2563eb' : '1px solid #cbd5e1',
+                          background: isSelected ? '#eff6ff' : '#f8fafc',
+                          color: isSelected ? '#1d4ed8' : '#334155',
+                          cursor: 'pointer',
+                          fontWeight: '600',
+                          fontSize: '0.9rem'
+                        }}
+                      >
+                        {isSelected ? '✓ ' : ''}{exam.name || exam.title} {exam.time ? `(${exam.time})` : ''}
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {selectedExamIds.length > 0 && (
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1rem', borderTop: '1px solid #e2e8f0', paddingTop: '1rem' }}>
+            <button 
+              onClick={handleGenerateReport}
+              style={{ padding: '0.75rem 1.5rem', background: '#9333ea', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', fontSize: '0.95rem' }}
+            >
+              Toplu Güvenlik Listesini Oluştur
+            </button>
+          </div>
+        )}
+      </div>
+
+      {loading ? (
+        <p style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>Liste derleniyor...</p>
+      ) : combinedReportList.length > 0 ? (
+        <div className="print-container" style={{ background: '#fff', padding: '2rem', border: '1px solid #e2e8f0', borderRadius: '12px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }} className="no-print">
+            <h3 style={{ margin: 0, fontSize: '1.1rem', color: '#1e293b' }}>Oluşturulan Güvenlik Toplu Listesi ({selectedDate})</h3>
+            <button 
+              onClick={() => window.print()}
+              style={{ padding: '0.65rem 1.25rem', background: '#2563eb', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600' }}
+            >
+              Yazdır / PDF Al
+            </button>
+          </div>
+
+          <div style={{ textAlign: 'center', marginBottom: '1.5rem', borderBottom: '2px solid #1e293b', paddingBottom: '0.75rem' }}>
+            <h3 style={{ margin: '0 0 4px 0', fontSize: '1.15rem', fontWeight: '800', letterSpacing: '0.05em', color: '#0f172a' }}>KAPI GÜVENLİK VE GÖZETMEN TOPLU YOKLAMA LİSTESİ</h3>
+            <p style={{ fontSize: '0.9rem', fontWeight: '600', color: '#475569', margin: 0 }}>
+              Tarih: {selectedDate} &nbsp;|&nbsp; Seçilen Sınav Sayısı: {selectedExamIds.length}
+            </p>
+          </div>
+
+          <table style={{ width: '100%', borderCollapse: 'collapse' }} border="1">
+            <thead>
+              <tr style={{ background: '#f8fafc', textAlign: 'left', color: '#334155', fontSize: '0.85rem' }}>
+                <th style={{ padding: '6px 8px', width: '35px', textAlign: 'center' }}>Sıra</th>
+                <th style={{ padding: '6px 8px', width: '180px' }}>Sınav Adı</th>
+                <th style={{ padding: '6px 8px', width: '110px' }}>Salon / Görev Yeri</th>
+                <th style={{ padding: '6px 8px' }}>Görevli Adı Soyadı</th>
+                <th style={{ padding: '6px 8px', width: '80px', textAlign: 'center' }}>Giriş / İmza</th>
+              </tr>
+            </thead>
+            <tbody>
+              {combinedReportList.map((item, idx) => (
+                <tr key={idx} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                  <td style={{ padding: '6px 8px', textAlign: 'center', color: '#64748b', fontSize: '0.85rem' }}>{idx + 1}</td>
+                  <td style={{ padding: '6px 8px', fontWeight: '600', color: '#1e293b', fontSize: '0.85rem' }}>{item.examName} {item.examTime ? `(${item.examTime})` : ''}</td>
+                  <td style={{ padding: '6px 8px', fontWeight: '600', color: '#334155', fontSize: '0.85rem' }}>{item.roomName}</td>
+                  <td style={{ padding: '6px 8px', color: '#0f172a', fontSize: '0.85rem' }}>{item.invigilator}</td>
+                  <td style={{ padding: '6px 8px', textAlign: 'center', height: '30px' }}></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        selectedDate && <p style={{ color: '#64748b', textAlign: 'center', padding: '2rem' }}>Yukarıdan sınavları seçip "Toplu Güvenlik Listesini Oluştur" butonuna basın.</p>
       )}
     </div>
   );
