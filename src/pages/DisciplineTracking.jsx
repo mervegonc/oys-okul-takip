@@ -33,7 +33,7 @@ const DisciplineTracking = () => {
     fetchTotalCount();
   }, []);
 
-  // 2. Server-Side Çoklu İsim ve Parçalı Kelime Arama + Bugün Kayıt Kontrolü (TC koşulu esnetildi)
+  // 2. Server-Side Çoklu İsim ve Parçalı Kelime Arama + Sadece 9, 10, 11, 12. Sınıflar
   useEffect(() => {
     const searchStudents = async () => {
       const term = searchTerm.trim();
@@ -47,7 +47,11 @@ const DisciplineTracking = () => {
       try {
         const words = term.split(/\s+/).filter(w => w.length > 0);
 
-        let query = supabase.from('students').select('*');
+        // Sadece 9, 10, 11 ve 12. sınıflar aranacak şekilde filtre eklendi
+        let query = supabase
+          .from('students')
+          .select('*')
+          .in('grade', [9, 10, 11, 12]);
 
         words.forEach((word) => {
           const original = word;
@@ -59,7 +63,6 @@ const DisciplineTracking = () => {
             .replace(/I/g, 'ı')
             .replace(/İ/g, 'i');
 
-          // tc_no araması kaldırıldı veya opsiyonel hale getirildi ki şifreli/boş alanlar aramayı engellemesin
           const wordSearchPattern = [
             `first_name.ilike.%${original}%`,
             `first_name.ilike.%${upperTr}%`,
@@ -193,7 +196,7 @@ const DisciplineTracking = () => {
       <div style={{ position: 'relative', marginBottom: '0.5rem' }}>
         <input
           type="text"
-          placeholder="Aramak için öğrenci adı, soyadı veya okul no yazın..."
+          placeholder="Aramak için öğrenci adı, soyadı veya okul no yazın (Sadece 9, 10, 11, 12)..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           style={{
