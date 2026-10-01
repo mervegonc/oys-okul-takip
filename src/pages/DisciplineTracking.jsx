@@ -3,6 +3,7 @@ import { supabase } from '../supabase';
 import { FaSearch, FaTimes, FaSave, FaUndo, FaClock, FaSpinner } from 'react-icons/fa';
 
 const DisciplineTracking = () => {
+  const [allStudents, setAllStudents] = useState([]); // Hafızadaki tüm öğrenciler
   const [searchResults, setSearchResults] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStudent, setSelectedStudent] = useState(null);
@@ -10,122 +11,107 @@ const DisciplineTracking = () => {
   const [selectedTypes, setSelectedTypes] = useState({ late: false, dress: false });
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
-  const [searching, setSearching] = useState(false);
+  const [loadingStudents, setLoadingStudents] = useState(true);
   const [totalStudentCount, setTotalStudentCount] = useState(0);
 
-  // 1. Veritabanındaki TOPLAM öğrenci sayısını ilk açılışta çek ve konsola yaz
+  // 1. Sayfa açıldığı an sadece bir kez 9, 10, 11, 12. sınıf öğrencilerini çek ve hafızaya al
   useEffect(() => {
-    const fetchTotalCount = async () => {
+    const fetchStudentsAndCount = async () => {
+      setLoadingStudents(true);
       try {
-        const { count, error } = await supabase
+        // Toplam öğrenci sayısı (bilgi amaçlı)
+        const { count } = await supabase
           .from('students')
           .select('*', { count: 'exact', head: true });
+        setTotalStudentCount(count || 0);
+
+        // Sadece 9, 10, 11, 12. sınıf öğrencilerini bir kerede çek (Sayfalama sınırına takılmamak için 2000 yaptık)
+        const { data, error } = await supabase
+          .from('students')
+          .select('*')
+          .in('grade', [9, 10, 11, 12])
+          .range(0, 2000);
 
         if (error) throw error;
 
-        setTotalStudentCount(count || 0);
-        console.log(`📊 [VERİTABANI DURUMU] Toplam ${count || 0} öğrenci kayıtlı.`);
+        setAllStudents(data || []);
+        console.log(`📊 [BİLGİ] 9-12 arası toplam ${data?.length || 0} öğrenci hafızaya yüklendi.`);
       } catch (err) {
-        console.error('Toplam öğrenci sayısı alınamadı:', err);
+        console.error('Öğrenciler yüklenemedi:', err);
+      } finally {
+        setLoadingStudents(false);
       }
     };
 
-    fetchTotalCount();
+    fetchStudentsAndCount();
   }, []);
 
-  // 2. Server-Side Çoklu İsim ve Parçalı Kelime Arama + Sadece 9, 10, 11, 12. Sınıflar
+  // 2. Arama çubuğuna yazıldığında ANINDA hafızadan filtrele (Sunucuya istek atılmaz, çok hızlıdır)
   useEffect(() => {
-    const searchStudents = async () => {
-      const term = searchTerm.trim();
-      
-      if (term.length < 2) {
+    const term = searchTerm.trim().toLocaleLowerCase('tr-TR');
+    
+    if (term.length < 2) {
+      setSearchResults([]);
+      return;
+    }
+
+    const words = term.split(/\s+/).filter(w => w.length > 0);
+
+    // Hafızadaki liste üzerinden arama yap
+    const filtered = allStudents.filter(student => {
+      const fName = (student.first_name || '').toLocaleLowerCase('tr-TR');
+      const lName = (student.last_name || '').toLocaleLowerCase('tr-TR');
+      const sNo = (student.student_no || '').toString();
+      const fullName = `${fName} ${lName}`;
+
+      // Yazılan kelimelerin hepsi öğrenci adında/soyadında veya numarasında geçiyor mu?
+      return words.every(word => 
+        fullName.includes(word) || sNo.includes(word)
+      );
+    });
+
+    // Bugün kayıt olup olmadığını kontrol etmek için async fonksiyon
+    const checkTodayRecords = async (studentsList) => {
+      if (studentsList.length === 0) {
         setSearchResults([]);
         return;
       }
 
-      setSearching(true);
+      // Performans için sadece ilk 50 sonucu gösterelim
+      const limitedList = studentsList.slice(0, 50);
+
       try {
-        const words = term.split(/\s+/).filter(w => w.length > 0);
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+        
+        const todayEnd = new Date();
+        todayEnd.setHours(23, 59, 59, 999);
 
-        // Sadece 9, 10, 11 ve 12. sınıflar aranacak şekilde filtre eklendi
-        let query = supabase
-          .from('students')
-          .select('*')
-          .in('grade', [9, 10, 11, 12]);
+        const studentIds = limitedList.map(s => s.id);
 
-        words.forEach((word) => {
-          const original = word;
-          const upperTr = word.toLocaleUpperCase('tr-TR');
-          const lowerTr = word.toLocaleLowerCase('tr-TR');
-          const alt = original
-            .replace(/i/g, 'İ')
-            .replace(/ı/g, 'I')
-            .replace(/I/g, 'ı')
-            .replace(/İ/g, 'i');
+        const { data: disciplineData } = await supabase
+          .from('discipline')
+          .select('student_id')
+          .in('student_id', studentIds)
+          .gte('created_at', todayStart.toISOString())
+          .lte('created_at', todayEnd.toISOString());
 
-          const wordSearchPattern = [
-            `first_name.ilike.%${original}%`,
-            `first_name.ilike.%${upperTr}%`,
-            `first_name.ilike.%${lowerTr}%`,
-            `first_name.ilike.%${alt}%`,
-            `last_name.ilike.%${original}%`,
-            `last_name.ilike.%${upperTr}%`,
-            `last_name.ilike.%${lowerTr}%`,
-            `last_name.ilike.%${alt}%`,
-            `student_no.ilike.%${original}%`
-          ].join(',');
+        const recordedIds = new Set((disciplineData || []).map(d => d.student_id));
+        
+        const enrichedStudents = limitedList.map(student => ({
+          ...student,
+          hasRecordedToday: recordedIds.has(student.id)
+        }));
 
-          query = query.or(wordSearchPattern);
-        });
-
-        const { data: studentsData, error } = await query.limit(100);
-
-        if (error) throw error;
-
-        // Öğrenciler geldikten sonra bugün bu öğrencilerin disiplin kaydı olup olmadığını kontrol edelim
-        if (studentsData && studentsData.length > 0) {
-          const todayStart = new Date();
-          todayStart.setHours(0, 0, 0, 0);
-          
-          const todayEnd = new Date();
-          todayEnd.setHours(23, 59, 59, 999);
-
-          const studentIds = studentsData.map(s => s.id);
-
-          const { data: disciplineData, error: discError } = await supabase
-            .from('discipline')
-            .select('student_id')
-            .in('student_id', studentIds)
-            .gte('created_at', todayStart.toISOString())
-            .lte('created_at', todayEnd.toISOString());
-
-          if (!discError && disciplineData) {
-            const recordedIds = new Set(disciplineData.map(d => d.student_id));
-            const enrichedStudents = studentsData.map(student => ({
-              ...student,
-              hasRecordedToday: recordedIds.has(student.id)
-            }));
-            setSearchResults(enrichedStudents);
-          } else {
-            setSearchResults(studentsData);
-          }
-        } else {
-          setSearchResults([]);
-        }
-
-      } catch (error) {
-        console.error('Öğrenci arama hatası:', error);
-      } finally {
-        setSearching(false);
+        setSearchResults(enrichedStudents);
+      } catch (err) {
+        setSearchResults(limitedList);
       }
     };
 
-    const delayDebounceFn = setTimeout(() => {
-      searchStudents();
-    }, 300);
+    checkTodayRecords(filtered);
 
-    return () => clearTimeout(delayDebounceFn);
-  }, [searchTerm]);
+  }, [searchTerm, allStudents]);
 
   const handleSelectStudent = (student) => {
     if (student.hasRecordedToday) {
@@ -196,7 +182,8 @@ const DisciplineTracking = () => {
       <div style={{ position: 'relative', marginBottom: '0.5rem' }}>
         <input
           type="text"
-          placeholder="Aramak için öğrenci adı, soyadı veya okul no yazın (Sadece 9, 10, 11, 12)..."
+          placeholder={loadingStudents ? "Öğrenciler yükleniyor, lütfen bekleyin..." : "Aramak için öğrenci adı, soyadı veya okul no yazın..."}
+          disabled={loadingStudents}
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           style={{
@@ -205,9 +192,10 @@ const DisciplineTracking = () => {
             border: '1px solid #ddd',
             borderRadius: '8px',
             fontSize: '1rem',
+            background: loadingStudents ? '#f9f9f9' : '#fff'
           }}
         />
-        {searching ? (
+        {loadingStudents ? (
           <FaSpinner style={{ position: 'absolute', right: '1rem', top: '50%', transform: 'translateY(-50%)', color: '#007bff', animation: 'spin 1s linear infinite' }} />
         ) : (
           <FaSearch style={{ position: 'absolute', right: '1rem', top: '50%', transform: 'translateY(-50%)', color: '#aaa' }} />
@@ -215,7 +203,7 @@ const DisciplineTracking = () => {
       </div>
 
       <div style={{ fontSize: '0.85rem', color: '#666', marginBottom: '1rem', textAlign: 'right' }}>
-        Sistemdeki Toplam Öğrenci: <strong>{totalStudentCount}</strong>
+        Sistemdeki Toplam Öğrenci: <strong>{totalStudentCount}</strong> (9-12. Sınıflar Hazır)
       </div>
 
       {message && !selectedStudent && (
@@ -224,7 +212,7 @@ const DisciplineTracking = () => {
         </p>
       )}
 
-      {searchTerm.trim().length >= 2 && searchResults.length === 0 && !searching && !selectedStudent && (
+      {searchTerm.trim().length >= 2 && searchResults.length === 0 && !loadingStudents && !selectedStudent && (
         <p style={{ color: '#888', fontStyle: 'italic' }}>Öğrenci bulunamadı.</p>
       )}
 
