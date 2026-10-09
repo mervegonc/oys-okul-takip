@@ -18,7 +18,7 @@ const ExamAttendanceLists = () => {
   const [invigilators, setInvigilators] = useState({});
   const [savedInvigilatorsList, setSavedInvigilatorsList] = useState([]);
 
-  // Geçici TC Eşleme State'i (Veritabanına asla gitmez, sadece ekranda/bellekte yaşar)
+  // Geçici TC Eşleme State'i
   const [tempTcMap, setTempTcMap] = useState({});
   const [isTcLoaded, setIsTcLoaded] = useState(false);
   const [loadedFileName, setLoadedFileName] = useState('');
@@ -33,14 +33,12 @@ const ExamAttendanceLists = () => {
     if (selectedExam) {
       fetchExamInvigilators(selectedExam.id);
       fetchSavedInvigilators();
-      // Sınav değiştiğinde geçici TC'leri sıfırla
       setTempTcMap({});
       setIsTcLoaded(false);
       setLoadedFileName('');
     }
   }, [selectedExam]);
 
-  // Excel'den Geçici TC Okuma Fonksiyonu (Düzeltilmiş)
   const handleTcExcelUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -57,7 +55,6 @@ const ExamAttendanceLists = () => {
         const newTcMap = {};
         let loadedStudentCount = 0;
 
-        // Başlık satırını bulmaya çalışalım
         let headerRowIndex = data.findIndex(row => 
           row && row.some(cell => {
             const s = String(cell || '').trim().toLocaleUpperCase('tr-TR');
@@ -85,7 +82,6 @@ const ExamAttendanceLists = () => {
                 if (nameIdx !== -1 && r[nameIdx]) {
                   newTcMap[String(r[nameIdx]).trim().toLocaleUpperCase('tr-TR')] = tcVal;
                 }
-                // Garanti olması için satırdaki tüm dolu hücreleri bu TC'ye bağlayalım
                 r.forEach(cell => {
                   const c = String(cell || '').trim();
                   if (c) {
@@ -98,7 +94,6 @@ const ExamAttendanceLists = () => {
           }
         }
 
-        // Eğer başlık bulunamazsa veya akıllı okuma yapılamazsa genel tarama
         if (loadedStudentCount === 0) {
           data.forEach((row) => {
             if (!row || row.length === 0) return;
@@ -131,7 +126,7 @@ const ExamAttendanceLists = () => {
         setTempTcMap(newTcMap);
         setIsTcLoaded(true);
         setLoadedFileName(file.name);
-        alert(`Başarıyla ${loadedStudentCount} öğrencinin TC eşlemesi yüklendi! Bu veriler veritabanına kaydedilmeyecektir.`);
+        alert(`Başarıyla ${loadedStudentCount} öğrencinin TC eşlemesi yüklendi!`);
       } catch (err) {
         console.error('Excel okuma hatası:', err);
         alert('Excel dosyası okunurken bir hata oluştu.');
@@ -140,11 +135,8 @@ const ExamAttendanceLists = () => {
     reader.readAsBinaryString(file);
   };
 
-    
-  // Öğrenciye ait geçici TC'yi bulma fonksiyonu
   const getStudentTc = (st, det) => {
     if (!isTcLoaded) return '';
-    // Sırasıyla öğrenci no, ad soyad, tam ad ile eşleşme arayalım
     const noKey = String(det.studentNo || '').trim();
     const nameKey = String(det.nameFirstFormat || '').trim().toLocaleUpperCase('tr-TR');
     const fullNameKey = String(det.fullName || '').trim().toLocaleUpperCase('tr-TR');
@@ -473,6 +465,7 @@ const ExamAttendanceLists = () => {
   const rawAssignments = seatingPlan?.assignments || [];
   const targetGradeStr = String(selectedExam?.grade || selectedExam?.sinif || '').replace(/\D/g, '');
 
+  // KESİN SAĞLAMA: Eşleşmeyen veya düşen öğrencileri de tespit edebilmek için analiz
   const assignments = rawAssignments.filter(st => {
     const rawId = String(st.studentId || st.student_id || st.id || '').trim();
     const rawTc = String(st.tc || st.tc_no || st.tcNo || '').trim();
@@ -490,6 +483,9 @@ const ExamAttendanceLists = () => {
     
     return true;
   });
+
+  // HATA DENETİMİ İÇİN: Oturma planındaki toplam kayıt ile işlenen kayıt farkı
+  const unmatchedCount = rawAssignments.length - assignments.length;
 
   const groupedByRoom = assignments.reduce((acc, curr) => {
     const roomName = getRoomName(curr);
@@ -513,6 +509,11 @@ const ExamAttendanceLists = () => {
     acc[classKey].push({ ...curr, roomDisplay: formatRoomDisplay(curr), det });
     return acc;
   }, {});
+
+  // KAPI LİSTESİ İLE SALON LİSTESİNİN MATEMATİKSEL SAĞLAMASI (Toplam öğrenci sayıları eşit olmalı)
+  const totalRoomStudentsCount = Object.values(groupedByRoom).reduce((acc, list) => acc + list.length, 0);
+  const totalDoorStudentsCount = Object.values(groupedByClassroom).reduce((acc, list) => acc + list.length, 0);
+  const isDataConsistent = totalRoomStudentsCount === totalDoorStudentsCount && unmatchedCount === 0;
 
   const getSortedBySurname = () => {
     return [...assignments].sort((a, b) => {
@@ -679,6 +680,49 @@ const ExamAttendanceLists = () => {
       <div className="no-print">
         <h2>📑 Yoklama ve Sınav Listeleri</h2>
         <p style={{ color: '#666' }}>Sınav salon, kapı, soyad ve isim sıralı listelerini yönetin ve bastırın.</p>
+
+        {/* 🛡️ VERİ TUTARLILIK VE SAĞLAMA PANELİ (HATA ÖNLEYİCİ) */}
+        {selectedExam && (
+          <div style={{ 
+            background: isDataConsistent ? '#f0fdf4' : '#fef2f2', 
+            border: `1px solid ${isDataConsistent ? '#bbf7d0' : '#fecaca'}`, 
+            padding: '1rem 1.2rem', 
+            borderRadius: '8px', 
+            marginBottom: '1.5rem',
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: '1.5rem',
+            alignItems: 'center',
+            justifyContent: 'space-between'
+          }}>
+            <div>
+              <h4 style={{ margin: '0 0 0.3rem 0', color: isDataConsistent ? '#166534' : '#991b1b', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                {isDataConsistent ? '✅ Sistem Tutarlılık Sağlaması Başarılı' : '⚠️ UYARI: Veri Tutarsızlığı Tespit Edildi!'}
+              </h4>
+              <p style={{ margin: 0, fontSize: '0.85rem', color: isDataConsistent ? '#15803d' : '#b91c1c' }}>
+                {isDataConsistent 
+                  ? 'Kapı listeleri ile salon yoklama listesindeki öğrenci sayıları tam olarak uyuşuyor. Hata yok.'
+                  : 'Dikkat! Kapı listesi ile salon listesi toplamları eşleşmiyor veya veritabanında kayıp öğrenciler var.'}
+              </p>
+            </div>
+            <div style={{ display: 'flex', gap: '1rem', fontSize: '0.9rem', fontWeight: '600', color: '#334155' }}>
+              <div style={{ background: '#fff', padding: '0.4rem 0.8rem', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
+                Oturma Planı Toplamı: <span style={{ color: '#2563eb' }}>{rawAssignments.length}</span>
+              </div>
+              <div style={{ background: '#fff', padding: '0.4rem 0.8rem', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
+                Salon Listesi Toplamı: <span style={{ color: '#16a34a' }}>{totalRoomStudentsCount}</span>
+              </div>
+              <div style={{ background: '#fff', padding: '0.4rem 0.8rem', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
+                Kapı Listesi Toplamı: <span style={{ color: '#9333ea' }}>{totalDoorStudentsCount}</span>
+              </div>
+              {unmatchedCount > 0 && (
+                <div style={{ background: '#fee2e2', color: '#dc2626', padding: '0.4rem 0.8rem', borderRadius: '6px', border: '1px solid #fca5a5' }}>
+                  Eşleşmeyen Kayıt: {unmatchedCount}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {selectedExam && assignments.length > 0 && (
           <div style={{ background: '#fff', border: '1px solid #cbd5e1', padding: '1rem', borderRadius: '8px', marginBottom: '1.5rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
@@ -1010,7 +1054,6 @@ const ExamAttendanceLists = () => {
                         <tr style={{ background: '#eee' }}>
                           <th style={{ width: '5%', textAlign: 'center' }}>SIRA</th>
                           <th style={{ width: '11%', textAlign: 'center' }}>ÖĞR. NO</th>
-                          {/* TC Kolonu: Sadece geçici Excel yüklendiyse tabloda görünür */}
                           {isTcLoaded && (
                             <th style={{ width: '14%', textAlign: 'center' }}>TC KİMLİK NO</th>
                           )}
