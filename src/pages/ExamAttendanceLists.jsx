@@ -465,7 +465,6 @@ const ExamAttendanceLists = () => {
   const rawAssignments = seatingPlan?.assignments || [];
   const targetGradeStr = String(selectedExam?.grade || selectedExam?.sinif || '').replace(/\D/g, '');
 
-  // KESİN SAĞLAMA: Eşleşmeyen veya düşen öğrencileri de tespit edebilmek için analiz
   const assignments = rawAssignments.filter(st => {
     const rawId = String(st.studentId || st.student_id || st.id || '').trim();
     const rawTc = String(st.tc || st.tc_no || st.tcNo || '').trim();
@@ -484,7 +483,6 @@ const ExamAttendanceLists = () => {
     return true;
   });
 
-  // HATA DENETİMİ İÇİN: Oturma planındaki toplam kayıt ile işlenen kayıt farkı
   const unmatchedCount = rawAssignments.length - assignments.length;
 
   const groupedByRoom = assignments.reduce((acc, curr) => {
@@ -510,7 +508,6 @@ const ExamAttendanceLists = () => {
     return acc;
   }, {});
 
-  // KAPI LİSTESİ İLE SALON LİSTESİNİN MATEMATİKSEL SAĞLAMASI (Toplam öğrenci sayıları eşit olmalı)
   const totalRoomStudentsCount = Object.values(groupedByRoom).reduce((acc, list) => acc + list.length, 0);
   const totalDoorStudentsCount = Object.values(groupedByClassroom).reduce((acc, list) => acc + list.length, 0);
   const isDataConsistent = totalRoomStudentsCount === totalDoorStudentsCount && unmatchedCount === 0;
@@ -531,48 +528,15 @@ const ExamAttendanceLists = () => {
     });
   };
 
-  const exportToExcel = () => {
+  // GENEL / ESNEK EXCEL AKTARIMI
+  const exportToExcel = (type) => {
     if (!selectedExam || assignments.length === 0) return;
 
     let dataToExport = [];
+    let fileNameSuffix = 'Genel_Liste';
 
-    if (activeTab === 'surname') {
-      dataToExport = getSortedBySurname().map((st, index) => {
-        const det = getStudentDetails(st);
-        const item = {
-          'Sıra No': index + 1,
-          'Öğrenci Soyadı, Adı': det.surnameFirstFormat,
-          'Sınıf/Şube': `${det.grade}-${det.className}`
-        };
-        if (isTcLoaded) {
-          item['TC Kimlik No'] = getStudentTc(st, det);
-        }
-        if (examCategory === 'akademik_lise') {
-          item['Alan'] = det.track;
-        }
-        item['Salon Adı'] = formatRoomDisplay(st);
-        item['Masa Sıra No'] = st.seatNumber || st.seat_number || '';
-        return item;
-      });
-    } else if (activeTab === 'name') {
-      dataToExport = getSortedByName().map((st, index) => {
-        const det = getStudentDetails(st);
-        const item = {
-          'Sıra No': index + 1,
-          'Öğrenci Adı Soyadı': det.nameFirstFormat,
-          'Sınıf/Şube': `${det.grade}-${det.className}`
-        };
-        if (isTcLoaded) {
-          item['TC Kimlik No'] = getStudentTc(st, det);
-        }
-        if (examCategory === 'akademik_lise') {
-          item['Alan'] = det.track;
-        }
-        item['Salon Adı'] = formatRoomDisplay(st);
-        item['Masa Sıra No'] = st.seatNumber || st.seat_number || '';
-        return item;
-      });
-    } else {
+    if (type === 'attendance') {
+      fileNameSuffix = 'Salon_Yoklama_Listesi';
       const allSortedAssignments = [];
       Object.keys(groupedByRoom).forEach(room => {
         allSortedAssignments.push(...groupedByRoom[room]);
@@ -586,19 +550,62 @@ const ExamAttendanceLists = () => {
           'Masa Sıra No': st.seatNumber || st.seat_number || '',
           'Öğrenci No': det.studentNo,
         };
-        if (isTcLoaded) {
-          item['TC Kimlik No'] = getStudentTc(st, det);
-        }
+        if (isTcLoaded) item['TC Kimlik No'] = getStudentTc(st, det);
         item['Öğrenci Adı Soyadı'] = det.fullName;
         item['Sınıf/Şube'] = `${det.grade}-${det.className}`;
+        return item;
+      });
+    } else if (type === 'door') {
+      fileNameSuffix = 'Kapi_Listeleri_Sube_Bazli';
+      Object.keys(groupedByClassroom).sort().forEach(classKey => {
+        groupedByClassroom[classKey].forEach((st, index) => {
+          const item = {
+            'Şube': classKey,
+            'Sıra No': index + 1,
+            'Öğrenci No': st.det.studentNo,
+          };
+          if (isTcLoaded) item['TC Kimlik No'] = getStudentTc(st, st.det);
+          item['Öğrenci Adı Soyadı'] = st.det.fullName;
+          item['Gideceği Salon'] = st.roomDisplay;
+          dataToExport.push(item);
+        });
+      });
+    } else if (type === 'surname') {
+      fileNameSuffix = 'Soyad_Sirali_Liste';
+      dataToExport = getSortedBySurname().map((st, index) => {
+        const det = getStudentDetails(st);
+        const item = {
+          'Sıra No': index + 1,
+          'Öğrenci Soyadı, Adı': det.surnameFirstFormat,
+          'Öğrenci No': det.studentNo,
+          'Sınıf/Şube': `${det.grade}-${det.className}`
+        };
+        if (isTcLoaded) item['TC Kimlik No'] = getStudentTc(st, det);
+        item['Salon Adı'] = formatRoomDisplay(st);
+        item['Masa Sıra No'] = st.seatNumber || st.seat_number || '';
+        return item;
+      });
+    } else if (type === 'name') {
+      fileNameSuffix = 'Isim_Sirali_Liste';
+      dataToExport = getSortedByName().map((st, index) => {
+        const det = getStudentDetails(st);
+        const item = {
+          'Sıra No': index + 1,
+          'Öğrenci Adı Soyadı': det.nameFirstFormat,
+          'Öğrenci No': det.studentNo,
+          'Sınıf/Şube': `${det.grade}-${det.className}`
+        };
+        if (isTcLoaded) item['TC Kimlik No'] = getStudentTc(st, det);
+        item['Salon Adı'] = formatRoomDisplay(st);
+        item['Masa Sıra No'] = st.seatNumber || st.seat_number || '';
         return item;
       });
     }
 
     const worksheet = XLSX.utils.json_to_sheet(dataToExport);
     const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Sınav_Listesi');
-    XLSX.writeFile(workbook, `${selectedExam.title}_Listesi.xlsx`);
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Liste');
+    XLSX.writeFile(workbook, `${selectedExam.title}_${fileNameSuffix}.xlsx`);
   };
 
   return (
@@ -679,9 +686,9 @@ const ExamAttendanceLists = () => {
 
       <div className="no-print">
         <h2>📑 Yoklama ve Sınav Listeleri</h2>
-        <p style={{ color: '#666' }}>Sınav salon, kapı, soyad ve isim sıralı listelerini yönetin ve bastırın.</p>
+        <p style={{ color: '#666' }}>Sınav salon, kapı, soyad ve isim sıralı listelerini yönetin, inceleyin ve Excel olarak indirin.</p>
 
-        {/* 🛡️ VERİ TUTARLILIK VE SAĞLAMA PANELİ (HATA ÖNLEYİCİ) */}
+        {/* 🛡️ VERİ TUTARLILIK VE SAĞLAMA PANELİ */}
         {selectedExam && (
           <div style={{ 
             background: isDataConsistent ? '#f0fdf4' : '#fef2f2', 
@@ -701,89 +708,17 @@ const ExamAttendanceLists = () => {
               </h4>
               <p style={{ margin: 0, fontSize: '0.85rem', color: isDataConsistent ? '#15803d' : '#b91c1c' }}>
                 {isDataConsistent 
-                  ? 'Kapı listeleri ile salon yoklama listesindeki öğrenci sayıları tam olarak uyuşuyor. Hata yok.'
-                  : 'Dikkat! Kapı listesi ile salon listesi toplamları eşleşmiyor veya veritabanında kayıp öğrenciler var.'}
+                  ? 'Kapı listeleri ile salon yoklama listesindeki öğrenci sayıları tam olarak uyuşuyor.'
+                  : 'Dikkat! Kapı listesi ile salon listesi toplamları eşleşmiyor.'}
               </p>
             </div>
             <div style={{ display: 'flex', gap: '1rem', fontSize: '0.9rem', fontWeight: '600', color: '#334155' }}>
               <div style={{ background: '#fff', padding: '0.4rem 0.8rem', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
-                Oturma Planı Toplamı: <span style={{ color: '#2563eb' }}>{rawAssignments.length}</span>
+                Salon Listesi: <span style={{ color: '#16a34a' }}>{totalRoomStudentsCount}</span>
               </div>
               <div style={{ background: '#fff', padding: '0.4rem 0.8rem', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
-                Salon Listesi Toplamı: <span style={{ color: '#16a34a' }}>{totalRoomStudentsCount}</span>
+                Kapı Listesi: <span style={{ color: '#9333ea' }}>{totalDoorStudentsCount}</span>
               </div>
-              <div style={{ background: '#fff', padding: '0.4rem 0.8rem', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
-                Kapı Listesi Toplamı: <span style={{ color: '#9333ea' }}>{totalDoorStudentsCount}</span>
-              </div>
-              {unmatchedCount > 0 && (
-                <div style={{ background: '#fee2e2', color: '#dc2626', padding: '0.4rem 0.8rem', borderRadius: '6px', border: '1px solid #fca5a5' }}>
-                  Eşleşmeyen Kayıt: {unmatchedCount}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {selectedExam && assignments.length > 0 && (
-          <div style={{ background: '#fff', border: '1px solid #cbd5e1', padding: '1rem', borderRadius: '8px', marginBottom: '1.5rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-            <h3 style={{ margin: '0 0 0.8rem 0', fontSize: '1rem', color: '#1e293b', borderBottom: '2px solid #e2e8f0', paddingBottom: '0.4rem' }}>
-              📊 Sınav Salonları ve Öğrenci Dağılım Özeti
-            </h3>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '9.5pt' }}>
-                <thead>
-                  <tr style={{ background: '#f1f5f9' }}>
-                    <th style={{ border: '1px solid #cbd5e1', padding: '6px 8px', width: '30%' }}>Salon Adı</th>
-                    <th style={{ border: '1px solid #cbd5e1', padding: '6px 8px', width: '40%' }}>Detay / Dağılım</th>
-                    <th style={{ border: '1px solid #cbd5e1', padding: '6px 8px', textAlign: 'center', width: '30%' }}>Öğrenci Sayısı</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {Object.keys(groupedByRoom).map((roomName) => {
-                    const roomStudents = groupedByRoom[roomName];
-                    const sampleItem = roomStudents[0] || {};
-                    const roomDisplayStr = formatRoomDisplay(sampleItem);
-
-                    let rCore = 0, rExt = 0;
-                    const rLangTotals = {};
-                    roomStudents.forEach(st => {
-                      const det = getStudentDetails(st);
-                      const engUp = String(det.englishLevel || '').trim().toLocaleUpperCase('tr-TR');
-                      if (engUp.includes('CORE')) rCore++;
-                      if (engUp.includes('EXT')) rExt++;
-                      const sLang = String(det.secondLanguage || '').trim().toLocaleUpperCase('tr-TR');
-                      if (sLang && sLang !== '-' && sLang !== 'YOK' && sLang !== 'BOŞ') {
-                        rLangTotals[sLang] = (rLangTotals[sLang] || 0) + 1;
-                      }
-                    });
-
-                    return (
-                      <tr key={roomName}>
-                        <td style={{ border: '1px solid #cbd5e1', padding: '6px 8px', fontWeight: 'bold' }}>{roomDisplayStr.toUpperCase()}</td>
-                        <td style={{ border: '1px solid #cbd5e1', padding: '6px 8px', color: '#475569' }}>
-                          {(examCategory === 'sadece_ingilizce' || examCategory === 'ingilizce_ve_ikinci_dil') && (rCore > 0 || rExt > 0) && (
-                            <span>Core: {rCore}, Ext: {rExt}</span>
-                          )}
-                          {(examCategory === 'sadece_ikinci_dil' || examCategory === 'ingilizce_ve_ikinci_dil') && Object.keys(rLangTotals).length > 0 && (
-                            <span>{Object.entries(rLangTotals).map(([l, c]) => `${l}: ${c}`).join(' | ')}</span>
-                          )}
-                        </td>
-                        <td style={{ border: '1px solid #cbd5e1', padding: '6px 8px', textAlign: 'center', fontWeight: 'bold', color: '#2563eb' }}>
-                          {roomStudents.length}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-                <tfoot>
-                  <tr style={{ background: '#f8fafc', fontWeight: 'bold' }}>
-                    <td colSpan="2" style={{ border: '1px solid #cbd5e1', padding: '6px 8px', textAlign: 'right' }}>TOPLAM ÖĞRENCİ SAYISI:</td>
-                    <td style={{ border: '1px solid #cbd5e1', padding: '6px 8px', textAlign: 'center', color: '#0f172a' }}>
-                      {assignments.length}
-                    </td>
-                  </tr>
-                </tfoot>
-              </table>
             </div>
           </div>
         )}
@@ -836,7 +771,7 @@ const ExamAttendanceLists = () => {
               ← Sınav Seçimine Dön
             </button>
 
-            {/* Üst Kontrol Paneli: TC Yükleme ve Diğer Seçenekler */}
+            {/* Üst Kontrol Paneli */}
             <div style={{ background: '#f8fafc', padding: '1.2rem', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '1.5rem', display: 'flex', flexWrap: 'wrap', gap: '1.5rem', alignItems: 'center' }}>
               <div>
                 <label style={{ fontWeight: 'bold', fontSize: '0.85rem', display: 'block' }}>Sınav / Liste Kategorisi:</label>
@@ -851,9 +786,9 @@ const ExamAttendanceLists = () => {
                 </select>
               </div>
 
-              {/* GEÇİCİ TC YÜKLEME BUTONU */}
+              {/* GEÇİCİ TC YÜKLEME */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-                <label style={{ fontWeight: 'bold', fontSize: '0.85rem', color: '#d97706' }}>Geçici TC Listesi Yükle (Veritabanına Kaydolmaz):</label>
+                <label style={{ fontWeight: 'bold', fontSize: '0.85rem', color: '#d97706' }}>Geçici TC Listesi Yükle (Düşeyara İçin):</label>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   <label style={{ padding: '0.4rem 0.8rem', background: isTcLoaded ? '#16a34a' : '#d97706', color: '#fff', borderRadius: '4px', cursor: 'pointer', fontSize: '0.9rem', fontWeight: 'bold', display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
                     <span>{isTcLoaded ? '✅ TC Listesi Yüklü' : '📂 TC Excel Seç'}</span>
@@ -863,7 +798,6 @@ const ExamAttendanceLists = () => {
                     <button 
                       onClick={() => { setTempTcMap({}); setIsTcLoaded(false); setLoadedFileName(''); }}
                       style={{ padding: '0.4rem 0.6rem', background: '#ef4444', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem' }}
-                      title="Yüklenen TC'leri Temizle"
                     >
                       Kaldır
                     </button>
@@ -889,77 +823,90 @@ const ExamAttendanceLists = () => {
               </div>
             </div>
 
-            <div style={{ display: 'flex', gap: '0.5rem', borderBottom: '2px solid #e2e8f0', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
-              <button
-                onClick={() => setActiveTab('attendance')}
-                style={{
-                  padding: '0.6rem 1.2rem',
-                  border: 'none',
-                  background: 'none',
-                  borderBottom: activeTab === 'attendance' ? '3px solid #007bff' : 'none',
-                  fontWeight: activeTab === 'attendance' ? 'bold' : 'normal',
-                  color: activeTab === 'attendance' ? '#007bff' : '#4a5568',
-                  cursor: 'pointer'
-                }}
-              >
-                🏫 Sınıf / Salon Yoklama Listesi
-              </button>
-              <button
-                onClick={() => setActiveTab('door')}
-                style={{
-                  padding: '0.6rem 1.2rem',
-                  border: 'none',
-                  background: 'none',
-                  borderBottom: activeTab === 'door' ? '3px solid #6b46c1' : 'none',
-                  fontWeight: activeTab === 'door' ? 'bold' : 'normal',
-                  color: activeTab === 'door' ? '#6b46c1' : '#4a5568',
-                  cursor: 'pointer'
-                }}
-              >
-                🚪 Kapı Listeleri (Şube Bazlı)
-              </button>
-              <button
-                onClick={() => setActiveTab('surname')}
-                style={{
-                  padding: '0.6rem 1.2rem',
-                  border: 'none',
-                  background: 'none',
-                  borderBottom: activeTab === 'surname' ? '3px solid #007bff' : 'none',
-                  fontWeight: activeTab === 'surname' ? 'bold' : 'normal',
-                  color: activeTab === 'surname' ? '#007bff' : '#4a5568',
-                  cursor: 'pointer'
-                }}
-              >
-                🔤 Soyad Sıralı Liste (A-Z)
-              </button>
-              <button
-                onClick={() => setActiveTab('name')}
-                style={{
-                  padding: '0.6rem 1.2rem',
-                  border: 'none',
-                  background: 'none',
-                  borderBottom: activeTab === 'name' ? '3px solid #0284c7' : 'none',
-                  fontWeight: activeTab === 'name' ? 'bold' : 'normal',
-                  color: activeTab === 'name' ? '#0284c7' : '#4a5568',
-                  cursor: 'pointer'
-                }}
-              >
-                🔤 İsim Sıralı Liste (A-Z)
-              </button>
-              <button
-                onClick={() => setActiveTab('excel')}
-                style={{
-                  padding: '0.6rem 1.2rem',
-                  border: 'none',
-                  background: 'none',
-                  borderBottom: activeTab === 'excel' ? '3px solid #28a745' : 'none',
-                  fontWeight: activeTab === 'excel' ? 'bold' : 'normal',
-                  color: activeTab === 'excel' ? '#28a745' : '#4a5568',
-                  cursor: 'pointer'
-                }}
-              >
-                📊 Excel Dışarı Aktar
-              </button>
+            {/* SEKMELER VE SEKME ÖZELİNDE EXCEL İNDİR BUTONLARI */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #e2e8f0', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                <button
+                  onClick={() => setActiveTab('attendance')}
+                  style={{
+                    padding: '0.6rem 1.2rem',
+                    border: 'none',
+                    background: 'none',
+                    borderBottom: activeTab === 'attendance' ? '3px solid #007bff' : 'none',
+                    fontWeight: activeTab === 'attendance' ? 'bold' : 'normal',
+                    color: activeTab === 'attendance' ? '#007bff' : '#4a5568',
+                    cursor: 'pointer'
+                  }}
+                >
+                  🏫 Sınıf / Salon Yoklama Listesi
+                </button>
+                <button
+                  onClick={() => setActiveTab('door')}
+                  style={{
+                    padding: '0.6rem 1.2rem',
+                    border: 'none',
+                    background: 'none',
+                    borderBottom: activeTab === 'door' ? '3px solid #6b46c1' : 'none',
+                    fontWeight: activeTab === 'door' ? 'bold' : 'normal',
+                    color: activeTab === 'door' ? '#6b46c1' : '#4a5568',
+                    cursor: 'pointer'
+                  }}
+                >
+                  🚪 Kapı Listeleri (Şube Bazlı)
+                </button>
+                <button
+                  onClick={() => setActiveTab('surname')}
+                  style={{
+                    padding: '0.6rem 1.2rem',
+                    border: 'none',
+                    background: 'none',
+                    borderBottom: activeTab === 'surname' ? '3px solid #007bff' : 'none',
+                    fontWeight: activeTab === 'surname' ? 'bold' : 'normal',
+                    color: activeTab === 'surname' ? '#007bff' : '#4a5568',
+                    cursor: 'pointer'
+                  }}
+                >
+                  🔤 Soyad Sıralı Liste (A-Z)
+                </button>
+                <button
+                  onClick={() => setActiveTab('name')}
+                  style={{
+                    padding: '0.6rem 1.2rem',
+                    border: 'none',
+                    background: 'none',
+                    borderBottom: activeTab === 'name' ? '3px solid #0284c7' : 'none',
+                    fontWeight: activeTab === 'name' ? 'bold' : 'normal',
+                    color: activeTab === 'name' ? '#0284c7' : '#4a5568',
+                    cursor: 'pointer'
+                  }}
+                >
+                  🔤 İsim Sıralı Liste (A-Z)
+                </button>
+              </div>
+
+              {/* 📥 AKTİF SEKMEYE ÖZEL EXCEL İNDİR BUTONU */}
+              <div style={{ paddingBottom: '0.5rem' }}>
+                {activeTab === 'attendance' && (
+                  <button onClick={() => exportToExcel('attendance')} style={{ padding: '0.45rem 1rem', background: '#16a34a', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.85rem' }}>
+                    📥 Salon Yoklama Excel İndir
+                  </button>
+                )}
+                {activeTab === 'door' && (
+                  <button onClick={() => exportToExcel('door')} style={{ padding: '0.45rem 1rem', background: '#16a34a', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.85rem' }}>
+                    📥 Kapı Listeleri Excel İndir
+                  </button>
+                )}
+                {activeTab === 'surname' && (
+                  <button onClick={() => exportToExcel('surname')} style={{ padding: '0.45rem 1rem', background: '#16a34a', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.85rem' }}>
+                    📥 Soyad Sıralı Excel İndir
+                  </button>
+                )}
+                {activeTab === 'name' && (
+                  <button onClick={() => exportToExcel('name')} style={{ padding: '0.45rem 1rem', background: '#16a34a', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.85rem' }}>
+                    📥 İsim Sıralı Excel İndir
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         )}
@@ -1312,30 +1259,6 @@ const ExamAttendanceLists = () => {
                   })}
                 </tbody>
               </table>
-            </div>
-          )}
-
-          {activeTab === 'excel' && (
-            <div className="no-print" style={{ background: '#f8fafc', padding: '2.5rem', border: '1px solid #cbd5e1', borderRadius: '8px', textAlign: 'center' }}>
-              <h3 style={{ color: '#1e293b', margin: 0 }}>📊 Excel Dışarı Aktar</h3>
-              <p style={{ color: '#64748b', margin: '0.5rem 0 1.5rem 0' }}>
-                Aktif sınav verilerini salon, sıra ve öğrenci bilgileriyle birlikte Excel dosyası olarak kaydedin. {isTcLoaded ? '(Geçici TC\'ler de dahildir)' : ''}
-              </p>
-              <button
-                onClick={exportToExcel}
-                style={{
-                  padding: '0.8rem 2rem',
-                  background: '#16a34a',
-                  color: '#fff',
-                  border: 'none',
-                  borderRadius: '6px',
-                  fontWeight: 'bold',
-                  fontSize: '1rem',
-                  cursor: 'pointer'
-                }}
-              >
-                📥 Excel Dosyasını İndir (.xlsx)
-              </button>
             </div>
           )}
         </div>
