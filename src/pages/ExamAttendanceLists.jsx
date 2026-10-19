@@ -27,6 +27,9 @@ const ExamAttendanceLists = () => {
   const [isTcLoaded, setIsTcLoaded] = useState(false);
   const [loadedFileName, setLoadedFileName] = useState('');
 
+  // Çakışma Analizi / Tespiti (Aynı öğrencinin başka bir salon/sınavda aynı anda bulunma durumu)
+  const [conflictStudentIds, setConflictStudentIds] = useState(new Set());
+
   useEffect(() => {
     fetchExams();
     fetchRooms();
@@ -42,6 +45,90 @@ const ExamAttendanceLists = () => {
       setLoadedFileName('');
     }
   }, [selectedExam]);
+
+  // Sınav seçildiğinde veya oturum planı yüklendiğinde çakışan öğrencileri hesapla
+  useEffect(() => {
+    if (selectedExam && seatingPlan && seatingPlan.assignments) {
+      detectConflicts();
+    }
+  }, [selectedExam, seatingPlan]);
+
+  const detectConflicts = async () => {
+    try {
+      // Bu sınavın tarih ve saatinde başka hangi sınavlar var kontrol et
+      const { data: allExams } = await supabase.from('exams').select('id, date, time');
+      if (!allExams) return;
+
+      const currentExamDate = selectedExam.date;
+      const currentExamTime = selectedExam.time;
+
+      // Aynı gün ve saatteki diğer sınavların ID'lerini bul
+      const simultaneousExamIds = allExams
+        .filter(e => e.date === currentExamDate && e.time === currentExamTime && e.id !== selectedExam.id)
+        .map(e => e.id);
+
+      if (simultaneousExamIds.length === 0) {
+        setConflictStudentIds(new Set());
+        return;
+      }
+
+      // Bu eş zamanlı sınavların oturum planlarını çek
+      const { data: otherPlans } = await supabase
+        .from('seating_plans')
+        .select('exam_id, assignments')
+        .in('exam_id', simultaneousExamIds);
+
+      if (!otherPlans) return;
+
+      const studentAssignedExamsCount = {};
+
+      // Mevcut sınavın öğrencilerini say
+      const currentAssignments = Array.isArray(seatingPlan.assignments) ? seatingPlan.assignments : [];
+      currentAssignments.forEach(st => {
+        const key = String(st.studentId || st.student_id || st.id || st.tc || st.no || '').trim();
+        if (key) {
+          studentAssignedExamsCount[key] = (studentAssignedExamsCount[key] || 0) + 1;
+        }
+      });
+
+      // Diğer eş zamanlı sınavların öğrencilerini ekle
+      otherPlans.forEach(plan => {
+        let arr = [];
+        try {
+          arr = typeof plan.assignments === 'string' ? JSON.parse(plan.assignments) : plan.assignments;
+        } catch (e) {}
+
+        if (Array.isArray(arr)) {
+          arr.forEach(st => {
+            const key = String(st.studentId || st.student_id || st.id || st.tc || st.no || '').trim();
+            if (key) {
+              studentAssignedExamsCount[key] = (studentAssignedExamsCount[key] || 0) + 1;
+            }
+          });
+        }
+      });
+
+      // 1'den fazla sınavda görünenler çakışmalıdır
+      const conflicts = new Set();
+      Object.entries(studentAssignedExamsCount).forEach(([key, count]) => {
+        if (count > 1) {
+          conflicts.add(key);
+        }
+      });
+
+      setConflictStudentIds(conflicts);
+    } catch (err) {
+      console.warn('Çakışma tespiti yapılırken hata:', err);
+    }
+  };
+
+  const isStudentInConflict = (st) => {
+    const rawId = String(st.studentId || st.student_id || st.id || '').trim();
+    const rawTc = String(st.tc || st.tc_no || st.tcNo || '').trim();
+    const rawNo = String(st.no || st.student_no || st.studentNo || st.school_number || '').trim();
+    
+    return conflictStudentIds.has(rawId) || conflictStudentIds.has(rawTc) || conflictStudentIds.has(rawNo);
+  };
 
   const handleTcExcelUpload = (e) => {
     const file = e.target.files[0];
@@ -669,6 +756,11 @@ const ExamAttendanceLists = () => {
             border: none !important;
             background: transparent !important;
           }
+          .ea-highlight {
+            background-color: #e2e8f0 !important;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
           .gray-level-1 {
             background-color: transparent !important;
             font-weight: normal !important;
@@ -952,7 +1044,7 @@ const ExamAttendanceLists = () => {
                 let roomEaCount = 0;
                 let roomSayCount = 0;
                 let langTotals = {};
-                let roomClassTotals = {}; // Şube dağılımlarını saklamak için
+                let roomClassTotals = {};
                 const engLevelsInRoom = new Set();
                 const langsInRoom = new Set();
 
@@ -968,7 +1060,6 @@ const ExamAttendanceLists = () => {
                     if (det.track === 'SAY') roomSayCount++;
                   }
 
-                  // Şube Dağılımı Sayacı
                   const fullClass = det.grade && det.className ? `${det.grade}-${det.className}` : (det.className || 'Diğer');
                   roomClassTotals[fullClass] = (roomClassTotals[fullClass] || 0) + 1;
 
@@ -1076,6 +1167,8 @@ const ExamAttendanceLists = () => {
                         {students.map((st, sIdx) => {
                           const det = getStudentDetails(st);
                           const studentTc = getStudentTc(st, det);
+                          const isEa = det.track === 'EA';
+                          const hasConflict = isStudentInConflict(st);
                           
                           const engStyle = getStyleAndClassForValue(det.englishLevel, sortedEngLevels);
                           const langStyle = getStyleAndClassForValue(det.secondLanguage, sortedLangs);
@@ -1087,7 +1180,16 @@ const ExamAttendanceLists = () => {
                               {isTcLoaded && (
                                 <td style={{ textAlign: 'center', fontFamily: 'monospace', fontSize: '8.5pt' }}>{studentTc || '-'}</td>
                               )}
-                              <td style={{ fontWeight: '500' }}>{det.fullName}</td>
+                              
+                              {/* Öğrenci Adı Soyadı (Çakışma varsa sağ üst köşesinde minicik yıldız) */}
+                              <td style={{ fontWeight: '500', position: 'relative' }}>
+                                {det.fullName}
+                                {hasConflict && (
+                                  <span style={{ position: 'absolute', top: '1px', right: '4px', fontSize: '8pt', color: '#e11d48', fontWeight: 'bold' }} title="Çakışan Öğrenci">
+                                    ★
+                                  </span>
+                                )}
+                              </td>
 
                               {showCopyColumn && (
                                 <td style={{ textAlign: 'center', color: '#aaa', fontSize: '8pt' }}>[ &nbsp; ]</td>
@@ -1098,9 +1200,23 @@ const ExamAttendanceLists = () => {
 
                               <td style={{ textAlign: 'center' }}>{det.grade}-{det.className}</td>
 
+                              {/* ALAN SÜTUNU: EA İSE GRİ RENKTE VURGULU */}
                               {examCategory === 'akademik_lise' && (
-                                <td style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '8.5pt' }}>{det.track}</td>
+                                <td 
+                                  className={isEa ? 'ea-highlight' : ''}
+                                  style={{ 
+                                    textAlign: 'center', 
+                                    fontWeight: 'bold', 
+                                    fontSize: '8.5pt',
+                                    backgroundColor: isEa ? '#e2e8f0' : 'transparent',
+                                    WebkitPrintColorAdjust: 'exact',
+                                    printColorAdjust: 'exact'
+                                  }}
+                                >
+                                  {det.track}
+                                </td>
                               )}
+
                               {examCategory === 'sadece_ingilizce' && (
                                 <td className={engStyle.className} style={{ textAlign: 'center', fontSize: '8.5pt', ...engStyle.style }}>
                                   {det.englishLevel}
@@ -1153,10 +1269,9 @@ const ExamAttendanceLists = () => {
 
                       {/* ÖZET KUTUCUKLARI (EA, SAY VE YANINA ŞUBE BAZLI DAĞILIMLAR) */}
                       <div style={{ display: 'flex', gap: '0.4rem', fontSize: '8pt', fontWeight: 'bold', flexWrap: 'wrap', alignItems: 'center' }}>
-                        {/* ALAN BİLGİLERİ (Salonda Hem EA hem SAY Varsa) */}
                         {examCategory === 'akademik_lise' && roomEaCount > 0 && roomSayCount > 0 && (
                           <>
-                            <div style={{ border: '1px solid #333', padding: '0.2rem 0.5rem', borderRadius: '4px', background: '#f8fafc' }}>
+                            <div style={{ border: '1px solid #333', padding: '0.2rem 0.5rem', borderRadius: '4px', background: '#e2e8f0' }}>
                               EA = {roomEaCount}
                             </div>
                             <div style={{ border: '1px solid #333', padding: '0.2rem 0.5rem', borderRadius: '4px', background: '#f8fafc' }}>
@@ -1166,7 +1281,6 @@ const ExamAttendanceLists = () => {
                           </>
                         )}
 
-                        {/* YANINA YATAYDA ŞUBE DAĞILIMLARI */}
                         {sortedClassNames.map(clsName => (
                           <div key={clsName} style={{ border: '1px solid #64748b', padding: '0.2rem 0.5rem', borderRadius: '4px', background: '#f1f5f9' }}>
                             {clsName} = {roomClassTotals[clsName]}
