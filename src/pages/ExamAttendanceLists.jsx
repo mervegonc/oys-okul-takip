@@ -27,11 +27,11 @@ const ExamAttendanceLists = () => {
   const [isTcLoaded, setIsTcLoaded] = useState(false);
   const [loadedFileName, setLoadedFileName] = useState('');
 
-  // Çakışma Grupları Verileri
+  // Çakışma Grupları Verileri (Sadece üst tablo için)
   const [conflictStudentIds, setConflictStudentIds] = useState(new Set());
   const [conflictingStudentsDetails, setConflictingStudentsDetails] = useState([]);
 
-  // ✏️ SALON YOKLAMA LİSTESİ DÜZENLENEBİLİR ÖZEL BAŞLIK STATE'İ (Salon adı bazlı)
+  // Salon Yoklama Listesi Düzenlenebilir Başlık State'i
   const [customHeaderTitles, setCustomHeaderTitles] = useState({});
 
   useEffect(() => {
@@ -48,7 +48,7 @@ const ExamAttendanceLists = () => {
       setTempTcMap({});
       setIsTcLoaded(false);
       setLoadedFileName('');
-      setCustomHeaderTitles({}); // Sınav değiştiğinde başlıkları sıfırla
+      setCustomHeaderTitles({});
     }
   }, [selectedExam]);
 
@@ -104,18 +104,6 @@ const ExamAttendanceLists = () => {
     } catch (err) {
       console.warn('Çakışma grupları verisi çekilirken hata:', err);
     }
-  };
-
-  const isStudentInConflict = (st) => {
-    const rawId = String(st.studentId || st.student_id || st.id || '').trim();
-    const rawTc = String(st.tc || st.tc_no || st.tcNo || '').trim();
-    const rawNo = String(st.no || st.student_no || st.studentNo || st.school_number || '').trim();
-    const fullName = getStudentDetails(st).fullName.trim().toLocaleUpperCase('tr-TR');
-
-    return conflictStudentIds.has(rawId) || 
-           conflictStudentIds.has(rawTc) || 
-           conflictStudentIds.has(rawNo) ||
-           conflictingStudentsDetails.some(c => c.fullName.trim().toLocaleUpperCase('tr-TR') === fullName);
   };
 
   const handleTcExcelUpload = (e) => {
@@ -1032,11 +1020,11 @@ const ExamAttendanceLists = () => {
                   <div key={roomName} className="print-card page-break" style={{ background: '#fff', border: '1px solid #cbd5e1', padding: '0.8rem', marginBottom: '1rem', borderRadius: '6px' }}>
                     
                     <div style={{ border: '2px solid #000', padding: '0.5rem', textAlign: 'center', marginBottom: '0.5rem', background: '#fafafa' }}>
-                      {/* ✏️ ÇİFT TIKLAYARAK DÜZENLENEBİLİR BAŞLIK ALANI */}
+                      {/* DÜZENLENEBİLİR BAŞLIK ALANI */}
                       <input
                         type="text"
                         className="editable-title-input"
-                        title="Başlığı değiştirmek için çift tıklayın veya üstüne tıklayıp düzenleyin"
+                        title="Başlığı değiştirmek için tıklayın ve düzenleyin"
                         value={currentHeader}
                         onChange={(e) => {
                           const val = e.target.value;
@@ -1112,7 +1100,6 @@ const ExamAttendanceLists = () => {
                           const det = getStudentDetails(st);
                           const studentTc = getStudentTc(st, det);
                           const isEa = det.track === 'EA';
-                          const hasConflict = isStudentInConflict(st);
 
                           return (
                             <tr key={st.studentId || st.id || sIdx}>
@@ -1122,13 +1109,9 @@ const ExamAttendanceLists = () => {
                                 <td style={{ textAlign: 'center', fontFamily: 'monospace', fontSize: '8.5pt' }}>{studentTc || '-'}</td>
                               )}
                               
-                              <td style={{ fontWeight: '500', position: 'relative' }}>
+                              {/* Yıldız işareti kaldırıldı, sadece normal isim gösteriliyor */}
+                              <td style={{ fontWeight: '500' }}>
                                 {det.fullName}
-                                {hasConflict && (
-                                  <span style={{ position: 'absolute', top: '1px', right: '4px', fontSize: '8pt', color: '#e11d48', fontWeight: 'bold' }} title="Çakışma Grubundaki Öğrenci">
-                                    ★
-                                  </span>
-                                )}
                               </td>
 
                               {showCopyColumn && (
