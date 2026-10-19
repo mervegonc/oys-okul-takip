@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabase';
 import * as XLSX from 'xlsx';
+import { FaExclamationTriangle } from 'react-icons/fa';
 
 const ManualEdit = () => {
   const [exams, setExams] = useState([]);
@@ -9,17 +10,18 @@ const ManualEdit = () => {
   const [assignments, setAssignments] = useState([]);
   const [rooms, setRooms] = useState([]);
   const [allStudents, setAllStudents] = useState([]);
+  const [conflictGroups, setConflictGroups] = useState([]); // Çakışma grupları için state
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [editing, setEditing] = useState(false);
 
   // Salon bazlı ekleme state'leri
   const [activeAddRoom, setActiveAddRoom] = useState(null);
-  const [studentSearchTerm, setStudentSearchTerm] = useState(''); // Arama filtresi için
+  const [studentSearchTerm, setStudentSearchTerm] = useState('');
   const [selectedStudentToAdd, setSelectedStudentToAdd] = useState('');
   const [customSeatToAdd, setCustomSeatToAdd] = useState('');
 
-  // Sınavları, salonları ve tüm öğrencileri getir
+  // Sınavları, salonları, tüm öğrencileri ve çakışma gruplarını getir
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -42,6 +44,12 @@ const ManualEdit = () => {
           .select('*');
         if (studentError) throw studentError;
         setAllStudents(studentData || []);
+
+        const { data: conflictData, error: conflictError } = await supabase
+          .from('conflict_groups')
+          .select('*');
+        if (conflictError) throw conflictError;
+        setConflictGroups(conflictData || []);
       } catch (error) {
         console.error('Veri alınamadı:', error);
       }
@@ -272,7 +280,6 @@ const ManualEdit = () => {
     setEditing(true);
   };
 
-  // Salona Yeni Öğrenci Ekleme Fonksiyonu
   const handleAddStudentToRoom = (roomId) => {
     if (!selectedStudentToAdd) {
       alert('Lütfen eklenecek öğrenciyi seçin.');
@@ -418,33 +425,66 @@ const ManualEdit = () => {
   const isLanguageExam = examType.includes('dil') || examType.includes('yabancı');
   const isAcademicHighSchool = examType.includes('akademik') || examType.includes('lise');
 
-  // ** SINIF SEVİYESİNE GÖRE FİLTRELEME MANTIĞI **
   const examGrades = (currentExamObj?.grade_levels || currentExamObj?.gradeLevels || []).map(g => Number(g));
 
   const filteredStudentsForAdd = allStudents.filter(st => {
-    // 1. Planda zaten var mı?
     if (assignments.some(a => isSameStudent(a, st.id))) return false;
-
-    // 2. Sınavın sınıf seviyesine uyuyor mu? (Eğer sınavda sınıf seviyesi tanımlıysa)
     if (examGrades.length > 0) {
       const stGrade = Number(st.grade || st.sinif || 0);
       if (!examGrades.includes(stGrade)) return false;
     }
-
-    // 3. Arama kutusuna yazılan metne uyuyor mu? (İsim, soyisim veya okul no ile arama)
     if (studentSearchTerm.trim()) {
       const term = studentSearchTerm.trim().toLowerCase();
       const sNo = String(st.student_no || st.school_number || st.no || '').toLowerCase();
       const sName = String(st.first_name || st.ad || '').toLowerCase();
       const sSurname = String(st.last_name || st.soyad || '').toLowerCase();
       const fullName = `${sName} ${sSurname}`;
-
       if (!sNo.includes(term) && !sName.includes(term) && !sSurname.includes(term) && !fullName.includes(term)) {
         return false;
       }
     }
-
     return true;
+  });
+
+  // ** ÇAKIŞMA LİSTESİ MANTIĞI **
+  const currentExamStudentIds = new Set(assignments.map(a => String(a.studentId || a.student_id || a.id).trim()));
+  const activeConflictStudentsMap = {};
+
+  conflictGroups.forEach(cg => {
+    const cgStudents = (cg.student_ids || []).map(id => String(id).trim()).filter(id => currentExamStudentIds.has(id));
+    if (cgStudents.length > 0) {
+      cgStudents.forEach(stId => {
+        if (!activeConflictStudentsMap[stId]) {
+          activeConflictStudentsMap[stId] = {
+            groupName: cg.group_name || cg.name || 'Çakışma Grubu',
+            peers: []
+          };
+        }
+        cgStudents.forEach(otherId => {
+          if (stId !== otherId) {
+            const otherAssignment = assignments.find(a => String(a.studentId || a.student_id || a.id).trim() === otherId);
+            if (otherAssignment) {
+              const otherName = otherAssignment.studentName || `${otherAssignment.firstName || ''} ${otherAssignment.lastName || ''}`;
+              const peerStr = `${otherName} (${otherAssignment.grade}-${otherAssignment.class})`;
+              if (!activeConflictStudentsMap[stId].peers.includes(peerStr)) {
+                activeConflictStudentsMap[stId].peers.push(peerStr);
+              }
+            }
+          }
+        });
+      });
+    }
+  });
+
+  // Öğrencinin oturduğu salon ve sırayı bulmak için map
+  const studentRoomMap = {};
+  assignments.forEach(item => {
+    const rId = item.roomId || item.room_id;
+    const roomObj = rooms.find(r => String(r.id) === String(rId));
+    const rName = roomObj ? roomObj.name : 'Atanmadı';
+    const stId = String(item.studentId || item.student_id || item.id).trim();
+    const seatNo = item.seatNumber || item.seat_number || '-';
+    studentRoomMap[stId] = `${rName} (Sıra: ${seatNo})`;
   });
 
   return (
@@ -534,37 +574,81 @@ const ManualEdit = () => {
       {assignments.length > 0 && (
         <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
           
-          {/* SOL KISIM: Salon Özet Tablosu */}
-          <div style={{ width: '260px', background: '#fff', padding: '1rem', borderRadius: '8px', border: '1px solid #ddd', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', position: 'sticky', top: '1rem' }}>
-            <h4 style={{ marginTop: 0, marginBottom: '0.8rem', fontSize: '1rem', borderBottom: '2px solid #2b6cb0', paddingBottom: '0.4rem', color: '#2b6cb0' }}>
-              📊 Salon Özetleri
-            </h4>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
-              <thead>
-                <tr style={{ background: '#f1f3f5', textAlign: 'left' }}>
-                  <th style={{ padding: '0.5rem', borderBottom: '1px solid #ddd' }}>Salon Adı</th>
-                  <th style={{ padding: '0.5rem', borderBottom: '1px solid #ddd', textAlign: 'right' }}>Öğrenci</th>
-                </tr>
-              </thead>
-              <tbody>
-                {Object.keys(grouped).map(roomName => (
-                  <tr key={roomName} style={{ borderBottom: '1px solid #eee' }}>
-                    <td style={{ padding: '0.5rem', fontWeight: '500' }}>{roomName}</td>
-                    <td style={{ padding: '0.5rem', textAlign: 'right', fontWeight: 'bold', color: '#2b6cb0' }}>
-                      {grouped[roomName].length}
+          {/* SOL KISIM: Salon Özetleri ve Çakışma Tablosu */}
+          <div style={{ width: '320px', display: 'flex', flexDirection: 'column', gap: '1rem', position: 'sticky', top: '1rem' }}>
+            
+            {/* Salon Özet Tablosu */}
+            <div style={{ background: '#fff', padding: '1rem', borderRadius: '8px', border: '1px solid #ddd', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
+              <h4 style={{ marginTop: 0, marginBottom: '0.8rem', fontSize: '1rem', borderBottom: '2px solid #2b6cb0', paddingBottom: '0.4rem', color: '#2b6cb0' }}>
+                📊 Salon Özetleri
+              </h4>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
+                <thead>
+                  <tr style={{ background: '#f1f3f5', textAlign: 'left' }}>
+                    <th style={{ padding: '0.5rem', borderBottom: '1px solid #ddd' }}>Salon Adı</th>
+                    <th style={{ padding: '0.5rem', borderBottom: '1px solid #ddd', textAlign: 'right' }}>Öğrenci</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.keys(grouped).map(roomName => (
+                    <tr key={roomName} style={{ borderBottom: '1px solid #eee' }}>
+                      <td style={{ padding: '0.5rem', fontWeight: '500' }}>{roomName}</td>
+                      <td style={{ padding: '0.5rem', textAlign: 'right', fontWeight: 'bold', color: '#2b6cb0' }}>
+                        {grouped[roomName].length}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr style={{ background: '#f8f9fa', fontWeight: 'bold' }}>
+                    <td style={{ padding: '0.5rem', borderTop: '2px solid #ddd' }}>Toplam</td>
+                    <td style={{ padding: '0.5rem', textAlign: 'right', borderTop: '2px solid #ddd', color: '#2b6cb0' }}>
+                      {assignments.length}
                     </td>
                   </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr style={{ background: '#f8f9fa', fontWeight: 'bold' }}>
-                  <td style={{ padding: '0.5rem', borderTop: '2px solid #ddd' }}>Toplam</td>
-                  <td style={{ padding: '0.5rem', textAlign: 'right', borderTop: '2px solid #ddd', color: '#2b6cb0' }}>
-                    {assignments.length}
-                  </td>
-                </tr>
-              </tfoot>
-            </table>
+                </tfoot>
+              </table>
+            </div>
+
+            {/* ÇAKIŞMA LİSTESİ TABLOSU */}
+            <div style={{ background: '#fff', padding: '1rem', borderRadius: '8px', border: '1px solid #ddd', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', maxHeight: '400px', overflowY: 'auto' }}>
+              <h4 style={{ margin: '0 0 0.8rem 0', borderBottom: '2px solid #dc3545', paddingBottom: '0.4rem', color: '#dc3545', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <FaExclamationTriangle /> Çakışmadaki Öğrenciler
+              </h4>
+              {Object.keys(activeConflictStudentsMap).length === 0 ? (
+                <p style={{ color: '#666', fontSize: '0.85rem', fontStyle: 'italic' }}>Aktif çakışma grubu bulunmuyor.</p>
+              ) : (
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                  <thead>
+                    <tr style={{ background: '#f8f9fa', borderBottom: '1px solid #ddd', textAlign: 'left' }}>
+                      <th style={{ padding: '0.3rem' }}>Öğrenci</th>
+                      <th style={{ padding: '0.3rem' }}>Salon & Sıra</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Object.entries(activeConflictStudentsMap).map(([stId, info], idx) => {
+                      const assignmentItem = assignments.find(a => String(a.studentId || a.student_id || a.id).trim() === stId);
+                      if (!assignmentItem) return null;
+                      const stName = assignmentItem.studentName || `${assignmentItem.firstName || ''} ${assignmentItem.lastName || ''}`;
+                      const roomSeatInfo = studentRoomMap[stId] || 'Atanmadı';
+
+                      return (
+                        <tr key={idx} style={{ borderBottom: '1px solid #eee' }}>
+                          <td style={{ padding: '0.4rem' }}>
+                            <strong style={{ color: '#333' }}>{stName}</strong><br/>
+                            <span style={{ color: '#dc3545', fontSize: '0.75rem' }}>Çakıştığı: {info.peers.join(', ')}</span>
+                          </td>
+                          <td style={{ padding: '0.4rem', fontWeight: 'bold', color: '#2b6cb0', whiteSpace: 'nowrap' }}>
+                            {roomSeatInfo}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+
           </div>
 
           {/* SAĞ KISIM: Ana Liste ve Salonlar */}
@@ -642,7 +726,6 @@ const ManualEdit = () => {
                   {isAddingHere && (
                     <div style={{ background: '#e9ecef', padding: '0.8rem', borderRadius: '6px', marginBottom: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                       <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                        {/* Arama Çubuğu */}
                         <input
                           type="text"
                           placeholder="🔍 İsim, soyisim veya okul no ile ara..."
@@ -651,7 +734,6 @@ const ManualEdit = () => {
                           style={{ flex: 1, minWidth: '200px', padding: '0.4rem', borderRadius: '4px', border: '1px solid #ccc' }}
                         />
 
-                        {/* Sınıf Seviyesine Uygun Öğrenci Listesi */}
                         <select
                           value={selectedStudentToAdd}
                           onChange={(e) => setSelectedStudentToAdd(e.target.value)}
@@ -684,9 +766,6 @@ const ManualEdit = () => {
                           Ekle
                         </button>
                       </div>
-                      <small style={{ color: '#6c757d' }}>
-                        * Sadece bu sınavın seviyesine ({examGrades.length > 0 ? examGrades.join(', ') + '. sınıflar' : 'tüm sınıflar'}) ait ve henüz oturma planında olmayan öğrenciler gösterilmektedir.
-                      </small>
                     </div>
                   )}
 
