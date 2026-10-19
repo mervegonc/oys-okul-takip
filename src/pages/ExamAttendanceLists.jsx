@@ -27,8 +27,9 @@ const ExamAttendanceLists = () => {
   const [isTcLoaded, setIsTcLoaded] = useState(false);
   const [loadedFileName, setLoadedFileName] = useState('');
 
-  // Çakışma Analizi / Tespiti (ConflictGroups mantığıyla tam uyumlu)
+  // Çakışma Analizi / Tespiti ve Çakışan Öğrenci Detayları
   const [conflictStudentIds, setConflictStudentIds] = useState(new Set());
+  const [conflictingStudentsDetails, setConflictingStudentsDetails] = useState([]);
 
   useEffect(() => {
     fetchExams();
@@ -55,7 +56,7 @@ const ExamAttendanceLists = () => {
 
   const detectConflictsWithGradeFilter = async () => {
     try {
-      const { data: allExams } = await supabase.from('exams').select('id, date, time, grade, sinif');
+      const { data: allExams } = await supabase.from('exams').select('id, title, date, time, grade, sinif');
       if (!allExams) return;
 
       const currentExamDate = selectedExam.date;
@@ -68,12 +69,12 @@ const ExamAttendanceLists = () => {
 
       if (simultaneousExams.length === 0) {
         setConflictStudentIds(new Set());
+        setConflictingStudentsDetails([]);
         return;
       }
 
       const simultaneousExamIds = simultaneousExams.map(e => e.id);
 
-      // Bu eş zamanlı sınavların oturum planlarını çek
       const { data: otherPlans } = await supabase
         .from('seating_plans')
         .select('exam_id, assignments')
@@ -81,13 +82,30 @@ const ExamAttendanceLists = () => {
 
       if (!otherPlans) return;
 
-      // Hedef sınıf seviyesi filtresi (ConflictGroups mantığı)
       const targetGradeStr = String(selectedExam?.grade || selectedExam?.sinif || '').replace(/\D/g, '');
+      const studentOccurrences = {};
+      const studentExamNamesMap = {};
 
-      // Öğrencinin bu sınavda filtreden geçip geçmediğini veya başka bir sınavda olup olmadığını takip et
-      const studentExamOccurrences = {};
+      const registerOccurrence = (st, examTitle) => {
+        const rawId = String(st.studentId || st.student_id || st.id || '').trim();
+        const rawTc = String(st.tc || st.tc_no || st.tcNo || '').trim();
+        const rawNo = String(st.no || st.student_no || st.studentNo || st.school_number || '').trim();
+        
+        const dbSt = studentMap[rawId] || studentMap[rawTc] || studentMap[rawNo];
+        if (!dbSt) return;
 
-      // 1. Önce mevcut sınavın geçerli (sınıf filtresine uyan) öğrencilerini topla
+        const uniqueKey = rawId || rawTc || rawNo || dbSt.id;
+        if (!uniqueKey) return;
+
+        studentOccurrences[uniqueKey] = (studentOccurrences[uniqueKey] || 0) + 1;
+        
+        if (!studentExamNamesMap[uniqueKey]) {
+          studentExamNamesMap[uniqueKey] = { dbSt, exams: new Set() };
+        }
+        studentExamNamesMap[uniqueKey].exams.add(examTitle);
+      };
+
+      // 1. Mevcut sınavın öğrencileri
       const rawAssignments = seatingPlan?.assignments || [];
       rawAssignments.forEach(st => {
         const rawId = String(st.studentId || st.student_id || st.id || '').trim();
@@ -99,20 +117,17 @@ const ExamAttendanceLists = () => {
 
         if (targetGradeStr) {
           const studentGrade = String(dbSt.grade || st.grade || st.sinif || '').replace(/\D/g, '');
-          if (studentGrade && studentGrade !== targetGradeStr) {
-            return; // Sınıf seviyesi uyuşmuyorsa bu sınavda listelenmiyor sayılır
-          }
+          if (studentGrade && studentGrade !== targetGradeStr) return;
         }
 
-        const uniqueKey = rawId || rawTc || rawNo || detKey(st);
-        if (uniqueKey) {
-          studentExamOccurrences[uniqueKey] = (studentExamOccurrences[uniqueKey] || 0) + 1;
-        }
+        registerOccurrence(st, selectedExam.title);
       });
 
-      // 2. Diğer eş zamanlı sınavların öğrencilerini de ekle
+      // 2. Diğer eş zamanlı sınavların öğrencileri
       otherPlans.forEach(plan => {
         const otherExam = simultaneousExams.find(e => e.id === plan.exam_id);
+        if (!otherExam) return;
+        
         const otherTargetGrade = String(otherExam?.grade || otherExam?.sinif || '').replace(/\D/g, '');
 
         let arr = [];
@@ -131,35 +146,40 @@ const ExamAttendanceLists = () => {
 
             if (otherTargetGrade) {
               const studentGrade = String(dbSt.grade || st.grade || st.sinif || '').replace(/\D/g, '');
-              if (studentGrade && studentGrade !== otherTargetGrade) {
-                return;
-              }
+              if (studentGrade && studentGrade !== otherTargetGrade) return;
             }
 
-            const uniqueKey = rawId || rawTc || rawNo;
-            if (uniqueKey) {
-              studentExamOccurrences[uniqueKey] = (studentExamOccurrences[uniqueKey] || 0) + 1;
-            }
+            registerOccurrence(st, otherExam.title);
           });
         }
       });
 
-      // 1'den fazla sınavda yer alanlar çakışma grubundadır
       const conflicts = new Set();
-      Object.entries(studentExamOccurrences).forEach(([key, count]) => {
+      const conflictList = [];
+
+      Object.entries(studentOccurrences).forEach(([key, count]) => {
         if (count > 1) {
           conflicts.add(key);
+          const info = studentExamNamesMap[key];
+          if (info) {
+            const stNo = info.dbSt.student_no || '-';
+            const fullName = `${info.dbSt.first_name || ''} ${info.dbSt.last_name || ''}`.trim() || 'İsimsiz';
+            const gradeClass = `${info.dbSt.grade || ''}-${info.dbSt.class || ''}`;
+            conflictList.push({
+              studentNo: stNo,
+              fullName,
+              gradeClass,
+              exams: Array.from(info.exams).join(', ')
+            });
+          }
         }
       });
 
       setConflictStudentIds(conflicts);
+      setConflictingStudentsDetails(conflictList);
     } catch (err) {
       console.warn('Çakışma tespiti yapılırken hata:', err);
     }
-  };
-
-  const detKey = (st) => {
-    return String(st.studentId || st.student_id || st.id || st.tc || st.tc_no || st.no || '').trim();
   };
 
   const isStudentInConflict = (st) => {
@@ -167,7 +187,10 @@ const ExamAttendanceLists = () => {
     const rawTc = String(st.tc || st.tc_no || st.tcNo || '').trim();
     const rawNo = String(st.no || st.student_no || st.studentNo || st.school_number || '').trim();
     
-    return conflictStudentIds.has(rawId) || conflictStudentIds.has(rawTc) || conflictStudentIds.has(rawNo);
+    const dbSt = studentMap[rawId] || studentMap[rawTc] || studentMap[rawNo];
+    const uniqueKey = rawId || rawTc || rawNo || (dbSt ? dbSt.id : '');
+
+    return conflictStudentIds.has(uniqueKey) || conflictStudentIds.has(rawId) || conflictStudentIds.has(rawTc) || conflictStudentIds.has(rawNo);
   };
 
   const handleTcExcelUpload = (e) => {
@@ -861,6 +884,41 @@ const ExamAttendanceLists = () => {
           </div>
         )}
 
+        {/* ⚡ ÇAKIŞAN ÖĞRENCİLER ÖZET TABLOSU (YENİ) */}
+        {selectedExam && (
+          <div style={{ background: '#fffbeb', border: '1px solid #fde68a', padding: '1rem 1.2rem', borderRadius: '8px', marginBottom: '1.5rem' }}>
+            <h4 style={{ margin: '0 0 0.5rem 0', color: '#b45309', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1rem' }}>
+              ⚡ Aynı Saatte Çakışan Öğrenciler ({conflictingStudentsDetails.length})
+            </h4>
+            {conflictingStudentsDetails.length === 0 ? (
+              <p style={{ margin: 0, fontSize: '0.85rem', color: '#65a30d' }}>Bu oturumda aynı saatte başka sınavı olan çakışan öğrenci bulunmuyor.</p>
+            ) : (
+              <div style={{ maxHeight: '180px', overflowY: 'auto', border: '1px solid #fcd34d', borderRadius: '6px' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem', background: '#fff' }}>
+                  <thead>
+                    <tr style={{ background: '#fef3c7', color: '#92400e', textAlign: 'left' }}>
+                      <th style={{ padding: '6px 10px', width: '15%' }}>Öğrenci No</th>
+                      <th style={{ padding: '6px 10px', width: '30%' }}>Adı Soyadı</th>
+                      <th style={{ padding: '6px 10px', width: '15%' }}>Şube</th>
+                      <th style={{ padding: '6px 10px', width: '40%' }}>Çakışan Sınavlar</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {conflictingStudentsDetails.map((item, idx) => (
+                      <tr key={idx} style={{ borderTop: '1px solid #fef3c7' }}>
+                        <td style={{ padding: '5px 10px', fontWeight: 'bold' }}>{item.studentNo}</td>
+                        <td style={{ padding: '5px 10px' }}>★ {item.fullName}</td>
+                        <td style={{ padding: '5px 10px' }}>{item.gradeClass}</td>
+                        <td style={{ padding: '5px 10px', color: '#b91c1c', fontWeight: '600' }}>{item.exams}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
         {!selectedExam ? (
           <div style={{ marginTop: '1.5rem' }}>
             <h3>Lütfen Bir Sınav Seçin</h3>
@@ -1221,7 +1279,7 @@ const ExamAttendanceLists = () => {
                                 <td style={{ textAlign: 'center', fontFamily: 'monospace', fontSize: '8.5pt' }}>{studentTc || '-'}</td>
                               )}
                               
-                              {/* Öğrenci Adı Soyadı (Çakışma varsa sağ üst köşesinde minicik yıldız) */}
+                              {/* Öğrenci Adı Soyadı (Çakışma varsa sağ üst köşesinde minicik kırmızı yıldız) */}
                               <td style={{ fontWeight: '500', position: 'relative' }}>
                                 {det.fullName}
                                 {hasConflict && (
