@@ -26,28 +26,27 @@ const ExcelUpload = ({ onUploadComplete }) => {
 
         if (uploadType === 'students') {
           const formattedStudents = data.map(row => ({
-            student_no: String(row['Okul Numarası'] || row['Öğrenci No'] || '').trim(),
-            first_name: String(row['Adı'] || row['Ad'] || '').trim(),
-            last_name: String(row['Soyadı'] || row['Soyad'] || '').trim(),
-            grade: String(row['Sınıf'] || '').trim(),
-            class: String(row['Şube'] || '').trim(),
-            field: row['Alanı'] && String(row['Alanı']).trim() !== 'nan' ? String(row['Alanı']).trim() : null,
-            gender: String(row['Cinsiyet'] || '').trim(),
-            english_level: String(row['İngilizce Seviye'] || 'Core').trim(),
-            second_lang: row['Yabancı Dil Bilgisi'] && String(row['Yabancı Dil Bilgisi']).trim() !== 'nan' ? String(row['Yabancı Dil Bilgisi']).trim() : 'None'
+            student_no: String(row['Öğrenci No'] || row['Okul Numarası'] || row['student_no'] || '').trim(),
+            first_name: String(row['Ad'] || row['Adı'] || row['first_name'] || '').trim(),
+            last_name: String(row['Soyad'] || row['Soyadı'] || row['last_name'] || '').trim(),
+            grade: String(row['Sınıf'] || row['grade'] || '').trim(),
+            class: String(row['Şube'] || row['class'] || '').trim(),
+            field: row['Alan'] && String(row['Alan']).trim() !== 'nan' ? String(row['Alan']).trim() : null,
+            gender: String(row['Cinsiyet'] || row['gender'] || '').trim(),
+            english_level: String(row['İngilizce Seviyesi'] || row['İngilizce Seviye'] || 'Core').trim(),
+            second_lang: row['2. Dil'] && String(row['2. Dil']).trim() !== 'nan' ? String(row['2. Dil']).trim() : 'None'
           })).filter(s => s.first_name && s.student_no);
 
-          // Çakışma sorununu tamamen aşmak için verileri önce mevcut tablo temizlenerek veya 
-          // her öğrenciye benzersiz UUID atanarak toplu eklenir. 
-          // Supabase her satıra otomatik id (uuid) atayacağı için okul no çakışması insert işlemine engel olamaz.
-          
+          if (formattedStudents.length === 0) {
+            throw new Error('Excel dosyasında uygun formatta öğrenci verisi bulunamadı. Lütfen sütun başlıklarını kontrol edin.');
+          }
+
           const chunkSize = 100;
           let successCount = 0;
 
           for (let i = 0; i < formattedStudents.length; i += chunkSize) {
             const chunk = formattedStudents.slice(i, i + chunkSize);
             
-            // upsert yerine doğrudan .insert() kullanarak benzersiz uuid'ler ile ekliyoruz
             const { error } = await supabase.from('students').insert(chunk);
             
             if (error) {
