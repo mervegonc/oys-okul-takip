@@ -85,7 +85,6 @@ const SeatingDistribution = () => {
         if (planData && planData.assignments && planData.assignments.length > 0) {
           setDistributions(planData.assignments);
 
-          // Kayıtlı atamalardaki salon ve şubeleri analiz ederek grupları otomatik oluştur
           const usedRoomIds = Array.from(new Set(planData.assignments.map(a => a.room_id)));
           const usedClasses = Array.from(new Set(planData.assignments.map(a => `${a.grade}-${a.class}`))).sort();
 
@@ -196,7 +195,7 @@ const SeatingDistribution = () => {
         });
       });
 
-      // ORTAOKUL AKADEMİK - KENDİ ŞUBESİNDE (Kullanıcının seçtiği salonlarla eşleşerek, sadece sıra no karışır)
+      // ORTAOKUL AKADEMİK - KENDİ ŞUBESİNDE
       if (examMode === 'ortaokul_akademik' && keepInOwnClassroom) {
         for (const group of groups) {
           const groupRooms = rooms.filter(r => group.roomIds.includes(r.id));
@@ -204,7 +203,7 @@ const SeatingDistribution = () => {
           if (group.classes.length === 0) throw new Error(`"${group.name}" için hiç şube seçilmedi!`);
 
           if (group.classes.length !== groupRooms.length) {
-            throw new Error(`"${group.name}" grubunda seçilen şube sayısı (${group.classes.length}) ile salon sayısı (${group.roomIds.length}) eşleşmeli! Her şube için bir salon seçmelisiniz.`);
+            throw new Error(`"${group.name}" grubunda seçilen şube sayısı ile salon sayısı eşleşmeli!`);
           }
 
           group.classes.forEach((cls, idx) => {
@@ -250,7 +249,7 @@ const SeatingDistribution = () => {
           const totalCapacity = groupRooms.reduce((sum, r) => sum + r.totalCap, 0);
 
           if (totalCapacity < totalGroupStudents) {
-            throw new Error(`"${group.name}" grubundaki öğrenci sayısı (${totalGroupStudents}) seçilen salonların toplam kapasitesini (${totalCapacity}) aşıyor!`);
+            throw new Error(`"${group.name}" grubundaki öğrenci sayısı salon kapasitesini aşıyor!`);
           }
 
           const numRooms = groupRooms.length;
@@ -550,7 +549,7 @@ const SeatingDistribution = () => {
   // Aktif sınav öğrencilerinin ID kümesi
   const currentExamStudentIds = new Set(students.map(s => String(s.id)));
 
-  // Sadece bu sınavdaki öğrencileri içeren çakışma listesini ve grup adlarını derleme
+  // Sadece bu sınavdaki öğrencileri içeren çakışma listesi
   const activeConflictStudentsMap = {};
   conflictGroups.forEach(cg => {
     const cgStudents = (cg.student_ids || []).map(String).filter(id => currentExamStudentIds.has(id));
@@ -705,8 +704,8 @@ const SeatingDistribution = () => {
         </div>
       )}
 
-      {/* ANA İÇERİK: SOL TARAF KÜÇÜK SALON ÖZETİ VE ÇAKIŞMA LİSTESİ, SAĞ TARAF GRUP YAPILANDIRMASI */}
-      <div style={{ display: 'grid', gridTemplateColumns: '380px 1fr', gap: '1.5rem', alignItems: 'start' }}>
+      {/* ANA İÇERİK: SOL TARAF SALON ÖZETİ VE ÇAKIŞMA LİSTESİ, SAĞ TARAF GRUP YAPILANDIRMASI */}
+      <div style={{ display: 'grid', gridTemplateColumns: '420px 1fr', gap: '1.5rem', alignItems: 'start' }}>
         
         {/* SOL TARAF: SALON ÖZETLERİ VE ÇAKIŞMADAKİ ÖĞRENCİLER LİSTESİ */}
         {selectedExamId && (
@@ -743,8 +742,8 @@ const SeatingDistribution = () => {
               )}
             </div>
 
-            {/* ÇAKIŞMA LİSTESİ VE GELDİKLERİ SALONLAR */}
-            <div style={{ background: '#fff', padding: '1rem', borderRadius: '8px', border: '1px solid #ddd', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', maxHeight: '500px', overflowY: 'auto' }}>
+            {/* ÇAKIŞMA LİSTESİ VE SALON/SIRA BİLGİLERİ */}
+            <div style={{ background: '#fff', padding: '1rem', borderRadius: '8px', border: '1px solid #ddd', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', maxHeight: '550px', overflowY: 'auto' }}>
               <h4 style={{ margin: '0 0 0.8rem 0', borderBottom: '2px solid #dc3545', paddingBottom: '0.4rem', color: '#dc3545', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <FaExclamationTriangle /> Çakışma Grubundaki Öğrenciler
               </h4>
@@ -755,8 +754,8 @@ const SeatingDistribution = () => {
                   <thead>
                     <tr style={{ background: '#f8f9fa', borderBottom: '1px solid #ddd', textAlign: 'left' }}>
                       <th style={{ padding: '0.4rem' }}>Öğrenci</th>
-                      <th style={{ padding: '0.4rem' }}>Grup / Çakıştığı Kişiler</th>
-                      <th style={{ padding: '0.4rem' }}>Atandığı Salon</th>
+                      <th style={{ padding: '0.4rem' }}>Çakıştığı Kişiler</th>
+                      <th style={{ padding: '0.4rem' }}>Salon & Sıra</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -764,7 +763,7 @@ const SeatingDistribution = () => {
                       const st = students.find(s => String(s.id) === stId);
                       if (!st) return null;
                       const stName = `${st.first_name || st.firstName || ''} ${st.last_name || st.lastName || ''}`.trim();
-                      const assignedRoom = studentRoomMap[stId] || 'Atanmadı / Yerleşmedi';
+                      const assignedRoom = studentRoomMap[stId] || 'Yerleşmedi';
                       return (
                         <tr key={idx} style={{ borderBottom: '1px solid #eee' }}>
                           <td style={{ padding: '0.4rem', fontWeight: 'bold' }}>
@@ -773,7 +772,7 @@ const SeatingDistribution = () => {
                           </td>
                           <td style={{ padding: '0.4rem', fontSize: '0.8rem' }}>
                             <span style={{ color: '#dc3545', fontWeight: 'bold' }}>{info.groupName}</span><br/>
-                            <span style={{ color: '#555' }}>Çakıştığı: {info.peers.join(', ')}</span>
+                            <span style={{ color: '#555' }}>{info.peers.join(', ')}</span>
                           </td>
                           <td style={{ padding: '0.4rem', fontWeight: 'bold', color: studentRoomMap[stId] ? '#007bff' : '#dc3545' }}>
                             {assignedRoom}
