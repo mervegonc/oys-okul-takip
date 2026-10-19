@@ -1260,4 +1260,4 @@ const ExamAttendanceLists = () => {
   );
 };
 
-export Date default ExamAttendanceLists;
+export default ExamAttendanceLists;
