@@ -1,3 +1,4 @@
+// ExcelUpload.jsx
 import React, { useState } from 'react';
 import * as XLSX from 'xlsx';
 import { supabase } from '../supabase';
@@ -54,11 +55,11 @@ const ExcelUpload = ({ onUploadComplete }) => {
         const excelKeySet = new Set();
         const operations = [];
 
-        // 2. Excel'deki satırları dön
+        // 2. Excel'deki satırları dön (Sizin Excel başlıklarınıza göre güncellendi)
         for (const row of jsonData) {
-          const rawStudentNo = row['Okul Numarası'] ? String(row['Okul Numarası']).trim() : '';
-          const firstName = row['Adı'] ? String(row['Adı']).trim() : '';
-          const lastName = row['Soyadı'] ? String(row['Soyadı']).trim() : '';
+          const rawStudentNo = row['Öğrenci No'] || row['Okul Numarası'] || row['student_no'] || '';
+          const firstName = row['Ad'] || row['Adı'] || row['first_name'] || '';
+          const lastName = row['Soyad'] || row['Soyadı'] || row['last_name'] || '';
           
           if (!firstName || !lastName) continue;
 
@@ -72,15 +73,15 @@ const ExcelUpload = ({ onUploadComplete }) => {
           }
 
           const incomingData = {
-            first_name: firstName,
-            last_name: lastName,
+            first_name: String(firstName).trim(),
+            last_name: String(lastName).trim(),
             grade: gradeVal,
             class: classVal,
-            student_no: rawStudentNo,
+            student_no: String(rawStudentNo).trim(),
             field: row['Alan'] || row['Alanı'] || '',
             gender: row['Cinsiyet'] || '',
-            second_lang: row['Yabancı Dil Bilgisi'] || 'None',
-            english_level: row['İngilizce Seviye'] || 'Core',
+            second_lang: row['2. Dil'] || row['Yabancı Dil Bilgisi'] || 'None',
+            english_level: row['İngilizce Seviyesi'] || row['İngilizce Seviye'] || 'Core',
           };
 
           const rowKey = getUniqueKey(incomingData);
@@ -117,6 +118,12 @@ const ExcelUpload = ({ onUploadComplete }) => {
           }
         }
 
+        // Güvenlik Kilidi: Eğer Excel'de hiç geçerli satır okunamadıysa (başlık uyumsuzluğu vs.), 
+        // yanlışlıkla tüm veritabanını silmeyi önlemek için işlemi durdur.
+        if (excelKeySet.size === 0) {
+          throw new Error('Excel dosyasından hiçbir öğrenci okunamadı. Lütfen sütun başlıklarınızın Ad, Soyad, Sınıf, Şube ve Öğrenci No olduğundan emin olun.');
+        }
+
         // 3. Excel listesinde olmayıp veritabanında kalanları sil
         for (const [dbKey, dbSt] of dbMap.entries()) {
           if (!excelKeySet.has(dbKey)) {
@@ -127,9 +134,8 @@ const ExcelUpload = ({ onUploadComplete }) => {
           }
         }
 
-        // Toplu işlemleri gerçekleştir (10'arli veya paralel paketler halinde)
+        // Toplu işlemleri gerçekleştir
         if (operations.length > 0) {
-          // Supabase isteklerini aşırı yüklememek için gruplayarak çalıştıralım
           const chunkSize = 50;
           for (let i = 0; i < operations.length; i += chunkSize) {
             const chunk = operations.slice(i, i + chunkSize);
