@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../supabase';
 import ExcelUpload from '../components/ExcelUpload';
-import { FaTrash, FaUserPlus, FaSort, FaSortUp, FaSortDown, FaFilter, FaFileExcel } from 'react-icons/fa';
+import { FaTrash, FaUserPlus, FaSort, FaSortUp, FaSortDown, FaFilter, FaFileExcel, FaEdit, FaSearch } from 'react-icons/fa';
 import * as XLSX from 'xlsx';
 import '../styles/Students.css';
 
@@ -10,6 +10,9 @@ const Students = () => {
   const [loading, setLoading] = useState(true);
   const [selectedIds, setSelectedIds] = useState([]);
   const [showForm, setShowForm] = useState(false);
+  const [editingStudent, setEditingStudent] = useState(null); // Düzenlenen öğrenci state'i
+  const [searchQuery, setSearchQuery] = useState(''); // Arama metni state'i
+
   const [currentPage, setCurrentPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
   const [pageSize] = useState(20);
@@ -59,7 +62,7 @@ const Students = () => {
     }
   };
 
-  // Öğrencileri getir (Seviye, Şube Filtreleri ve Sayfalama ile)
+  // Öğrencileri getir (Seviye, Şube Filtreleri, Arama ve Sayfalama ile)
   const fetchStudents = async (page = 1) => {
     setLoading(true);
     try {
@@ -74,6 +77,13 @@ const Students = () => {
       if (selectedClassFilter !== 'ALL') {
         countQuery = countQuery.eq('class', selectedClassFilter);
         dataQuery = dataQuery.eq('class', selectedClassFilter);
+      }
+
+      // Arama filtresi (Ad, Soyad veya Öğrenci No içeriyorsa)
+      if (searchQuery.trim() !== '') {
+        const queryText = searchQuery.trim();
+        countQuery = countQuery.or(`first_name.ilike.%${queryText}%,last_name.ilike.%${queryText}%,student_no.ilike.%${queryText}%`);
+        dataQuery = dataQuery.or(`first_name.ilike.%${queryText}%,last_name.ilike.%${queryText}%,student_no.ilike.%${queryText}%`);
       }
 
       const { count, error: countError } = await countQuery;
@@ -125,7 +135,7 @@ const Students = () => {
     }
   };
 
-  // Tüm listeyi (sayfalamasız, filtrelere uygun) Excel olarak indir
+  // Tüm listeyi (sayfalamasız, filtrelere ve aramaya uygun) Excel olarak indir
   const handleExportAllToExcel = async () => {
     try {
       setExporting(true);
@@ -136,6 +146,10 @@ const Students = () => {
       }
       if (selectedClassFilter !== 'ALL') {
         query = query.eq('class', selectedClassFilter);
+      }
+      if (searchQuery.trim() !== '') {
+        const queryText = searchQuery.trim();
+        query = query.or(`first_name.ilike.%${queryText}%,last_name.ilike.%${queryText}%,student_no.ilike.%${queryText}%`);
       }
 
       const { data, error } = await query;
@@ -158,7 +172,7 @@ const Students = () => {
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, worksheet, 'Öğrenciler');
 
-      XLSX.writeFile(workbook, `Ogrenci_Listesi_${selectedGradeFilter}_Sinif.xlsx`);
+      XLSX.writeFile(workbook, `Ogrenci_Listesi_Filtreli.xlsx`);
     } catch (error) {
       console.error('Excel dışa aktarma hatası:', error);
       alert('Excel dosyası oluşturulurken bir hata oluştu.');
@@ -170,7 +184,7 @@ const Students = () => {
   useEffect(() => {
     fetchStudents(currentPage);
     fetchStats();
-  }, [currentPage, selectedGradeFilter, selectedClassFilter, sortConfig]);
+  }, [currentPage, selectedGradeFilter, selectedClassFilter, sortConfig, searchQuery]);
 
   const handleSort = (key) => {
     let direction = 'asc';
@@ -224,12 +238,50 @@ const Students = () => {
         englishLevel: 'Core',
       });
 
+      setShowForm(false);
       fetchStats();
       fetchStudents(currentPage);
       alert('Öğrenci başarıyla eklendi.');
     } catch (error) {
       console.error('Öğrenci eklenirken hata:', error);
       alert('Bir hata oluştu: ' + error.message);
+    }
+  };
+
+  // Öğrenci Güncelleme Kaydetme
+  const handleUpdateStudent = async (e) => {
+    e.preventDefault();
+    if (!editingStudent.firstName || !editingStudent.lastName || !editingStudent.grade) {
+      alert('Ad, soyad ve sınıf zorunludur.');
+      return;
+    }
+    try {
+      const updatedData = {
+        first_name: editingStudent.firstName,
+        last_name: editingStudent.lastName,
+        grade: editingStudent.grade,
+        class: editingStudent.class,
+        student_no: editingStudent.studentNo,
+        field: editingStudent.field,
+        second_lang: editingStudent.secondLang,
+        gender: editingStudent.gender,
+        english_level: editingStudent.englishLevel,
+      };
+
+      const { error } = await supabase
+        .from('students')
+        .update(updatedData)
+        .eq('id', editingStudent.id);
+
+      if (error) throw error;
+
+      setEditingStudent(null);
+      fetchStats();
+      fetchStudents(currentPage);
+      alert('Öğrenci bilgileri başarıyla güncellendi.');
+    } catch (error) {
+      console.error('Güncelleme hatası:', error);
+      alert('Güncellenirken bir hata oluştu: ' + error.message);
     }
   };
 
@@ -346,7 +398,7 @@ const Students = () => {
         ))}
       </div>
 
-      {/* Filtreleme Çubuğu */}
+      {/* Filtreleme ve Arama Çubuğu */}
       <div
         style={{
           display: 'flex',
@@ -401,11 +453,27 @@ const Students = () => {
           </select>
         </div>
 
-        {(selectedGradeFilter !== 'ALL' || selectedClassFilter !== 'ALL') && (
+        {/* Canlı Arama Kutusu */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', marginLeft: 'auto' }}>
+          <FaSearch style={{ color: '#666' }} />
+          <input
+            type="text"
+            placeholder="Ad, soyad veya no ile ara..."
+            value={searchQuery}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              setCurrentPage(1);
+            }}
+            style={{ padding: '0.4rem 0.6rem', borderRadius: '4px', border: '1px solid #ccc', width: '200px' }}
+          />
+        </div>
+
+        {(selectedGradeFilter !== 'ALL' || selectedClassFilter !== 'ALL' || searchQuery !== '') && (
           <button
             onClick={() => {
               setSelectedGradeFilter('ALL');
               setSelectedClassFilter('ALL');
+              setSearchQuery('');
               setCurrentPage(1);
             }}
             style={{
@@ -473,7 +541,7 @@ const Students = () => {
               gap: '0.5rem',
             }}
           >
-            <FaFileExcel /> {exporting ? 'İndiriliyor...' : 'Tüm Listeyi Excel Olarak İndir'}
+            <FaFileExcel /> {exporting ? 'İndiriliyor...' : 'Filtrelenen Listeyi Excel İndir'}
           </button>
 
           {selectedIds.length > 0 && (
@@ -543,6 +611,49 @@ const Students = () => {
         </form>
       )}
 
+      {/* Öğrenci Düzenleme Formu */}
+      {editingStudent && (
+        <form
+          onSubmit={handleUpdateStudent}
+          style={{
+            background: '#eef9ff',
+            padding: '1rem',
+            borderRadius: '8px',
+            marginBottom: '1.5rem',
+            border: '1px solid #b6e0fe',
+          }}
+        >
+          <h4>Öğrenci Düzenle ({editingStudent.firstName} {editingStudent.lastName})</h4>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px,1fr))', gap: '0.5rem' }}>
+            <input type="text" placeholder="Ad" value={editingStudent.firstName} onChange={(e) => setEditingStudent({ ...editingStudent, firstName: e.target.value })} style={{ padding: '0.4rem' }} />
+            <input type="text" placeholder="Soyad" value={editingStudent.lastName} onChange={(e) => setEditingStudent({ ...editingStudent, lastName: e.target.value })} style={{ padding: '0.4rem' }} />
+            <input type="text" placeholder="Sınıf" value={editingStudent.grade} onChange={(e) => setEditingStudent({ ...editingStudent, grade: e.target.value })} style={{ padding: '0.4rem' }} />
+            <input type="text" placeholder="Şube" value={editingStudent.class} onChange={(e) => setEditingStudent({ ...editingStudent, class: e.target.value })} style={{ padding: '0.4rem' }} />
+            <input type="text" placeholder="Öğrenci No" value={editingStudent.studentNo} onChange={(e) => setEditingStudent({ ...editingStudent, studentNo: e.target.value })} style={{ padding: '0.4rem' }} />
+            <input type="text" placeholder="Öğrenim Alanı" value={editingStudent.field} onChange={(e) => setEditingStudent({ ...editingStudent, field: e.target.value })} style={{ padding: '0.4rem' }} />
+            <input type="text" placeholder="Cinsiyet" value={editingStudent.gender} onChange={(e) => setEditingStudent({ ...editingStudent, gender: e.target.value })} style={{ padding: '0.4rem' }} />
+            <select value={editingStudent.secondLang} onChange={(e) => setEditingStudent({ ...editingStudent, secondLang: e.target.value })} style={{ padding: '0.4rem' }}>
+              <option value="None">2. Dil Yok</option>
+              <option value="Almanca">Almanca</option>
+              <option value="İspanyolca">İspanyolca</option>
+              <option value="Fransızca">Fransızca</option>
+            </select>
+            <select value={editingStudent.englishLevel} onChange={(e) => setEditingStudent({ ...editingStudent, englishLevel: e.target.value })} style={{ padding: '0.4rem' }}>
+              <option value="Core">Core</option>
+              <option value="Extended">Extended</option>
+            </select>
+          </div>
+          <div style={{ marginTop: '0.5rem' }}>
+            <button type="submit" style={{ padding: '0.4rem 1rem', background: '#007bff', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
+              Güncellemeleri Kaydet
+            </button>
+            <button type="button" onClick={() => setEditingStudent(null)} style={{ padding: '0.4rem 1rem', background: '#6c757d', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', marginLeft: '0.5rem' }}>
+              İptal
+            </button>
+          </div>
+        </form>
+      )}
+
       {/* Öğrenci Listesi Tablosu */}
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', background: 'white', borderRadius: '8px', overflow: 'hidden', boxShadow: '0 0 10px rgba(0,0,0,0.05)' }}>
@@ -561,7 +672,7 @@ const Students = () => {
               <th onClick={() => handleSort('secondLang')}>2.Dil {getSortIcon('secondLang')}</th>
               <th onClick={() => handleSort('gender')}>Cinsiyet {getSortIcon('gender')}</th>
               <th onClick={() => handleSort('englishLevel')}>İng. {getSortIcon('englishLevel')}</th>
-              <th>İşlem</th>
+              <th style={{ textAlign: 'center' }}>İşlemler</th>
             </tr>
           </thead>
           <tbody>
@@ -585,8 +696,11 @@ const Students = () => {
                   <td style={{ padding: '0.5rem' }}>{student.secondLang}</td>
                   <td style={{ padding: '0.5rem' }}>{student.gender}</td>
                   <td style={{ padding: '0.5rem' }}>{student.englishLevel}</td>
-                  <td style={{ padding: '0.5rem', textAlign: 'center' }}>
-                    <button onClick={() => handleDelete(student.id)} style={{ background: 'transparent', border: 'none', color: '#dc3545', cursor: 'pointer' }}>
+                  <td style={{ padding: '0.5rem', textAlign: 'center', display: 'flex', justifyContent: 'center', gap: '0.5rem' }}>
+                    <button onClick={() => setEditingStudent(student)} style={{ background: 'transparent', border: 'none', color: '#007bff', cursor: 'pointer' }} title="Düzenle">
+                      <FaEdit />
+                    </button>
+                    <button onClick={() => handleDelete(student.id)} style={{ background: 'transparent', border: 'none', color: '#dc3545', cursor: 'pointer' }} title="Sil">
                       <FaTrash />
                     </button>
                   </td>
@@ -595,7 +709,7 @@ const Students = () => {
             ) : (
               <tr>
                 <td colSpan="12" style={{ textAlign: 'center', padding: '1rem' }}>
-                  Filtrelere uygun öğrenci bulunamadı.
+                  Filtrelere veya arama kriterine uygun öğrenci bulunamadı.
                 </td>
               </tr>
             )}
