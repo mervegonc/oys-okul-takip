@@ -10,7 +10,7 @@ const ManualEdit = () => {
   const [assignments, setAssignments] = useState([]);
   const [rooms, setRooms] = useState([]);
   const [allStudents, setAllStudents] = useState([]);
-  const [conflictGroups, setConflictGroups] = useState([]); // Çakışma grupları için state
+  const [conflictGroups, setConflictGroups] = useState([]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [editing, setEditing] = useState(false);
@@ -464,7 +464,7 @@ const ManualEdit = () => {
           if (stId !== otherId) {
             const otherAssignment = assignments.find(a => String(a.studentId || a.student_id || a.id).trim() === otherId);
             if (otherAssignment) {
-              const otherName = otherAssignment.studentName || `${otherAssignment.firstName || ''} ${otherAssignment.lastName || ''}`;
+              const otherName = otherAssignment.studentName || otherAssignment.student_name || `${otherAssignment.firstName || otherAssignment.first_name || ''} ${otherAssignment.lastName || otherAssignment.last_name || ''}`.trim() || 'İsimsiz';
               const peerStr = `${otherName} (${otherAssignment.grade}-${otherAssignment.class})`;
               if (!activeConflictStudentsMap[stId].peers.includes(peerStr)) {
                 activeConflictStudentsMap[stId].peers.push(peerStr);
@@ -574,8 +574,8 @@ const ManualEdit = () => {
       {assignments.length > 0 && (
         <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
           
-          {/* SOL KISIM: Salon Özetleri ve Çakışma Tablosu */}
-          <div style={{ width: '320px', display: 'flex', flexDirection: 'column', gap: '1rem', position: 'sticky', top: '1rem' }}>
+          {/* SOL KISIM: Salon Özetleri ve Genişletilmiş Çakışma Tablosu */}
+          <div style={{ width: '380px', display: 'flex', flexDirection: 'column', gap: '1rem', position: 'sticky', top: '1rem' }}>
             
             {/* Salon Özet Tablosu */}
             <div style={{ background: '#fff', padding: '1rem', borderRadius: '8px', border: '1px solid #ddd', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
@@ -611,34 +611,36 @@ const ManualEdit = () => {
             </div>
 
             {/* ÇAKIŞMA LİSTESİ TABLOSU */}
-            <div style={{ background: '#fff', padding: '1rem', borderRadius: '8px', border: '1px solid #ddd', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', maxHeight: '400px', overflowY: 'auto' }}>
+            <div style={{ background: '#fff', padding: '1rem', borderRadius: '8px', border: '1px solid #ddd', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', maxHeight: '480px', overflowY: 'auto' }}>
               <h4 style={{ margin: '0 0 0.8rem 0', borderBottom: '2px solid #dc3545', paddingBottom: '0.4rem', color: '#dc3545', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                 <FaExclamationTriangle /> Çakışmadaki Öğrenciler
               </h4>
               {Object.keys(activeConflictStudentsMap).length === 0 ? (
                 <p style={{ color: '#666', fontSize: '0.85rem', fontStyle: 'italic' }}>Aktif çakışma grubu bulunmuyor.</p>
               ) : (
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
                   <thead>
                     <tr style={{ background: '#f8f9fa', borderBottom: '1px solid #ddd', textAlign: 'left' }}>
-                      <th style={{ padding: '0.3rem' }}>Öğrenci</th>
-                      <th style={{ padding: '0.3rem' }}>Salon & Sıra</th>
+                      <th style={{ padding: '0.4rem' }}>Öğrenci</th>
+                      <th style={{ padding: '0.4rem' }}>Salon & Sıra</th>
                     </tr>
                   </thead>
                   <tbody>
                     {Object.entries(activeConflictStudentsMap).map(([stId, info], idx) => {
                       const assignmentItem = assignments.find(a => String(a.studentId || a.student_id || a.id).trim() === stId);
                       if (!assignmentItem) return null;
-                      const stName = assignmentItem.studentName || `${assignmentItem.firstName || ''} ${assignmentItem.lastName || ''}`;
+                      
+                      const stName = assignmentItem.studentName || assignmentItem.student_name || `${assignmentItem.firstName || assignmentItem.first_name || ''} ${assignmentItem.lastName || assignmentItem.last_name || ''}`.trim() || 'İsimsiz';
                       const roomSeatInfo = studentRoomMap[stId] || 'Atanmadı';
 
                       return (
                         <tr key={idx} style={{ borderBottom: '1px solid #eee' }}>
-                          <td style={{ padding: '0.4rem' }}>
-                            <strong style={{ color: '#333' }}>{stName}</strong><br/>
+                          <td style={{ padding: '0.5rem' }}>
+                            <strong style={{ color: '#2b6cb0', fontSize: '0.9rem' }}>{stName}</strong><br/>
+                            <span style={{ color: '#666', fontSize: '0.75rem' }}>Şube: {assignmentItem.grade}-{assignmentItem.class}</span><br/>
                             <span style={{ color: '#dc3545', fontSize: '0.75rem' }}>Çakıştığı: {info.peers.join(', ')}</span>
                           </td>
-                          <td style={{ padding: '0.4rem', fontWeight: 'bold', color: '#2b6cb0', whiteSpace: 'nowrap' }}>
+                          <td style={{ padding: '0.5rem', fontWeight: 'bold', color: '#2b6cb0', whiteSpace: 'nowrap', verticalAlign: 'top' }}>
                             {roomSeatInfo}
                           </td>
                         </tr>
@@ -722,7 +724,6 @@ const ManualEdit = () => {
                     )}
                   </div>
 
-                  {/* Salonun Altındaki Öğrenci Arama ve Ekleme Alanı */}
                   {isAddingHere && (
                     <div style={{ background: '#e9ecef', padding: '0.8rem', borderRadius: '6px', marginBottom: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                       <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
