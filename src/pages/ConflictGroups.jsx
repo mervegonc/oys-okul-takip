@@ -1,50 +1,38 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabase';
-import { FaPlus, FaTrash, FaUserPlus } from 'react-icons/fa';
+import { FaPlus, FaTrash } from 'react-icons/fa';
 
 const ConflictGroups = () => {
   const [groups, setGroups] = useState([]);
-  const [students, setStudents] = useState([]);
-  const [selectedGrade, setSelectedGrade] = useState('12'); // Varsayılan sınıf seviyesi
+  const [allStudents, setAllStudents] = useState([]); // Tüm öğrenciler
+  const [selectedGrade, setSelectedGrade] = useState('11'); // Seçilen sınıf filtresi
   const [newGroupName, setNewGroupName] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // Tüm öğrencileri veya seçilen sınıf seviyesindeki öğrencileri getir
+  // 1. Tüm öğrencileri ve çakışma gruplarını ilk açılışta getir
   useEffect(() => {
-    const fetchStudents = async () => {
-      try {
-        const { data, error } = await supabase
-          .from('students')
-          .select('*')
-          .eq('grade', selectedGrade);
-        if (error) throw error;
-        setStudents(data || []);
-      } catch (error) {
-        console.error('Öğrenciler alınamadı:', error);
-      }
-    };
-    fetchStudents();
-  }, [selectedGrade]);
+    fetchInitialData();
+  }, []);
 
-  // Genel (Sınav bağımsız) çakışma gruplarını getir
-  const fetchGroups = async () => {
+  const fetchInitialData = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('conflict_groups')
-        .select('*');
-      if (error) throw error;
-      setGroups(data || []);
+      const [studentsRes, groupsRes] = await Promise.all([
+        supabase.from('students').select('*'),
+        supabase.from('conflict_groups').select('*')
+      ]);
+
+      if (studentsRes.error) throw studentsRes.error;
+      if (groupsRes.error) throw groupsRes.error;
+
+      setAllStudents(studentsRes.data || []);
+      setGroups(groupsRes.data || []);
     } catch (error) {
-      console.error('Gruplar alınamadı:', error);
+      console.error('Veriler yüklenirken hata:', error);
     } finally {
       setLoading(false);
     }
   };
-
-  useEffect(() => {
-    fetchGroups();
-  }, []);
 
   // Yeni Genel Grup Ekle
   const handleAddGroup = async () => {
@@ -66,7 +54,7 @@ const ConflictGroups = () => {
       if (error) throw error;
 
       setNewGroupName('');
-      await fetchGroups();
+      await fetchInitialData();
     } catch (error) {
       console.error('Grup eklenirken hata:', error);
       alert('Grup eklenirken hata oluştu: ' + (error.message || 'Bilinmeyen hata'));
@@ -135,19 +123,20 @@ const ConflictGroups = () => {
     }
   };
 
-  // Seçilen sınıf seviyesine göre grupları filtreleme mantığı
-  // (Grupta hiç öğrenci yoksa veya içinde seçili sınıftan en az bir öğrenci varsa gösterilir)
+  // Seçilen sınıf seviyesine göre grupları ve öğrencileri filtrele
   const filteredGroups = groups.filter(group => {
     const currentIds = group.student_ids || [];
-    if (currentIds.length === 0) return true; // Boş gruplar her filtrede görünebilir
+    if (currentIds.length === 0) return true; // Boş gruplar her zaman görünebilir
     
-    // Gruptaki öğrencilerden herhangi biri seçilen sınıf seviyesinde mi?
+    // Gruptaki öğrencilerden en az biri seçilen sınıf seviyesindeyse grubu göster
     return currentIds.some(id => {
-      // Bu öğrenci şu an bellekteki 'students' listemizde veya genel veritabanında bu sınıfta mı kontrol edebiliriz
-      // Daha kesin olması için öğrenci ID'sinin seçilen sınıftakilerle eşleşip eşleşmediğine bakıyoruz
-      return students.some(s => String(s.id) === String(id));
+      const student = allStudents.find(s => String(s.id) === String(id));
+      return student && String(student.grade) === String(selectedGrade);
     });
   });
+
+  // Seçilen sınıftaki öğrenciler (Dropdown için)
+  const studentsOfSelectedGrade = allStudents.filter(s => String(s.grade) === String(selectedGrade));
 
   return (
     <div style={{ padding: '1rem', maxWidth: '1200px', margin: '0 auto' }}>
@@ -159,7 +148,7 @@ const ConflictGroups = () => {
 
       {/* Sınıf Filtresi */}
       <div style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
-        <label style={{ fontWeight: 'bold' }}>Sınıf Seviyesi Filtresi:</label>
+        <label style={{ fontWeight: 'bold' }}>Öğrenci Listesi Sınıf Filtresi:</label>
         <select
           value={selectedGrade}
           onChange={(e) => setSelectedGrade(e.target.value)}
@@ -205,9 +194,14 @@ const ConflictGroups = () => {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1rem' }}>
           {filteredGroups.map((group) => {
             const currentIds = group.student_ids || [];
-            // Tüm öğrencilerden bu grupta olanları süz
-            const groupStudents = students.filter(s => currentIds.map(String).includes(String(s.id)));
-            const availableStudents = students.filter(s => !currentIds.map(String).includes(String(s.id)));
+            
+            // Sadece bu gruba eklenmiş ve seçilen sınıfta olan öğrencileri filtrele
+            const groupStudents = allStudents.filter(s => 
+              currentIds.map(String).includes(String(s.id)) && String(s.grade) === String(selectedGrade)
+            );
+
+            // Bu sınıfta olup henüz bu grupta olmayan öğrenciler
+            const availableStudents = studentsOfSelectedGrade.filter(s => !currentIds.map(String).includes(String(s.id)));
 
             return (
               <div
@@ -252,6 +246,7 @@ const ConflictGroups = () => {
                               background: 'transparent',
                               border: 'none',
                               color: '#dc3545',
+                              cursor: 'pointer'
                             }}
                           >
                             <FaTrash size={12} />
