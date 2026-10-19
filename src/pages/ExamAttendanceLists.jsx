@@ -15,6 +15,10 @@ const ExamAttendanceLists = () => {
   const [showRoomCode, setShowRoomCode] = useState(true);
   const [examCategory, setExamCategory] = useState('akademik_lise');
   
+  // Dinamik Sütun Göster/Gizle State'leri
+  const [showCopyColumn, setShowCopyColumn] = useState(true);
+  const [showPhoneColumn, setShowPhoneColumn] = useState(true);
+
   const [invigilators, setInvigilators] = useState({});
   const [savedInvigilatorsList, setSavedInvigilatorsList] = useState([]);
 
@@ -552,6 +556,8 @@ const ExamAttendanceLists = () => {
         };
         if (isTcLoaded) item['TC Kimlik No'] = getStudentTc(st, det);
         item['Öğrenci Adı Soyadı'] = det.fullName;
+        if (showCopyColumn) item['Kopya'] = '';
+        if (showPhoneColumn) item['Telefon / Cihaz'] = '';
         item['Sınıf/Şube'] = `${det.grade}-${det.className}`;
         return item;
       });
@@ -806,6 +812,25 @@ const ExamAttendanceLists = () => {
                 {loadedFileName && <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Dosya: {loadedFileName}</span>}
               </div>
 
+              {/* DİNAMİK SÜTUN GÖSTER / GİZLE BUTONLARI */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                <label style={{ fontWeight: 'bold', fontSize: '0.85rem', color: '#1e293b' }}>Özel Sütun Ayarları:</label>
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  <button
+                    onClick={() => setShowCopyColumn(!showCopyColumn)}
+                    style={{ padding: '0.35rem 0.7rem', background: showCopyColumn ? '#0284c7' : '#94a3b8', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold' }}
+                  >
+                    {showCopyColumn ? '✓ Kopya Sütunu (Açık)' : '✕ Kopya Sütunu (Kapalı)'}
+                  </button>
+                  <button
+                    onClick={() => setShowPhoneColumn(!showPhoneColumn)}
+                    style={{ padding: '0.35rem 0.7rem', background: showPhoneColumn ? '#0284c7' : '#94a3b8', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold' }}
+                  >
+                    {showPhoneColumn ? '✓ Telefon/Cihaz (Açık)' : '✕ Telefon/Cihaz (Kapalı)'}
+                  </button>
+                </div>
+              </div>
+
               <div style={{ display: 'flex', alignItems: 'center', marginTop: '1.2rem', gap: '1.2rem' }}>
                 <label style={{ fontSize: '0.9rem', cursor: 'pointer', fontWeight: 'bold', color: '#16a34a' }}>
                   <input type="checkbox" checked={showRoomCode} onChange={(e) => setShowRoomCode(e.target.checked)} style={{ marginRight: '0.5rem' }} />
@@ -1007,30 +1032,38 @@ const ExamAttendanceLists = () => {
                       <thead>
                         <tr style={{ background: '#eee' }}>
                           <th style={{ width: '5%', textAlign: 'center' }}>SIRA</th>
-                          <th style={{ width: '11%', textAlign: 'center' }}>ÖĞR. NO</th>
+                          <th style={{ width: '10%', textAlign: 'center' }}>ÖĞR. NO</th>
                           {isTcLoaded && (
-                            <th style={{ width: '14%', textAlign: 'center' }}>TC KİMLİK NO</th>
+                            <th style={{ width: '13%', textAlign: 'center' }}>TC KİMLİK NO</th>
                           )}
                           <th>ÖĞRENCİ ADI SOYADI</th>
-                          <th style={{ width: '11%', textAlign: 'center' }}>SINIF / ŞUBE</th>
+                          
+                          {showCopyColumn && (
+                            <th style={{ width: '7%', textAlign: 'center', fontSize: '8pt' }}>KOPYA</th>
+                          )}
+                          {showPhoneComponent => showPhoneColumn && (
+                            <th style={{ width: '8%', textAlign: 'center', fontSize: '8pt' }}>TELEFON/ CİHAZ</th>
+                          )}
+
+                          <th style={{ width: '10%', textAlign: 'center' }}>ŞUBE</th>
                           
                           {examCategory === 'akademik_lise' && (
-                            <th style={{ width: '11%', textAlign: 'center' }}>ALAN</th>
+                            <th style={{ width: '9%', textAlign: 'center' }}>ALAN</th>
                           )}
                           {examCategory === 'sadece_ingilizce' && (
-                            <th style={{ width: '13%', textAlign: 'center' }}>İNG. SEVİYE</th>
+                            <th style={{ width: '11%', textAlign: 'center' }}>İNG. SEVİYE</th>
                           )}
                           {examCategory === 'sadece_ikinci_dil' && (
-                            <th style={{ width: '13%', textAlign: 'center' }}>2. YAB. DİL</th>
+                            <th style={{ width: '11%', textAlign: 'center' }}>2. YAB. DİL</th>
                           )}
                           {examCategory === 'ingilizce_ve_ikinci_dil' && (
                             <>
-                              <th style={{ width: '11%', textAlign: 'center' }}>İNG. SEVİYE</th>
-                              <th style={{ width: '11%', textAlign: 'center' }}>2. YAB. DİL</th>
+                              <th style={{ width: '9%', textAlign: 'center' }}>İNG. SEVİYE</th>
+                              <th style={{ width: '9%', textAlign: 'center' }}>2. YAB. DİL</th>
                             </>
                           )}
 
-                          <th style={{ width: '15%', textAlign: 'center' }}>YOKLAMA +/-</th>
+                          <th style={{ width: '12%', textAlign: 'center' }}>YOKLAMA +/-</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1049,6 +1082,14 @@ const ExamAttendanceLists = () => {
                                 <td style={{ textAlign: 'center', fontFamily: 'monospace', fontSize: '8.5pt' }}>{studentTc || '-'}</td>
                               )}
                               <td style={{ fontWeight: '500' }}>{det.fullName}</td>
+
+                              {showCopyColumn && (
+                                <td style={{ textAlign: 'center', color: '#aaa', fontSize: '8pt' }}>[ &nbsp; ]</td>
+                              )}
+                              {showPhoneColumn && (
+                                <td style={{ textAlign: 'center', color: '#aaa', fontSize: '8pt' }}>[ &nbsp; ]</td>
+                              )}
+
                               <td style={{ textAlign: 'center' }}>{det.grade}-{det.className}</td>
 
                               {examCategory === 'akademik_lise' && (
@@ -1075,7 +1116,7 @@ const ExamAttendanceLists = () => {
                                 </>
                               )}
 
-                              <td style={{ textAlign: 'center', color: '#999' }}>[ &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; ]</td>
+                              <td style={{ textAlign: 'center', color: '#999' }}>[ &nbsp; &nbsp; &nbsp; &nbsp; ]</td>
                             </tr>
                           );
                         })}
