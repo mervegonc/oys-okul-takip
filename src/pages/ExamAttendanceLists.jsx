@@ -924,6 +924,8 @@ const ExamAttendanceLists = () => {
 
                 let totalCore = 0;
                 let totalExt = 0;
+                let roomEaCount = 0;
+                let roomSayCount = 0;
                 let langTotals = {};
                 const engLevelsInRoom = new Set();
                 const langsInRoom = new Set();
@@ -934,6 +936,11 @@ const ExamAttendanceLists = () => {
                   if (engLevelUpper.includes('CORE')) totalCore++;
                   if (engLevelUpper.includes('EXT')) totalExt++;
                   if (engLevelUpper && engLevelUpper !== '-') engLevelsInRoom.add(engLevelUpper);
+
+                  if (examCategory === 'akademik_lise') {
+                    if (det.track === 'EA') roomEaCount++;
+                    if (det.track === 'SAY') roomSayCount++;
+                  }
 
                   const sLang = String(det.secondLanguage || '').trim().toLocaleUpperCase('tr-TR');
                   if (sLang && sLang !== '-' && sLang !== 'YOK' && sLang !== 'BOŞ') {
@@ -1093,6 +1100,18 @@ const ExamAttendanceLists = () => {
                             {Object.entries(langTotals).map(([langName, count]) => (
                               <span key={langName}>{langName} = {count}</span>
                             ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* SALONDA HEM EA HEM SAY VARSA GÖSTER, TEK ÇEŞİTSE GÖSTERME */}
+                      {examCategory === 'akademik_lise' && roomEaCount > 0 && roomSayCount > 0 && (
+                        <div style={{ display: 'flex', gap: '0.5rem', fontSize: '8pt', fontWeight: 'bold' }}>
+                          <div style={{ border: '1px solid #333', padding: '0.2rem 0.5rem', borderRadius: '4px', background: '#f8fafc' }}>
+                            EA = {roomEaCount}
+                          </div>
+                          <div style={{ border: '1px solid #333', padding: '0.2rem 0.5rem', borderRadius: '4px', background: '#f8fafc' }}>
+                            SAY = {roomSayCount}
                           </div>
                         </div>
                       )}
