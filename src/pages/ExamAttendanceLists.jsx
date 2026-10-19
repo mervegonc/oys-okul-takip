@@ -27,7 +27,7 @@ const ExamAttendanceLists = () => {
   const [isTcLoaded, setIsTcLoaded] = useState(false);
   const [loadedFileName, setLoadedFileName] = useState('');
 
-  // Çakışma Analizi / Tespiti (Aynı öğrencinin başka bir salon/sınavda aynı anda bulunma durumu)
+  // Çakışma Analizi / Tespiti (ConflictGroups mantığıyla tam uyumlu)
   const [conflictStudentIds, setConflictStudentIds] = useState(new Set());
 
   useEffect(() => {
@@ -46,31 +46,32 @@ const ExamAttendanceLists = () => {
     }
   }, [selectedExam]);
 
-  // Sınav seçildiğinde veya oturum planı yüklendiğinde çakışan öğrencileri hesapla
+  // Sınav, oturum planı veya öğrenci haritası değiştiğinde sınıf seviyesine göre çakışmaları hesapla
   useEffect(() => {
-    if (selectedExam && seatingPlan && seatingPlan.assignments) {
-      detectConflicts();
+    if (selectedExam && seatingPlan && seatingPlan.assignments && Object.keys(studentMap).length > 0) {
+      detectConflictsWithGradeFilter();
     }
-  }, [selectedExam, seatingPlan]);
+  }, [selectedExam, seatingPlan, studentMap]);
 
-  const detectConflicts = async () => {
+  const detectConflictsWithGradeFilter = async () => {
     try {
-      // Bu sınavın tarih ve saatinde başka hangi sınavlar var kontrol et
-      const { data: allExams } = await supabase.from('exams').select('id, date, time');
+      const { data: allExams } = await supabase.from('exams').select('id, date, time, grade, sinif');
       if (!allExams) return;
 
       const currentExamDate = selectedExam.date;
       const currentExamTime = selectedExam.time;
 
-      // Aynı gün ve saatteki diğer sınavların ID'lerini bul
-      const simultaneousExamIds = allExams
-        .filter(e => e.date === currentExamDate && e.time === currentExamTime && e.id !== selectedExam.id)
-        .map(e => e.id);
+      // Aynı gün ve saatteki diğer sınavları bul
+      const simultaneousExams = allExams.filter(
+        e => e.date === currentExamDate && e.time === currentExamTime && e.id !== selectedExam.id
+      );
 
-      if (simultaneousExamIds.length === 0) {
+      if (simultaneousExams.length === 0) {
         setConflictStudentIds(new Set());
         return;
       }
+
+      const simultaneousExamIds = simultaneousExams.map(e => e.id);
 
       // Bu eş zamanlı sınavların oturum planlarını çek
       const { data: otherPlans } = await supabase
@@ -80,19 +81,40 @@ const ExamAttendanceLists = () => {
 
       if (!otherPlans) return;
 
-      const studentAssignedExamsCount = {};
+      // Hedef sınıf seviyesi filtresi (ConflictGroups mantığı)
+      const targetGradeStr = String(selectedExam?.grade || selectedExam?.sinif || '').replace(/\D/g, '');
 
-      // Mevcut sınavın öğrencilerini say
-      const currentAssignments = Array.isArray(seatingPlan.assignments) ? seatingPlan.assignments : [];
-      currentAssignments.forEach(st => {
-        const key = String(st.studentId || st.student_id || st.id || st.tc || st.no || '').trim();
-        if (key) {
-          studentAssignedExamsCount[key] = (studentAssignedExamsCount[key] || 0) + 1;
+      // Öğrencinin bu sınavda filtreden geçip geçmediğini veya başka bir sınavda olup olmadığını takip et
+      const studentExamOccurrences = {};
+
+      // 1. Önce mevcut sınavın geçerli (sınıf filtresine uyan) öğrencilerini topla
+      const rawAssignments = seatingPlan?.assignments || [];
+      rawAssignments.forEach(st => {
+        const rawId = String(st.studentId || st.student_id || st.id || '').trim();
+        const rawTc = String(st.tc || st.tc_no || st.tcNo || '').trim();
+        const rawNo = String(st.no || st.student_no || st.studentNo || st.school_number || '').trim();
+        
+        const dbSt = studentMap[rawId] || studentMap[rawTc] || studentMap[rawNo];
+        if (!dbSt) return;
+
+        if (targetGradeStr) {
+          const studentGrade = String(dbSt.grade || st.grade || st.sinif || '').replace(/\D/g, '');
+          if (studentGrade && studentGrade !== targetGradeStr) {
+            return; // Sınıf seviyesi uyuşmuyorsa bu sınavda listelenmiyor sayılır
+          }
+        }
+
+        const uniqueKey = rawId || rawTc || rawNo || detKey(st);
+        if (uniqueKey) {
+          studentExamOccurrences[uniqueKey] = (studentExamOccurrences[uniqueKey] || 0) + 1;
         }
       });
 
-      // Diğer eş zamanlı sınavların öğrencilerini ekle
+      // 2. Diğer eş zamanlı sınavların öğrencilerini de ekle
       otherPlans.forEach(plan => {
+        const otherExam = simultaneousExams.find(e => e.id === plan.exam_id);
+        const otherTargetGrade = String(otherExam?.grade || otherExam?.sinif || '').replace(/\D/g, '');
+
         let arr = [];
         try {
           arr = typeof plan.assignments === 'string' ? JSON.parse(plan.assignments) : plan.assignments;
@@ -100,17 +122,31 @@ const ExamAttendanceLists = () => {
 
         if (Array.isArray(arr)) {
           arr.forEach(st => {
-            const key = String(st.studentId || st.student_id || st.id || st.tc || st.no || '').trim();
-            if (key) {
-              studentAssignedExamsCount[key] = (studentAssignedExamsCount[key] || 0) + 1;
+            const rawId = String(st.studentId || st.student_id || st.id || '').trim();
+            const rawTc = String(st.tc || st.tc_no || st.tcNo || '').trim();
+            const rawNo = String(st.no || st.student_no || st.studentNo || st.school_number || '').trim();
+            
+            const dbSt = studentMap[rawId] || studentMap[rawTc] || studentMap[rawNo];
+            if (!dbSt) return;
+
+            if (otherTargetGrade) {
+              const studentGrade = String(dbSt.grade || st.grade || st.sinif || '').replace(/\D/g, '');
+              if (studentGrade && studentGrade !== otherTargetGrade) {
+                return;
+              }
+            }
+
+            const uniqueKey = rawId || rawTc || rawNo;
+            if (uniqueKey) {
+              studentExamOccurrences[uniqueKey] = (studentExamOccurrences[uniqueKey] || 0) + 1;
             }
           });
         }
       });
 
-      // 1'den fazla sınavda görünenler çakışmalıdır
+      // 1'den fazla sınavda yer alanlar çakışma grubundadır
       const conflicts = new Set();
-      Object.entries(studentAssignedExamsCount).forEach(([key, count]) => {
+      Object.entries(studentExamOccurrences).forEach(([key, count]) => {
         if (count > 1) {
           conflicts.add(key);
         }
@@ -120,6 +156,10 @@ const ExamAttendanceLists = () => {
     } catch (err) {
       console.warn('Çakışma tespiti yapılırken hata:', err);
     }
+  };
+
+  const detKey = (st) => {
+    return String(st.studentId || st.student_id || st.id || st.tc || st.tc_no || st.no || '').trim();
   };
 
   const isStudentInConflict = (st) => {
