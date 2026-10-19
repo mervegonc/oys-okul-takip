@@ -135,6 +135,20 @@ const ConflictGroups = () => {
     }
   };
 
+  // Seçilen sınıf seviyesine göre grupları filtreleme mantığı
+  // (Grupta hiç öğrenci yoksa veya içinde seçili sınıftan en az bir öğrenci varsa gösterilir)
+  const filteredGroups = groups.filter(group => {
+    const currentIds = group.student_ids || [];
+    if (currentIds.length === 0) return true; // Boş gruplar her filtrede görünebilir
+    
+    // Gruptaki öğrencilerden herhangi biri seçilen sınıf seviyesinde mi?
+    return currentIds.some(id => {
+      // Bu öğrenci şu an bellekteki 'students' listemizde veya genel veritabanında bu sınıfta mı kontrol edebiliriz
+      // Daha kesin olması için öğrenci ID'sinin seçilen sınıftakilerle eşleşip eşleşmediğine bakıyoruz
+      return students.some(s => String(s.id) === String(id));
+    });
+  });
+
   return (
     <div style={{ padding: '1rem', maxWidth: '1200px', margin: '0 auto' }}>
       <h2>🚫 Ortak Çakışma Grupları</h2>
@@ -143,9 +157,9 @@ const ConflictGroups = () => {
         ortak olarak geçerli olur. Her sınav için tekrar grup oluşturmanız gerekmez.
       </p>
 
-      {/* Sınıf Filtresi (Öğrenci eklemeyi kolaylaştırmak için) */}
+      {/* Sınıf Filtresi */}
       <div style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
-        <label style={{ fontWeight: 'bold' }}>Öğrenci Listesi Sınıf Filtresi:</label>
+        <label style={{ fontWeight: 'bold' }}>Sınıf Seviyesi Filtresi:</label>
         <select
           value={selectedGrade}
           onChange={(e) => setSelectedGrade(e.target.value)}
@@ -189,7 +203,7 @@ const ConflictGroups = () => {
         <p>Yükleniyor...</p>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1rem' }}>
-          {groups.map((group) => {
+          {filteredGroups.map((group) => {
             const currentIds = group.student_ids || [];
             // Tüm öğrencilerden bu grupta olanları süz
             const groupStudents = students.filter(s => currentIds.map(String).includes(String(s.id)));
@@ -226,7 +240,7 @@ const ConflictGroups = () => {
                 <div style={{ marginBottom: '0.8rem' }}>
                   <strong style={{ fontSize: '0.85rem', color: '#555' }}>Gruptaki Öğrenciler ({groupStudents.length}):</strong>
                   {groupStudents.length === 0 ? (
-                    <div style={{ color: '#888', fontSize: '0.85rem', marginTop: '0.2rem' }}>Henüz öğrenci eklenmemiş</div>
+                    <div style={{ color: '#888', fontSize: '0.85rem', marginTop: '0.2rem' }}>Bu sınıftan grupta öğrenci yok</div>
                   ) : (
                     <ul style={{ paddingLeft: '1.2rem', margin: '0.3rem 0', maxHeight: '150px', overflowY: 'auto' }}>
                       {groupStudents.map(s => (
@@ -270,8 +284,8 @@ const ConflictGroups = () => {
               </div>
             );
           })}
-          {groups.length === 0 && (
-            <p style={{ color: '#666' }}>Henüz ortak çakışma grubu oluşturulmamış.</p>
+          {filteredGroups.length === 0 && (
+            <p style={{ color: '#666' }}>Seçilen sınıfa ait çakışma grubu bulunamadı.</p>
           )}
         </div>
       )}
