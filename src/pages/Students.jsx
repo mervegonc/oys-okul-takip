@@ -10,14 +10,15 @@ const Students = () => {
   const [loading, setLoading] = useState(true);
   const [selectedIds, setSelectedIds] = useState([]);
   const [showForm, setShowForm] = useState(false);
-  const [editingStudent, setEditingStudent] = useState(null); // Düzenlenen öğrenci state'i
-  const [searchQuery, setSearchQuery] = useState(''); // Arama metni state'i
+  const [editingStudent, setEditingStudent] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const [currentPage, setCurrentPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
   const [pageSize] = useState(20);
   const [classStats, setClassStats] = useState({});
   const [exporting, setExporting] = useState(false);
+  const [allClassesList, setAllClassesList] = useState([]); // Tüm şube listesi için state
 
   // Filtreleme State'leri
   const [selectedGradeFilter, setSelectedGradeFilter] = useState('ALL');
@@ -38,8 +39,8 @@ const Students = () => {
     englishLevel: 'Core',
   });
 
-  // İstatistikleri getir
-  const fetchStats = async () => {
+  // İstatistikleri ve Şubeleri getir
+  const fetchStatsAndClasses = async () => {
     try {
       const { data, error } = await supabase.rpc('get_class_stats');
       if (error) throw error;
@@ -57,12 +58,16 @@ const Students = () => {
       });
 
       setClassStats(stats);
+
+      // Sistemdeki tüm benzersiz şubeleri ve sınıf-şube ilişkilerini çekmek için
+      const { data: studentRows } = await supabase.from('students').select('grade, class');
+      setAllClassesList(studentRows || []);
     } catch (error) {
       console.error('İstatistikler alınamadı:', error);
     }
   };
 
-  // Öğrencileri getir (Seviye, Şube Filtreleri, Arama ve Sayfalama ile)
+  // Öğrencileri getir
   const fetchStudents = async (page = 1) => {
     setLoading(true);
     try {
@@ -79,7 +84,6 @@ const Students = () => {
         dataQuery = dataQuery.eq('class', selectedClassFilter);
       }
 
-      // Arama filtresi (Ad, Soyad veya Öğrenci No içeriyorsa)
       if (searchQuery.trim() !== '') {
         const queryText = searchQuery.trim();
         countQuery = countQuery.or(`first_name.ilike.%${queryText}%,last_name.ilike.%${queryText}%,student_no.ilike.%${queryText}%`);
@@ -135,7 +139,6 @@ const Students = () => {
     }
   };
 
-  // Tüm listeyi (sayfalamasız, filtrelere ve aramaya uygun) Excel olarak indir
   const handleExportAllToExcel = async () => {
     try {
       setExporting(true);
@@ -183,8 +186,18 @@ const Students = () => {
 
   useEffect(() => {
     fetchStudents(currentPage);
-    fetchStats();
+    fetchStatsAndClasses();
   }, [currentPage, selectedGradeFilter, selectedClassFilter, sortConfig, searchQuery]);
+
+  // Seçilen sınıf seviyesine göre şubeleri dinamik filtreleme
+  const availableClassesForDropdown = useMemo(() => {
+    let filtered = allClassesList;
+    if (selectedGradeFilter !== 'ALL') {
+      filtered = allClassesList.filter(item => String(item.grade) === String(selectedGradeFilter));
+    }
+    const uniqueClasses = Array.from(new Set(filtered.map(item => item.class).filter(Boolean)));
+    return uniqueClasses.sort((a, b) => a.localeCompare(b, 'tr'));
+  }, [allClassesList, selectedGradeFilter]);
 
   const handleSort = (key) => {
     let direction = 'asc';
@@ -239,7 +252,7 @@ const Students = () => {
       });
 
       setShowForm(false);
-      fetchStats();
+      fetchStatsAndClasses();
       fetchStudents(currentPage);
       alert('Öğrenci başarıyla eklendi.');
     } catch (error) {
@@ -248,7 +261,6 @@ const Students = () => {
     }
   };
 
-  // Öğrenci Güncelleme Kaydetme
   const handleUpdateStudent = async (e) => {
     e.preventDefault();
     if (!editingStudent.firstName || !editingStudent.lastName || !editingStudent.grade) {
@@ -276,7 +288,7 @@ const Students = () => {
       if (error) throw error;
 
       setEditingStudent(null);
-      fetchStats();
+      fetchStatsAndClasses();
       fetchStudents(currentPage);
       alert('Öğrenci bilgileri başarıyla güncellendi.');
     } catch (error) {
@@ -290,7 +302,7 @@ const Students = () => {
     try {
       const { error } = await supabase.from('students').delete().eq('id', id);
       if (error) throw error;
-      fetchStats();
+      fetchStatsAndClasses();
       fetchStudents(currentPage);
     } catch (error) {
       console.error('Silme hatası:', error);
@@ -314,7 +326,7 @@ const Students = () => {
         alert(`${errors.length} öğrenci silinirken hata oluştu.`);
       } else {
         setSelectedIds([]);
-        fetchStats();
+        fetchStatsAndClasses();
         fetchStudents(currentPage);
         alert(`${validIds.length} öğrenci başarıyla silindi.`);
       }
@@ -384,7 +396,9 @@ const Students = () => {
               border: selectedGradeFilter === grade ? '2px solid #007bff' : '1px solid #eee',
             }}
             onClick={() => {
-              setSelectedGradeFilter(selectedGradeFilter === grade ? 'ALL' : grade);
+              const newGrade = selectedGradeFilter === grade ? 'ALL' : grade;
+              setSelectedGradeFilter(newGrade);
+              setSelectedClassFilter('ALL'); // Sınıf değiştiğinde şube filtresini sıfırla
               setCurrentPage(1);
             }}
           >
@@ -421,6 +435,7 @@ const Students = () => {
             value={selectedGradeFilter}
             onChange={(e) => {
               setSelectedGradeFilter(e.target.value);
+              setSelectedClassFilter('ALL'); // Sınıf değiştiğinde şube filtresini sıfırla
               setCurrentPage(1);
             }}
             style={{ padding: '0.4rem', borderRadius: '4px', border: '1px solid #ccc' }}
@@ -445,7 +460,7 @@ const Students = () => {
             style={{ padding: '0.4rem', borderRadius: '4px', border: '1px solid #ccc' }}
           >
             <option value="ALL">Tüm Şubeler</option>
-            {['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'Y.K.', 'M'].map((c) => (
+            {availableClassesForDropdown.map((c) => (
               <option key={c} value={c}>
                 {c} Şubesi
               </option>
@@ -494,7 +509,7 @@ const Students = () => {
       <ExcelUpload
         onUploadComplete={() => {
           fetchStudents(currentPage);
-          fetchStats();
+          fetchStatsAndClasses();
         }}
       />
 
