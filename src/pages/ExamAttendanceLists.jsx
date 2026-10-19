@@ -1041,7 +1041,7 @@ const ExamAttendanceLists = () => {
                           {showCopyColumn && (
                             <th style={{ width: '7%', textAlign: 'center', fontSize: '8pt' }}>KOPYA</th>
                           )}
-                          {showPhoneComponent => showPhoneColumn && (
+                          {showPhoneColumn && (
                             <th style={{ width: '8%', textAlign: 'center', fontSize: '8pt' }}>TELEFON/ CİHAZ</th>
                           )}
 
