@@ -952,6 +952,7 @@ const ExamAttendanceLists = () => {
                 let roomEaCount = 0;
                 let roomSayCount = 0;
                 let langTotals = {};
+                let roomClassTotals = {}; // Şube dağılımlarını saklamak için
                 const engLevelsInRoom = new Set();
                 const langsInRoom = new Set();
 
@@ -967,6 +968,10 @@ const ExamAttendanceLists = () => {
                     if (det.track === 'SAY') roomSayCount++;
                   }
 
+                  // Şube Dağılımı Sayacı
+                  const fullClass = det.grade && det.className ? `${det.grade}-${det.className}` : (det.className || 'Diğer');
+                  roomClassTotals[fullClass] = (roomClassTotals[fullClass] || 0) + 1;
+
                   const sLang = String(det.secondLanguage || '').trim().toLocaleUpperCase('tr-TR');
                   if (sLang && sLang !== '-' && sLang !== 'YOK' && sLang !== 'BOŞ') {
                     langTotals[sLang] = (langTotals[sLang] || 0) + 1;
@@ -976,6 +981,7 @@ const ExamAttendanceLists = () => {
 
                 const sortedEngLevels = Array.from(engLevelsInRoom).sort();
                 const sortedLangs = Array.from(langsInRoom).sort();
+                const sortedClassNames = Object.keys(roomClassTotals).sort();
 
                 const getStyleAndClassForValue = (val, list) => {
                   const upperVal = String(val || '').trim().toLocaleUpperCase('tr-TR');
@@ -1145,17 +1151,28 @@ const ExamAttendanceLists = () => {
                         </div>
                       )}
 
-                      {/* SALONDA HEM EA HEM SAY VARSA GÖSTER, TEK ÇEŞİTSE GÖSTERME */}
-                      {examCategory === 'akademik_lise' && roomEaCount > 0 && roomSayCount > 0 && (
-                        <div style={{ display: 'flex', gap: '0.5rem', fontSize: '8pt', fontWeight: 'bold' }}>
-                          <div style={{ border: '1px solid #333', padding: '0.2rem 0.5rem', borderRadius: '4px', background: '#f8fafc' }}>
-                            EA = {roomEaCount}
+                      {/* ÖZET KUTUCUKLARI (EA, SAY VE YANINA ŞUBE BAZLI DAĞILIMLAR) */}
+                      <div style={{ display: 'flex', gap: '0.4rem', fontSize: '8pt', fontWeight: 'bold', flexWrap: 'wrap', alignItems: 'center' }}>
+                        {/* ALAN BİLGİLERİ (Salonda Hem EA hem SAY Varsa) */}
+                        {examCategory === 'akademik_lise' && roomEaCount > 0 && roomSayCount > 0 && (
+                          <>
+                            <div style={{ border: '1px solid #333', padding: '0.2rem 0.5rem', borderRadius: '4px', background: '#f8fafc' }}>
+                              EA = {roomEaCount}
+                            </div>
+                            <div style={{ border: '1px solid #333', padding: '0.2rem 0.5rem', borderRadius: '4px', background: '#f8fafc' }}>
+                              SAY = {roomSayCount}
+                            </div>
+                            <span style={{ color: '#888', fontWeight: 'normal' }}>|</span>
+                          </>
+                        )}
+
+                        {/* YANINA YATAYDA ŞUBE DAĞILIMLARI */}
+                        {sortedClassNames.map(clsName => (
+                          <div key={clsName} style={{ border: '1px solid #64748b', padding: '0.2rem 0.5rem', borderRadius: '4px', background: '#f1f5f9' }}>
+                            {clsName} = {roomClassTotals[clsName]}
                           </div>
-                          <div style={{ border: '1px solid #333', padding: '0.2rem 0.5rem', borderRadius: '4px', background: '#f8fafc' }}>
-                            SAY = {roomSayCount}
-                          </div>
-                        </div>
-                      )}
+                        ))}
+                      </div>
 
                       <div style={{ border: '1px solid #000', padding: '0.4rem 0.5rem', fontSize: '8.5pt', borderRadius: '4px', background: '#fafafa', display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.1rem' }}>
