@@ -27,9 +27,12 @@ const ExamAttendanceLists = () => {
   const [isTcLoaded, setIsTcLoaded] = useState(false);
   const [loadedFileName, setLoadedFileName] = useState('');
 
-  // 🎯 VERİTABANINDAKİ ÇAKIŞMA GRUPLARINDAN GELEN ÖĞRENCİLER
+  // Çakışma Grupları Verileri
   const [conflictStudentIds, setConflictStudentIds] = useState(new Set());
   const [conflictingStudentsDetails, setConflictingStudentsDetails] = useState([]);
+
+  // ✏️ SALON YOKLAMA LİSTESİ DÜZENLENEBİLİR ÖZEL BAŞLIK STATE'İ (Salon adı bazlı)
+  const [customHeaderTitles, setCustomHeaderTitles] = useState({});
 
   useEffect(() => {
     fetchExams();
@@ -41,20 +44,17 @@ const ExamAttendanceLists = () => {
     if (selectedExam) {
       fetchExamInvigilators(selectedExam.id);
       fetchSavedInvigilators();
-      fetchConflictGroupsData(); // Sınav seçildiğinde çakışma gruplarını çek
+      fetchConflictGroupsData();
       setTempTcMap({});
       setIsTcLoaded(false);
       setLoadedFileName('');
+      setCustomHeaderTitles({}); // Sınav değiştiğinde başlıkları sıfırla
     }
   }, [selectedExam]);
 
-  // Çakışma Grupları Tablosundan Öğrencileri Çekme Fonksiyonu
   const fetchConflictGroupsData = async () => {
     try {
-      // Çakışma gruplarını veritabanından çek (tablo adı projenize göre conflict_groups veya similar olabilir)
       let { data: groups, error } = await supabase.from('conflict_groups').select('*');
-      
-      // Eğer tablo adı farklıysa alternatif tablo isimlerini dene
       if (error) {
         const altRes = await supabase.from('student_conflict_groups').select('*');
         groups = altRes.data;
@@ -83,8 +83,6 @@ const ExamAttendanceLists = () => {
           const rawId = String(st.id || st.studentId || st.student_id || st.tc || st.no || st).trim();
           if (rawId) {
             conflictIds.add(rawId);
-
-            // Detay bilgisi çıkar
             const dbSt = studentMap[rawId] || {};
             const fullName = st.name || st.fullName || `${dbSt.first_name || ''} ${dbSt.last_name || ''}`.trim() || 'İsimsiz Öğrenci';
             const studentNo = dbSt.student_no || st.no || st.studentNo || '-';
@@ -114,7 +112,6 @@ const ExamAttendanceLists = () => {
     const rawNo = String(st.no || st.student_no || st.studentNo || st.school_number || '').trim();
     const fullName = getStudentDetails(st).fullName.trim().toLocaleUpperCase('tr-TR');
 
-    // ID, TC, Numara veya Tam İsim ile çakışma grubunda var mı kontrol et
     return conflictStudentIds.has(rawId) || 
            conflictStudentIds.has(rawTc) || 
            conflictStudentIds.has(rawNo) ||
@@ -534,7 +531,7 @@ const ExamAttendanceLists = () => {
     return `${sortedGrades.join(' ve ')}. Sınıf`;
   };
 
-  const getHeaderTitle = (roomDisplayStr, gradeSummary) => {
+  const getDefaultHeaderTitle = (roomDisplayStr, gradeSummary) => {
     if (examCategory === 'akademik_ortaokul_sozel') {
       return `${selectedExam.title} - ${gradeSummary} (SÖZEL OTURUMU) - ${roomDisplayStr.toUpperCase()} YOKLAMA LİSTESİ`;
     }
@@ -594,23 +591,6 @@ const ExamAttendanceLists = () => {
   const totalDoorStudentsCount = Object.values(groupedByClassroom).reduce((acc, list) => acc + list.length, 0);
   const isDataConsistent = totalRoomStudentsCount === totalDoorStudentsCount && unmatchedCount === 0;
 
-  const getSortedBySurname = () => {
-    return [...assignments].sort((a, b) => {
-      const detA = getStudentDetails(a);
-      const detB = getStudentDetails(b);
-      return detA.surnameFirstFormat.localeCompare(detB.surnameFirstFormat, 'tr', { sensitivity: 'base' });
-    });
-  };
-
-  const getSortedByName = () => {
-    return [...assignments].sort((a, b) => {
-      const detA = getStudentDetails(a);
-      const detB = getStudentDetails(b);
-      return detA.nameFirstFormat.localeCompare(detB.nameFirstFormat, 'tr', { sensitivity: 'base' });
-    });
-  };
-
-  // EXCEL İÇİN DİŞEYARA / AKTARIM
   const exportToExcel = (type) => {
     if (!selectedExam || assignments.length === 0) return;
 
@@ -716,6 +696,16 @@ const ExamAttendanceLists = () => {
           input {
             border: none !important;
             background: transparent !important;
+          }
+          .editable-title-input {
+            border: none !important;
+            background: transparent !important;
+            text-align: center !important;
+            width: 100% !important;
+            font-weight: bold !important;
+            font-size: 12pt !important;
+            font-family: inherit !important;
+            outline: none !important;
           }
           .ea-highlight {
             background-color: #e2e8f0 !important;
@@ -1006,6 +996,9 @@ const ExamAttendanceLists = () => {
                 const sampleItem = students[0] || {};
                 const roomDisplayStr = formatRoomDisplay(sampleItem);
 
+                const defaultHeader = getDefaultHeaderTitle(roomDisplayStr, gradeSummary);
+                const currentHeader = customHeaderTitles[roomName] !== undefined ? customHeaderTitles[roomName] : defaultHeader;
+
                 let totalCore = 0;
                 let totalExt = 0;
                 let roomEaCount = 0;
@@ -1039,9 +1032,29 @@ const ExamAttendanceLists = () => {
                   <div key={roomName} className="print-card page-break" style={{ background: '#fff', border: '1px solid #cbd5e1', padding: '0.8rem', marginBottom: '1rem', borderRadius: '6px' }}>
                     
                     <div style={{ border: '2px solid #000', padding: '0.5rem', textAlign: 'center', marginBottom: '0.5rem', background: '#fafafa' }}>
-                      <h1 style={{ margin: '0 0 0.2rem 0', fontSize: '12pt', fontWeight: 'bold', textTransform: 'uppercase' }}>
-                        {getHeaderTitle(roomDisplayStr, gradeSummary)}
-                      </h1>
+                      {/* ✏️ ÇİFT TIKLAYARAK DÜZENLENEBİLİR BAŞLIK ALANI */}
+                      <input
+                        type="text"
+                        className="editable-title-input"
+                        title="Başlığı değiştirmek için çift tıklayın veya üstüne tıklayıp düzenleyin"
+                        value={currentHeader}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setCustomHeaderTitles(prev => ({ ...prev, [roomName]: val }));
+                        }}
+                        style={{
+                          margin: '0 0 0.2rem 0',
+                          fontSize: '11pt',
+                          fontWeight: 'bold',
+                          textAlign: 'center',
+                          width: '100%',
+                          border: 'none',
+                          background: 'transparent',
+                          outline: 'none',
+                          cursor: 'text',
+                          textTransform: 'uppercase'
+                        }}
+                      />
                       <div style={{ fontSize: '9pt', fontWeight: 'bold', display: 'flex', justifyContent: 'space-around', borderTop: '1px solid #000', paddingTop: '0.3rem', marginTop: '0.3rem' }}>
                         <span>TARİH: {selectedExam.date}</span>
                         <span>{roomDisplayStr.toUpperCase()}</span>
@@ -1109,7 +1122,6 @@ const ExamAttendanceLists = () => {
                                 <td style={{ textAlign: 'center', fontFamily: 'monospace', fontSize: '8.5pt' }}>{studentTc || '-'}</td>
                               )}
                               
-                              {/* 🎯 ÖĞRENCİ ADI SOYADI (ÇAKIŞMA GRUBUNDA VARSA SAĞ ÜST KÖŞESİNDE MİNİCİK YILDIZ) */}
                               <td style={{ fontWeight: '500', position: 'relative' }}>
                                 {det.fullName}
                                 {hasConflict && (
@@ -1128,7 +1140,6 @@ const ExamAttendanceLists = () => {
 
                               <td style={{ textAlign: 'center' }}>{det.grade}-{det.className}</td>
 
-                              {/* ALAN SÜTUNU: EA İSE GRİ RENKTE VURGULU */}
                               {examCategory === 'akademik_lise' && (
                                 <td 
                                   className={isEa ? 'ea-highlight' : ''}
@@ -1153,7 +1164,6 @@ const ExamAttendanceLists = () => {
                     </table>
 
                     <div style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-                      {/* ÖZET KUTUCUKLARI */}
                       <div style={{ display: 'flex', gap: '0.4rem', fontSize: '8pt', fontWeight: 'bold', flexWrap: 'wrap', alignItems: 'center' }}>
                         {examCategory === 'akademik_lise' && roomEaCount > 0 && roomSayCount > 0 && (
                           <>
@@ -1250,4 +1260,4 @@ const ExamAttendanceLists = () => {
   );
 };
 
-export default ExamAttendanceLists;
+export Date default ExamAttendanceLists;
