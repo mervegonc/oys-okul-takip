@@ -2,12 +2,25 @@
 import React, { useState } from 'react';
 import * as XLSX from 'xlsx';
 import { supabase } from '../supabase';
-import { FaFileExcel, FaDownload, FaInfoCircle, FaExclamationTriangle } from 'react-icons/fa';
+import { FaFileExcel, FaDownload, FaInfoCircle, FaExclamationTriangle, FaListOl } from 'react-icons/fa';
 
 const ExcelUpload = ({ onUploadComplete }) => {
   const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState('');
   const [fullSync, setFullSync] = useState(false); // Güvenli mod: Varsayılan olarak silme kapalı
+
+  // Beklenen sütunlar ve sıralaması
+  const expectedColumns = [
+    { name: 'Ad', required: true, desc: 'Öğrencinin adı (Zorunlu)' },
+    { name: 'Soyad', required: true, desc: 'Öğrencinin soyadı (Zorunlu)' },
+    { name: 'Sınıf', required: true, desc: 'Sınıf seviyesi örn: 5, 9, 10, 11, 12 (Zorunlu)' },
+    { name: 'Şube', required: false, desc: 'Şube harfi örn: A, B, C, L' },
+    { name: 'Öğrenci No', required: false, desc: 'Okul öğrenci numarası' },
+    { name: 'Alan', required: false, desc: 'Öğrenim alanı örn: Sayısal, Eşit Ağırlık' },
+    { name: 'Cinsiyet', required: false, desc: 'Kız / Erkek' },
+    { name: '2. Dil', required: false, desc: 'İkinci yabancı dil örn: Almanca, Fransızca' },
+    { name: 'İngilizce Seviyesi', required: false, desc: 'Core / Extended' }
+  ];
 
   // Örnek Excel Şablonu İndirme
   const handleDownloadTemplate = () => {
@@ -191,39 +204,44 @@ const ExcelUpload = ({ onUploadComplete }) => {
         <FaFileExcel style={{ color: '#16a34a' }} /> Toplu Excel Yükleme ve Güncelleme
       </h4>
       
-      {/* Sütun Yapısı Hatırlatma Kartı */}
-      <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', padding: '0.8rem 1rem', borderRadius: '6px', marginBottom: '1rem', fontSize: '0.88rem', color: '#1e3a8a' }}>
-        <div style={{ fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.3rem' }}>
-          <FaInfoCircle /> Excel Dosyasında Bulunması Gereken Sütun Başlıkları:
+      {/* Sütun Sıralaması ve İsimleri Rehberi */}
+      <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', padding: '1rem', borderRadius: '6px', marginBottom: '1rem', fontSize: '0.88rem', color: '#1e3a8a' }}>
+        <div style={{ fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.5rem', fontSize: '0.95rem' }}>
+          <FaListOl style={{ color: '#2563eb' }} /> Excel Dosyasında Olması Gereken Sütun Sıralaması ve Adları:
         </div>
-        <p style={{ margin: '0 0 0.5rem 0', color: '#334155' }}>
-          Excel dosyanızın ilk satırında (başlıklar) aşağıdaki sütun adları tam olarak yer almalıdır:
+        <p style={{ margin: '0 0 0.8rem 0', color: '#334155' }}>
+          Excel dosyanızın ilk satırındaki (başlıklar) sütun adları ve sırası tam olarak aşağıdaki gibi olmalıdır:
         </p>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginBottom: '0.6rem' }}>
-          <span style={{ background: '#fff', padding: '0.2rem 0.5rem', borderRadius: '4px', border: '1px solid #cbd5e1', fontWeight: 'bold' }}>Ad</span>
-          <span style={{ background: '#fff', padding: '0.2rem 0.5rem', borderRadius: '4px', border: '1px solid #cbd5e1', fontWeight: 'bold' }}>Soyad</span>
-          <span style={{ background: '#fff', padding: '0.2rem 0.5rem', borderRadius: '4px', border: '1px solid #cbd5e1', fontWeight: 'bold' }}>Sınıf</span>
-          <span style={{ background: '#fff', padding: '0.2rem 0.5rem', borderRadius: '4px', border: '1px solid #cbd5e1', fontWeight: 'bold' }}>Şube</span>
-          <span style={{ background: '#fff', padding: '0.2rem 0.5rem', borderRadius: '4px', border: '1px solid #cbd5e1', fontWeight: 'bold' }}>Öğrenci No</span>
-          <span style={{ background: '#fff', padding: '0.2rem 0.5rem', borderRadius: '4px', border: '1px solid #cbd5e1' }}>Alan</span>
-          <span style={{ background: '#fff', padding: '0.2rem 0.5rem', borderRadius: '4px', border: '1px solid #cbd5e1' }}>Cinsiyet</span>
-          <span style={{ background: '#fff', padding: '0.2rem 0.5rem', borderRadius: '4px', border: '1px solid #cbd5e1' }}>2. Dil</span>
-          <span style={{ background: '#fff', padding: '0.2rem 0.5rem', borderRadius: '4px', border: '1px solid #cbd5e1' }}>İngilizce Seviyesi</span>
+        
+        {/* Adım Adım Sıralı Sütun Listesi */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.5rem', marginBottom: '0.8rem' }}>
+          {expectedColumns.map((col, index) => (
+            <div key={index} style={{ background: '#fff', padding: '0.4rem 0.6rem', borderRadius: '4px', border: '1px solid #cbd5e1', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <span style={{ background: '#2563eb', color: '#fff', borderRadius: '50%', width: '20px', height: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', fontWeight: 'bold', flexShrink: 0 }}>
+                {index + 1}
+              </span>
+              <div style={{ overflow: 'hidden' }}>
+                <strong style={{ color: '#0f172a', display: 'block' }}>{col.name}</strong>
+                <span style={{ fontSize: '0.75rem', color: '#64748b' }}>{col.desc}</span>
+              </div>
+            </div>
+          ))}
         </div>
-        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
-          <span style={{ color: '#b91c1c', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-            <FaExclamationTriangle /> Zorunlu Sütunlar: "Ad", "Soyad", "Sınıf"
+
+        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap', borderTop: '1px solid #bfdbfe', paddingTop: '0.6rem' }}>
+          <span style={{ color: '#b91c1c', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.85rem' }}>
+            <ExclamationTriangleIcon /> İlk 3 Sütun ("Ad", "Soyad", "Sınıf") Kesinlikle Olmalıdır!
           </span>
           <button
             onClick={handleDownloadTemplate}
             style={{
-              padding: '0.3rem 0.7rem',
+              padding: '0.35rem 0.8rem',
               background: '#2563eb',
               color: 'white',
               border: 'none',
               borderRadius: '4px',
               cursor: 'pointer',
-              fontSize: '0.8rem',
+              fontSize: '0.82rem',
               display: 'inline-flex',
               alignItems: 'center',
               gap: '0.3rem',
@@ -236,7 +254,7 @@ const ExcelUpload = ({ onUploadComplete }) => {
         </div>
       </div>
 
-      {/* Yanlışlıkla Silmeyi Önleyen Güvenlik Kutusu */}
+      {/* Güvenlik Kutusu */}
       <div style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
         <input
           type="checkbox"
@@ -285,6 +303,13 @@ const ExcelUpload = ({ onUploadComplete }) => {
     </div>
   );
 };
+
+// Yardımcı ikon bileşeni
+const ExclamationTriangleIcon = () => (
+  <svg stroke="currentColor" fill="currentColor" strokeWidth="0" viewBox="0 0 512 512" height="1em" width="1em" xmlns="http://www.w3.org/2000/svg">
+    <path d="M256 32c14.2 0 27.3 7.5 34.5 19.8l216 368c7.3 12.4 7.3 27.7.2 40.1S486.3 480 472 480H40c-14.3 0-27.6-7.7-34.7-20.1s-7-27.8.2-40.1l216-368C228.7 39.5 241.8 32 256 32zm0 160c-13.3 0-24 10.7-24 24v112c0 13.3 10.7 24 24 24s24-10.7 24-24V216c0-13.3-10.7-24-24-24zm-32 224a32 32 0 1 0 64 0 32 32 0 1 0-64 0z"></path>
+  </svg>
+);
 
 ExcelUpload.displayName = 'ExcelUpload';
 
