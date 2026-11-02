@@ -18,6 +18,7 @@ import StudentMatrix from './pages/StudentMatrix';
 import Invigilators from './pages/Invigilators';
 import DailyAttendanceList from './pages/DailyAttendanceList';
 import Calendar from './pages/Calendar'; // Veya dosya yolun neresiyse (örn: './components/Calendar')
+import Candidates from './pages/Candidates'; // dosya yolunuza göre ayarlayınız
 
 function App() {
   const [user, setUser] = useState(null);
@@ -98,6 +99,8 @@ function App() {
                   <Route path="/calendar" element={<Calendar />} />
                   
                   <Route path="/" element={<Navigate to="/students" />} />
+
+                  <Route path="/candidates" element={<Candidates />} />
                 </Routes>
               </>
             ) : (
