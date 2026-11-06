@@ -3,7 +3,7 @@ import { supabase } from '../supabase';
 import { FaCalendarAlt, FaPrint, FaFileExcel, FaCheckSquare } from 'react-icons/fa';
 import * as XLSX from 'xlsx';
 
-const OptikToplama = () => {
+const OpticsCollection = () => {
   const [exams, setExams] = useState([]);
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().slice(0, 10));
   const [filteredExams, setFilteredExams] = useState([]);
@@ -355,4 +355,4 @@ const OptikToplama = () => {
   );
 };
 
-export default OptikToplama;
+export default OpticsCollection;
