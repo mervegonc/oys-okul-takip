@@ -19,7 +19,7 @@ import Invigilators from './pages/Invigilators';
 import DailyAttendanceList from './pages/DailyAttendanceList';
 import Calendar from './pages/Calendar'; // Veya dosya yolun neresiyse (örn: './components/Calendar')
 import Candidates from './pages/Candidates'; // dosya yolunuza göre ayarlayınız
-import OptikToplama from './pages/OpticsCollection';
+import OpticsCollection from './pages/OpticsCollection';
 
 function App() {
   const [user, setUser] = useState(null);
