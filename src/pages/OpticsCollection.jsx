@@ -1,13 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabase';
-import { FaCalendarAlt, FaPrint, FaFileExcel, FaCheckSquare } from 'react-icons/fa';
+import { FaCalendarAlt, FaPrint, FaFileExcel } from 'react-icons/fa';
 import * as XLSX from 'xlsx';
 
 const OpticsCollection = () => {
   const [exams, setExams] = useState([]);
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().slice(0, 10));
-  const [filteredExams, setFilteredExams] = useState([]);
-  const [examDetailsData, setExamDetailsData] = useState([]); // Tarihteki sınavların salon ve öğrenci listeleri
+  const [examDetailsData, setExamDetailsData] = useState([]);
   const [rooms, setRooms] = useState([]);
   const [studentsMap, setStudentsMap] = useState({});
   const [loading, setLoading] = useState(false);
@@ -23,15 +22,12 @@ const OpticsCollection = () => {
   const fetchInitialData = async () => {
     setLoading(true);
     try {
-      // 1. Sınavları Çek
       const { data: examData } = await supabase.from('exams').select('*').order('date', { ascending: true });
       setExams(examData || []);
 
-      // 2. Salonları Çek
       const { data: roomData } = await supabase.from('rooms').select('*');
       setRooms(roomData || []);
 
-      // 3. Öğrencileri Çek
       const { data: studentData } = await supabase.from('students').select('*');
       const map = {};
       (studentData || []).forEach(st => {
@@ -48,7 +44,6 @@ const OpticsCollection = () => {
     }
   };
 
-  // Seçilen tarihteki sınavları ve salon dağılımlarını derle
   const processExamsForDate = async () => {
     if (!selectedDate) {
       setExamDetailsData([]);
@@ -57,7 +52,6 @@ const OpticsCollection = () => {
 
     setLoading(true);
     try {
-      // Seçilen tarihe uyan sınavlar (Tarih formatı YYYY-MM-DD varsayılıyor)
       const targetExams = exams.filter(ex => {
         if (!ex.date) return false;
         return ex.date.slice(0, 10) === selectedDate;
@@ -88,7 +82,6 @@ const OpticsCollection = () => {
           assignments = plan.assignments;
         }
 
-        // Salonlara göre grupla
         const roomGroups = {};
         assignments.forEach(st => {
           const rawRoomId = st.roomId || st.room_id || st.salon_id || st.roomName || st.room_name || st.salon;
@@ -103,11 +96,9 @@ const OpticsCollection = () => {
           roomGroups[roomName].push(st);
         });
 
-        // Her salon için satır oluştur
         Object.keys(roomGroups).forEach(roomName => {
           const roomStudents = roomGroups[roomName];
           
-          // Sınıf seviyesini bulmaya çalış
           const gradesSet = new Set();
           let eaCount = 0;
           let sayCount = 0;
@@ -134,7 +125,6 @@ const OpticsCollection = () => {
           const sortedGrades = Array.from(gradesSet).sort();
           const gradeLevelStr = sortedGrades.length > 0 ? `${sortedGrades.join('-')}. Sınıf` : 'Lise';
 
-          // İstediğiniz format: Örn "3(EA)+20(SAY)" veya sadece toplam sayı
           let populationDisplay = `${roomStudents.length}`;
           if (eaCount > 0 || sayCount > 0) {
             const parts = [];
@@ -184,14 +174,13 @@ const OpticsCollection = () => {
 
     const worksheet = XLSX.utils.json_to_sheet(excelData);
     const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Optik Toplama Listesi');
-    XLSX.writeFile(workbook, `Optik_Toplama_${selectedDate}.xlsx`);
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Optics Collection');
+    XLSX.writeFile(workbook, `Optics_Collection_${selectedDate}.xlsx`);
   };
 
   return (
     <div style={{ padding: '1.5rem', maxWidth: '1300px', margin: '0 auto', fontFamily: 'Segoe UI, sans-serif' }}>
       
-      {/* 🖨️ A4 BASKI İÇİN ÖZEL CSS (Tek Sayfaya Sığdırma Optimizasyonu) */}
       <style>{`
         @media print {
           body * {
@@ -233,11 +222,10 @@ const OpticsCollection = () => {
         }
       `}</style>
 
-      {/* ÜST KONTROL PANELİ (Yazdırma İptal Alanı) */}
       <div className="no-print" style={{ background: '#fff', padding: '1.2rem', borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', marginBottom: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
           <h2 style={{ margin: 0, color: '#1e293b', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            📊 Optik Toplama ve Yoklama Takip Listesi
+            📊 Optics Collection & Attendance Sheet
           </h2>
           <p style={{ margin: '0.3rem 0 0 0', color: '#64748b', fontSize: '0.9rem' }}>
             Seçilen güne ait tüm sınav salonlarını listeleyin, el ile katılım sayılarını girip tek sayfada çıktı alın.
@@ -272,13 +260,11 @@ const OpticsCollection = () => {
         </div>
       </div>
 
-      {/* BASILACAK / GÖRÜNTÜLENECEK ALAN */}
       <div className="print-area" style={{ background: '#fff', padding: '1.5rem', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
         
-        {/* Kağıt Üstü Başlığı */}
         <div style={{ border: '2px solid #000', padding: '0.8rem', textAlign: 'center', marginBottom: '1.2rem', background: '#fafafa' }}>
           <h2 style={{ margin: '0 0 0.3rem 0', fontSize: '14pt', fontWeight: 'bold', textTransform: 'uppercase' }}>
-            GENEL SINAV OPTİK TOPLAMA VE YOKLAMA LİSTESİ
+            OPTICS COLLECTION & ATTENDANCE SHEET
           </h2>
           <div style={{ fontSize: '10pt', fontWeight: 'bold', borderTop: '1px solid #000', paddingTop: '0.3rem', marginTop: '0.3rem', display: 'flex', justifyContent: 'space-around' }}>
             <span>TARİH: {selectedDate ? new Date(selectedDate).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' }) : '-'}</span>
@@ -324,7 +310,6 @@ const OpticsCollection = () => {
                   <td style={{ border: '1px solid #cbd5e1', padding: '8px', textAlign: 'center', fontWeight: 'bold' }}>
                     {item.totalStudents}
                   </td>
-                  {/* Elle doldurulacak boş alanlar */}
                   <td style={{ border: '1px solid #cbd5e1', padding: '8px', textAlign: 'center', backgroundColor: '#fff' }}>
                     &nbsp;
                   </td>
@@ -340,7 +325,6 @@ const OpticsCollection = () => {
           </table>
         )}
 
-        {/* Alt İmza Alanı */}
         <div style={{ marginTop: '2rem', display: 'flex', justifyContent: 'space-between', fontSize: '9pt', fontWeight: 'bold' }}>
           <div style={{ borderTop: '1px solid #000', paddingTop: '0.4rem', width: '200px', textAlign: 'center' }}>
             Teslim Alan (Optik Sorumlusu)
