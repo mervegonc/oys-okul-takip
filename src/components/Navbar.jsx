@@ -23,6 +23,7 @@ const Navbar = ({ userEmail }) => {
     { path: '/daily-attendance-list', label: 'Günlük Yoklama', module: 'exam' },
     { path: '/calendar', label: 'Takvim', module: 'calendar' },
     { path: '/candidates', label: 'Adaylar', module: 'candidates' },
+    { path: '/optik-toplama', label: 'Optik Toplama', module: 'exam' },
     { path: '/yds', label: 'YDS', module: 'exam' },
   ];
 
