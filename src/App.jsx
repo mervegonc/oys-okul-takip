@@ -19,6 +19,7 @@ import Invigilators from './pages/Invigilators';
 import DailyAttendanceList from './pages/DailyAttendanceList';
 import Calendar from './pages/Calendar'; // Veya dosya yolun neresiyse (örn: './components/Calendar')
 import Candidates from './pages/Candidates'; // dosya yolunuza göre ayarlayınız
+import OptikToplama from './pages/OptikToplama';
 
 function App() {
   const [user, setUser] = useState(null);
@@ -101,6 +102,7 @@ function App() {
                   <Route path="/" element={<Navigate to="/students" />} />
 
                   <Route path="/candidates" element={<Candidates />} />
+                  <Route path="/optik-toplama" element={<OptikToplama />} />
                 </Routes>
               </>
             ) : (
