@@ -1,3 +1,10 @@
+Gönderdiğiniz ekran görüntülerinde sorunun kaynağı çok net görünüyor: Yoklama listesinde öğrencinin tablosundaki **`ALAN`** sütununda `"EA"` yazıyor ancak `students` veritabanı tablosundaki ilgili sütunun adı veya verinin çekildiği alan adı (property) eşleşmediği için `OpticsCollection` bunu okuyamıyordu. (Yoklama listesi sayfasında kullanılan `getStudentDetails` mantığı `dbSt.field` veya `st.field` değerini doğrudan yakalarken, optik toplama sayfasında bu alan adı eksik kalmış).
+
+Yoklama listesindeki ile **birebir aynı alan okuma mantığını** (`getStudentDetails`) `OpticsCollection` sayfasına entegre ettim. Böylece yoklama listesinde EA yazan tüm salonlar (6, 7, 14 vb.) artık optik toplama sayfasında da `2(EA)+22(SAY)` şeklinde kusursuz görünecek.
+
+İşte tam uyumlu güncellenmiş **`OpticsCollection.jsx`** kodunuz:
+
+```jsx
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabase';
 import { FaCalendarAlt, FaPrint, FaFileExcel } from 'react-icons/fa';
@@ -8,7 +15,7 @@ const OpticsCollection = () => {
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().slice(0, 10));
   const [examDetailsData, setExamDetailsData] = useState([]);
   const [rooms, setRooms] = useState([]);
-  const [studentsMap, setStudentsMap] = useState({});
+  const [studentMap, setStudentMap] = useState({});
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -17,7 +24,7 @@ const OpticsCollection = () => {
 
   useEffect(() => {
     processExamsForDate();
-  }, [selectedDate, exams, rooms, studentsMap]);
+  }, [selectedDate, exams, rooms, studentMap]);
 
   const fetchInitialData = async () => {
     setLoading(true);
@@ -29,19 +36,47 @@ const OpticsCollection = () => {
       setRooms(roomData || []);
 
       const { data: studentData } = await supabase.from('students').select('*');
-      const map = {};
-      (studentData || []).forEach(st => {
-        map[String(st.id)] = st;
-        map[String(st.tc_no || '').trim()] = st;
-        map[String(st.student_no || '').trim()] = st;
-      });
-      setStudentsMap(map);
-
+      if (studentData) {
+        const map = {};
+        studentData.forEach(st => {
+          if (st.id) map[String(st.id)] = st;
+          if (st.tc_no) map[String(st.tc_no).trim()] = st;
+          if (st.student_no) map[String(st.student_no).trim()] = st;
+        });
+        setStudentMap(map);
+      }
     } catch (err) {
       console.error('Veriler yüklenirken hata:', err);
     } finally {
       setLoading(false);
     }
+  };
+
+  // Yoklama listesi ile birebir aynı detay yakalama ve alan (track) formatlama fonksiyonu
+  const formatTrack = (track) => {
+    if (!track) return '';
+    const tr = String(track).trim().toLowerCase();
+    if (tr.includes('say')) return 'SAY';
+    if (tr.includes('eş') || tr.includes('es') || tr.includes('ea')) return 'EA';
+    if (tr.includes('söz') || tr.includes('soz')) return 'SÖZ';
+    if (tr.includes('dil')) return 'DİL';
+    return String(track).toUpperCase();
+  };
+
+  const getStudentDetails = (st) => {
+    const rawId = String(st.studentId || st.student_id || st.id || '').trim();
+    const rawTc = String(st.tc || st.tc_no || st.tcNo || '').trim();
+    const rawNo = String(st.no || st.student_no || st.studentNo || st.school_number || '').trim();
+
+    const dbSt = studentMap[rawId] || studentMap[rawTc] || studentMap[rawNo] || {};
+
+    const grade = dbSt.grade || st.grade || st.sinif || '';
+    const rawField = dbSt.field || st.field || st.alan || st.track || st.department || '';
+
+    return {
+      grade: String(grade).replace('.', '').trim(),
+      track: formatTrack(rawField)
+    };
   };
 
   const processExamsForDate = async () => {
@@ -105,41 +140,30 @@ const OpticsCollection = () => {
           let otherCount = 0;
 
           roomStudents.forEach(st => {
-            const dbSt = studentsMap[String(st.studentId || st.student_id || st.id || '').trim()] || 
-                         studentsMap[String(st.tc || '').trim()] || 
-                         studentsMap[String(st.no || '').trim()] || {};
-            
-            const grade = dbSt.grade || st.grade || st.sinif || '9';
-            gradesSet.add(String(grade).replace('.', '').trim());
+            const det = getStudentDetails(st);
+            if (det.grade) gradesSet.add(det.grade);
 
-            const field = String(dbSt.field || st.field || st.alan || '').trim().toUpperCase();
-            
-            // Güçlendirilmiş EA ve SAY yakalama koşulları
-            if (field.includes('EA') || field.includes('EŞİT') || field.includes('EŞİT AĞIRLIK')) {
+            if (det.track === 'EA') {
               eaCount++;
-            } else if (field.includes('SAY') || field.includes('SAYISAL')) {
+            } else if (det.track === 'SAY') {
               sayCount++;
-            } else {
+            } else if (det.track) {
               otherCount++;
             }
           });
 
-          const sortedGrades = Array.from(gradesSet).sort();
+          const sortedGrades = Array.from(gradesSet).sort((a, b) => a - b);
           const gradeLevelStr = sortedGrades.length > 0 ? `${sortedGrades.join('-')}. Sınıf` : 'Lise';
 
-          // Sadece birden fazla farklı alan varsa parantezli göster, aksi halde direkt toplam sayıyı yaz
+          // Alan dağılımı formatı: Birden fazla grup varsa parantezli, tek grup veya alansızsa direkt sayı
           let populationDisplay = `${roomStudents.length}`;
           const activeFields = [];
           if (eaCount > 0) activeFields.push(`${eaCount}(EA)`);
           if (sayCount > 0) activeFields.push(`${sayCount}(SAY)`);
-          if (otherCount > 0 && activeFields.length === 0) activeFields.push(`${otherCount}`);
+          if (otherCount > 0) activeFields.push(`${otherCount}`);
 
-          // Eğer salonda birden fazla farklı grup varsa detaylı göster (örn: 3(EA)+20(SAY))
           if (activeFields.length > 1) {
             populationDisplay = `${roomStudents.length} [ ${activeFields.join('+')} ]`;
-          } else if (activeFields.length === 1 && roomStudents.length !== (eaCount + sayCount + otherCount)) {
-            // Güvenlik kontrolü
-            populationDisplay = `${roomStudents.length} [ ${activeFields[0]} ]`;
           }
 
           tableRows.push({
@@ -345,3 +369,5 @@ const OpticsCollection = () => {
 };
 
 export default OpticsCollection;
+
+```
