@@ -7,6 +7,7 @@ const OpticsCollection = () => {
   const [exams, setExams] = useState([]);
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().slice(0, 10));
   const [examDetailsData, setExamDetailsData] = useState([]);
+  const [examSummaryData, setExamSummaryData] = useState([]);
   const [rooms, setRooms] = useState([]);
   const [studentMap, setStudentMap] = useState({});
   const [loading, setLoading] = useState(false);
@@ -74,6 +75,7 @@ const OpticsCollection = () => {
   const processExamsForDate = async () => {
     if (!selectedDate) {
       setExamDetailsData([]);
+      setExamSummaryData([]);
       return;
     }
 
@@ -86,6 +88,7 @@ const OpticsCollection = () => {
 
       if (targetExams.length === 0) {
         setExamDetailsData([]);
+        setExamSummaryData([]);
         setLoading(false);
         return;
       }
@@ -97,6 +100,7 @@ const OpticsCollection = () => {
         .in('exam_id', examIds);
 
       const tableRows = [];
+      const examTotalsMap = {};
 
       targetExams.forEach(exam => {
         const plan = plansData?.find(p => String(p.exam_id) === String(exam.id));
@@ -123,9 +127,13 @@ const OpticsCollection = () => {
           roomGroups[roomName].push(st);
         });
 
+        let examTotalStudents = 0;
+        const examGradesSet = new Set();
+
         Object.keys(roomGroups).forEach(roomName => {
           const roomStudents = roomGroups[roomName];
-          
+          examTotalStudents += roomStudents.length;
+
           const gradesSet = new Set();
           let eaCount = 0;
           let sayCount = 0;
@@ -133,7 +141,10 @@ const OpticsCollection = () => {
 
           roomStudents.forEach(st => {
             const det = getStudentDetails(st);
-            if (det.grade) gradesSet.add(det.grade);
+            if (det.grade) {
+              gradesSet.add(det.grade);
+              examGradesSet.add(det.grade);
+            }
 
             if (det.track === 'EA') {
               eaCount++;
@@ -165,9 +176,19 @@ const OpticsCollection = () => {
             rawTotal: roomStudents.length
           });
         });
+
+        const sortedExamGrades = Array.from(examGradesSet).sort((a, b) => a - b);
+        const examGradeStr = sortedExamGrades.length > 0 ? `${sortedExamGrades.join('-')}. Sınıf` : 'Lise';
+
+        examTotalsMap[exam.id] = {
+          examTitle: exam.title || 'İsimsiz Sınav',
+          gradeLevel: examGradeStr,
+          totalStudents: examTotalStudents
+        };
       });
 
       setExamDetailsData(tableRows);
+      setExamSummaryData(Object.values(examTotalsMap));
     } catch (err) {
       console.error('Optik liste işlenirken hata:', err);
     } finally {
@@ -299,50 +320,92 @@ const OpticsCollection = () => {
             Seçilen tarihte ({selectedDate}) planlanmış sınav oturumu bulunamadı.
           </div>
         ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.9rem' }}>
-            <thead>
-              <tr style={{ background: '#f1f1f1' }}>
-                <th style={{ width: '5%', border: '1px solid #cbd5e1', padding: '8px', textAlign: 'center' }}>Sıra</th>
-                <th style={{ width: '25%', border: '1px solid #cbd5e1', padding: '8px' }}>Sınav İsmi</th>
-                <th style={{ width: '12%', border: '1px solid #cbd5e1', padding: '8px', textAlign: 'center' }}>Sınıf Seviyesi</th>
-                <th style={{ width: '18%', border: '1px solid #cbd5e1', padding: '8px', textAlign: 'center' }}>Salon Numarası</th>
-                <th style={{ width: '15%', border: '1px solid #cbd5e1', padding: '8px', textAlign: 'center' }}>Mevcut Öğrenci</th>
-                <th style={{ width: '8%', border: '1px solid #cbd5e1', padding: '8px', textAlign: 'center' }}>Gelen</th>
-                <th style={{ width: '8%', border: '1px solid #cbd5e1', padding: '8px', textAlign: 'center' }}>Gelemeyen</th>
-                <th style={{ width: '9%', border: '1px solid #cbd5e1', padding: '8px', textAlign: 'center' }}>Optik (✓)</th>
-              </tr>
-            </thead>
-            <tbody>
-              {examDetailsData.map((item, idx) => (
-                <tr key={idx} style={{ borderBottom: '1px solid #cbd5e1' }}>
-                  <td style={{ border: '1px solid #cbd5e1', padding: '8px', textAlign: 'center', fontWeight: 'bold' }}>
-                    {idx + 1}
-                  </td>
-                  <td style={{ border: '1px solid #cbd5e1', padding: '8px', fontWeight: '600' }}>
-                    {item.examTitle}
-                  </td>
-                  <td style={{ border: '1px solid #cbd5e1', padding: '8px', textAlign: 'center' }}>
-                    {item.gradeLevel}
-                  </td>
-                  <td style={{ border: '1px solid #cbd5e1', padding: '8px', textAlign: 'center', fontWeight: 'bold', color: '#1d4ed8' }}>
-                    {item.roomName}
-                  </td>
-                  <td style={{ border: '1px solid #cbd5e1', padding: '8px', textAlign: 'center', fontWeight: 'bold' }}>
-                    {item.totalStudents}
-                  </td>
-                  <td style={{ border: '1px solid #cbd5e1', padding: '8px', textAlign: 'center', backgroundColor: '#fff' }}>
-                    &nbsp;
-                  </td>
-                  <td style={{ border: '1px solid #cbd5e1', padding: '8px', textAlign: 'center', backgroundColor: '#fff' }}>
-                    &nbsp;
-                  </td>
-                  <td style={{ border: '1px solid #cbd5e1', padding: '8px', textAlign: 'center' }}>
-                    [ &nbsp; ]
-                  </td>
+          <>
+            {/* Salon Bazlı Detay Tablosu */}
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.9rem', marginBottom: '1.5rem' }}>
+              <thead>
+                <tr style={{ background: '#f1f1f1' }}>
+                  <th style={{ width: '5%', border: '1px solid #cbd5e1', padding: '8px', textAlign: 'center' }}>Sıra</th>
+                  <th style={{ width: '25%', border: '1px solid #cbd5e1', padding: '8px' }}>Sınav İsmi</th>
+                  <th style={{ width: '12%', border: '1px solid #cbd5e1', padding: '8px', textAlign: 'center' }}>Sınıf Seviyesi</th>
+                  <th style={{ width: '18%', border: '1px solid #cbd5e1', padding: '8px', textAlign: 'center' }}>Salon Numarası</th>
+                  <th style={{ width: '15%', border: '1px solid #cbd5e1', padding: '8px', textAlign: 'center' }}>Mevcut Öğrenci</th>
+                  <th style={{ width: '8%', border: '1px solid #cbd5e1', padding: '8px', textAlign: 'center' }}>Gelen</th>
+                  <th style={{ width: '8%', border: '1px solid #cbd5e1', padding: '8px', textAlign: 'center' }}>Gelemeyen</th>
+                  <th style={{ width: '9%', border: '1px solid #cbd5e1', padding: '8px', textAlign: 'center' }}>Optik (✓)</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {examDetailsData.map((item, idx) => (
+                  <tr key={idx} style={{ borderBottom: '1px solid #cbd5e1' }}>
+                    <td style={{ border: '1px solid #cbd5e1', padding: '8px', textAlign: 'center', fontWeight: 'bold' }}>
+                      {idx + 1}
+                    </td>
+                    <td style={{ border: '1px solid #cbd5e1', padding: '8px', fontWeight: '600' }}>
+                      {item.examTitle}
+                    </td>
+                    <td style={{ border: '1px solid #cbd5e1', padding: '8px', textAlign: 'center' }}>
+                      {item.gradeLevel}
+                    </td>
+                    <td style={{ border: '1px solid #cbd5e1', padding: '8px', textAlign: 'center', fontWeight: 'bold', color: '#1d4ed8' }}>
+                      {item.roomName}
+                    </td>
+                    <td style={{ border: '1px solid #cbd5e1', padding: '8px', textAlign: 'center', fontWeight: 'bold' }}>
+                      {item.totalStudents}
+                    </td>
+                    <td style={{ border: '1px solid #cbd5e1', padding: '8px', textAlign: 'center', backgroundColor: '#fff' }}>
+                      &nbsp;
+                    </td>
+                    <td style={{ border: '1px solid #cbd5e1', padding: '8px', textAlign: 'center', backgroundColor: '#fff' }}>
+                      &nbsp;
+                    </td>
+                    <td style={{ border: '1px solid #cbd5e1', padding: '8px', textAlign: 'center' }}>
+                      [ &nbsp; ]
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            {/* Sınav Bazlı Genel Özet Tablosu */}
+            <div style={{ marginTop: '1.5rem' }}>
+              <h4 style={{ margin: '0 0 0.5rem 0', fontSize: '11pt', fontWeight: 'bold', textTransform: 'uppercase' }}>
+                📋 Sınav Bazlı Genel Toplam Kutusu
+              </h4>
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.9rem' }}>
+                <thead>
+                  <tr style={{ background: '#e2e8f0' }}>
+                    <th style={{ border: '1px solid #cbd5e1', padding: '8px', width: '35%' }}>Sınav Adı</th>
+                    <th style={{ border: '1px solid #cbd5e1', padding: '8px', width: '20%', textAlign: 'center' }}>Sınıf Seviyesi</th>
+                    <th style={{ border: '1px solid #cbd5e1', padding: '8px', width: '15%', textAlign: 'center' }}>Toplam Öğrenci</th>
+                    <th style={{ border: '1px solid #cbd5e1', padding: '8px', width: '15%', textAlign: 'center' }}>Gelen Toplam</th>
+                    <th style={{ border: '1px solid #cbd5e1', padding: '8px', width: '15%', textAlign: 'center' }}>Gelemeyen Toplam</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {examSummaryData.map((sumItem, sIdx) => (
+                    <tr key={sIdx} style={{ borderBottom: '1px solid #cbd5e1' }}>
+                      <td style={{ border: '1px solid #cbd5e1', padding: '8px', fontWeight: 'bold' }}>
+                        {sumItem.examTitle}
+                      </td>
+                      <td style={{ border: '1px solid #cbd5e1', padding: '8px', textAlign: 'center' }}>
+                        {sumItem.gradeLevel}
+                      </td>
+                      <td style={{ border: '1px solid #cbd5e1', padding: '8px', textAlign: 'center', fontWeight: 'bold', color: '#0369a1' }}>
+                        {sumItem.totalStudents}
+                      </td>
+                      <td style={{ border: '1px solid #cbd5e1', padding: '8px', textAlign: 'center', backgroundColor: '#fff' }}>
+                        &nbsp;
+                      </td>
+                      <td style={{ border: '1px solid #cbd5e1', padding: '8px', textAlign: 'center', backgroundColor: '#fff' }}>
+                        &nbsp;
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
 
         <div style={{ marginTop: '2rem', display: 'flex', justifyContent: 'space-between', fontSize: '9pt', fontWeight: 'bold' }}>
