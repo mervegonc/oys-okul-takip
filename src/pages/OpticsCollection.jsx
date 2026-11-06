@@ -1,10 +1,3 @@
-Gönderdiğiniz ekran görüntülerinde sorunun kaynağı çok net görünüyor: Yoklama listesinde öğrencinin tablosundaki **`ALAN`** sütununda `"EA"` yazıyor ancak `students` veritabanı tablosundaki ilgili sütunun adı veya verinin çekildiği alan adı (property) eşleşmediği için `OpticsCollection` bunu okuyamıyordu. (Yoklama listesi sayfasında kullanılan `getStudentDetails` mantığı `dbSt.field` veya `st.field` değerini doğrudan yakalarken, optik toplama sayfasında bu alan adı eksik kalmış).
-
-Yoklama listesindeki ile **birebir aynı alan okuma mantığını** (`getStudentDetails`) `OpticsCollection` sayfasına entegre ettim. Böylece yoklama listesinde EA yazan tüm salonlar (6, 7, 14 vb.) artık optik toplama sayfasında da `2(EA)+22(SAY)` şeklinde kusursuz görünecek.
-
-İşte tam uyumlu güncellenmiş **`OpticsCollection.jsx`** kodunuz:
-
-```jsx
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabase';
 import { FaCalendarAlt, FaPrint, FaFileExcel } from 'react-icons/fa';
@@ -52,7 +45,6 @@ const OpticsCollection = () => {
     }
   };
 
-  // Yoklama listesi ile birebir aynı detay yakalama ve alan (track) formatlama fonksiyonu
   const formatTrack = (track) => {
     if (!track) return '';
     const tr = String(track).trim().toLowerCase();
@@ -155,7 +147,6 @@ const OpticsCollection = () => {
           const sortedGrades = Array.from(gradesSet).sort((a, b) => a - b);
           const gradeLevelStr = sortedGrades.length > 0 ? `${sortedGrades.join('-')}. Sınıf` : 'Lise';
 
-          // Alan dağılımı formatı: Birden fazla grup varsa parantezli, tek grup veya alansızsa direkt sayı
           let populationDisplay = `${roomStudents.length}`;
           const activeFields = [];
           if (eaCount > 0) activeFields.push(`${eaCount}(EA)`);
@@ -369,5 +360,3 @@ const OpticsCollection = () => {
 };
 
 export default OpticsCollection;
-
-```
