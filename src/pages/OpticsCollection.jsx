@@ -113,7 +113,9 @@ const OpticsCollection = () => {
             gradesSet.add(String(grade).replace('.', '').trim());
 
             const field = String(dbSt.field || st.field || st.alan || '').trim().toUpperCase();
-            if (field.includes('EA') || field.includes('EŞİT')) {
+            
+            // Güçlendirilmiş EA ve SAY yakalama koşulları
+            if (field.includes('EA') || field.includes('EŞİT') || field.includes('EŞİT AĞIRLIK')) {
               eaCount++;
             } else if (field.includes('SAY') || field.includes('SAYISAL')) {
               sayCount++;
@@ -125,16 +127,19 @@ const OpticsCollection = () => {
           const sortedGrades = Array.from(gradesSet).sort();
           const gradeLevelStr = sortedGrades.length > 0 ? `${sortedGrades.join('-')}. Sınıf` : 'Lise';
 
+          // Sadece birden fazla farklı alan varsa parantezli göster, aksi halde direkt toplam sayıyı yaz
           let populationDisplay = `${roomStudents.length}`;
-          if (eaCount > 0 || sayCount > 0) {
-            const parts = [];
-            if (eaCount > 0) parts.push(`${eaCount}(EA)`);
-            if (sayCount > 0) parts.push(`${sayCount}(SAY)`);
-            if (otherCount > 0 && parts.length === 0) parts.push(`${otherCount}`);
-            
-            if (parts.length > 0) {
-              populationDisplay = `${roomStudents.length} [ ${parts.join('+')} ]`;
-            }
+          const activeFields = [];
+          if (eaCount > 0) activeFields.push(`${eaCount}(EA)`);
+          if (sayCount > 0) activeFields.push(`${sayCount}(SAY)`);
+          if (otherCount > 0 && activeFields.length === 0) activeFields.push(`${otherCount}`);
+
+          // Eğer salonda birden fazla farklı grup varsa detaylı göster (örn: 3(EA)+20(SAY))
+          if (activeFields.length > 1) {
+            populationDisplay = `${roomStudents.length} [ ${activeFields.join('+')} ]`;
+          } else if (activeFields.length === 1 && roomStudents.length !== (eaCount + sayCount + otherCount)) {
+            // Güvenlik kontrolü
+            populationDisplay = `${roomStudents.length} [ ${activeFields[0]} ]`;
           }
 
           tableRows.push({
