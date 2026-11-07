@@ -221,7 +221,7 @@ const OpticsCollection = () => {
   };
 
   return (
-    <div style={{ padding: '1.5rem', maxWidth: '1300px', margin: '0 auto', fontFamily: 'Segoe UI, sans-serif' }}>
+    <div style={{ padding: '1rem', maxWidth: '1200px', margin: '0 auto', fontFamily: 'Segoe UI, sans-serif' }}>
       
       <style>{`
         @media print {
@@ -236,12 +236,14 @@ const OpticsCollection = () => {
             left: 0 !important;
             top: 0 !important;
             width: 100% !important;
+            max-width: 100% !important;
             margin: 0 !important;
-            padding: 4mm !important;
+            padding: 8mm !important;
+            box-sizing: border-box !important;
           }
           @page {
             size: A4 portrait;
-            margin: 4mm;
+            margin: 5mm;
           }
           .no-print {
             display: none !important;
@@ -253,8 +255,8 @@ const OpticsCollection = () => {
           }
           th, td {
             border: 1px solid #000 !important;
-            padding: 4px 6px !important;
-            font-size: 8.5pt !important;
+            padding: 4px 5px !important;
+            font-size: 8pt !important;
             color: #000 !important;
             overflow: hidden;
             word-break: break-word;
