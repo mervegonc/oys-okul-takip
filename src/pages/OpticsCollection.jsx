@@ -158,14 +158,15 @@ const OpticsCollection = () => {
           const sortedGrades = Array.from(gradesSet).sort((a, b) => a - b);
           const gradeLevelStr = sortedGrades.length > 0 ? `${sortedGrades.join('-')}. Sınıf` : 'Lise';
 
+          // Dar alanlar için kompakt format (alt alta kaymayı önler)
           let populationDisplay = `${roomStudents.length}`;
           const activeFields = [];
-          if (eaCount > 0) activeFields.push(`${eaCount}(EA)`);
-          if (sayCount > 0) activeFields.push(`${sayCount}(SAY)`);
+          if (eaCount > 0) activeFields.push(`${eaCount}EA`);
+          if (sayCount > 0) activeFields.push(`${sayCount}SAY`);
           if (otherCount > 0) activeFields.push(`${otherCount}`);
 
           if (activeFields.length > 1) {
-            populationDisplay = `${roomStudents.length} [ ${activeFields.join('+')} ]`;
+            populationDisplay = `${roomStudents.length} [${activeFields.join('+')}]`;
           }
 
           tableRows.push({
@@ -236,11 +237,11 @@ const OpticsCollection = () => {
             top: 0 !important;
             width: 100% !important;
             margin: 0 !important;
-            padding: 5mm !important;
+            padding: 4mm !important;
           }
           @page {
             size: A4 portrait;
-            margin: 5mm;
+            margin: 4mm;
           }
           .no-print {
             display: none !important;
@@ -248,12 +249,15 @@ const OpticsCollection = () => {
           table {
             width: 100% !important;
             border-collapse: collapse !important;
+            table-layout: fixed !important;
           }
           th, td {
             border: 1px solid #000 !important;
-            padding: 6px 8px !important;
-            font-size: 10pt !important;
+            padding: 4px 6px !important;
+            font-size: 8.5pt !important;
             color: #000 !important;
+            overflow: hidden;
+            word-break: break-word;
           }
           th {
             background-color: #e2e8f0 !important;
@@ -301,13 +305,13 @@ const OpticsCollection = () => {
         </div>
       </div>
 
-      <div className="print-area" style={{ background: '#fff', padding: '1.5rem', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
+      <div className="print-area" style={{ background: '#fff', padding: '1.2rem', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
         
-        <div style={{ border: '2px solid #000', padding: '0.8rem', textAlign: 'center', marginBottom: '1.2rem', background: '#fafafa' }}>
-          <h2 style={{ margin: '0 0 0.3rem 0', fontSize: '14pt', fontWeight: 'bold', textTransform: 'uppercase' }}>
+        <div style={{ border: '2px solid #000', padding: '0.6rem', textAlign: 'center', marginBottom: '1rem', background: '#fafafa' }}>
+          <h2 style={{ margin: '0 0 0.2rem 0', fontSize: '12pt', fontWeight: 'bold', textTransform: 'uppercase' }}>
             OPTICS COLLECTION & ATTENDANCE SHEET
           </h2>
-          <div style={{ fontSize: '10pt', fontWeight: 'bold', borderTop: '1px solid #000', paddingTop: '0.3rem', marginTop: '0.3rem', display: 'flex', justifyContent: 'space-around' }}>
+          <div style={{ fontSize: '9pt', fontWeight: 'bold', borderTop: '1px solid #000', paddingTop: '0.2rem', marginTop: '0.2rem', display: 'flex', justifyContent: 'space-around' }}>
             <span>TARİH: {selectedDate ? new Date(selectedDate).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' }) : '-'}</span>
             <span>TOPLAM SALON/OTURUM: {examDetailsData.length}</span>
           </div>
@@ -322,44 +326,44 @@ const OpticsCollection = () => {
         ) : (
           <>
             {/* Salon Bazlı Detay Tablosu */}
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.9rem', marginBottom: '1.5rem' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '8.5pt', marginBottom: '1rem', tableLayout: 'fixed' }}>
               <thead>
                 <tr style={{ background: '#f1f1f1' }}>
-                  <th style={{ width: '5%', border: '1px solid #cbd5e1', padding: '8px', textAlign: 'center' }}>Sıra</th>
-                  <th style={{ width: '25%', border: '1px solid #cbd5e1', padding: '8px' }}>Sınav İsmi</th>
-                  <th style={{ width: '12%', border: '1px solid #cbd5e1', padding: '8px', textAlign: 'center' }}>Sınıf Seviyesi</th>
-                  <th style={{ width: '18%', border: '1px solid #cbd5e1', padding: '8px', textAlign: 'center' }}>Salon Numarası</th>
-                  <th style={{ width: '15%', border: '1px solid #cbd5e1', padding: '8px', textAlign: 'center' }}>Mevcut Öğrenci</th>
-                  <th style={{ width: '8%', border: '1px solid #cbd5e1', padding: '8px', textAlign: 'center' }}>Gelen</th>
-                  <th style={{ width: '8%', border: '1px solid #cbd5e1', padding: '8px', textAlign: 'center' }}>Gelemeyen</th>
-                  <th style={{ width: '9%', border: '1px solid #cbd5e1', padding: '8px', textAlign: 'center' }}>Optik (✓)</th>
+                  <th style={{ width: '5%', border: '1px solid #cbd5e1', padding: '6px', textAlign: 'center' }}>Sıra</th>
+                  <th style={{ width: '28%', border: '1px solid #cbd5e1', padding: '6px' }}>Sınav İsmi</th>
+                  <th style={{ width: '13%', border: '1px solid #cbd5e1', padding: '6px', textAlign: 'center' }}>Sınıf</th>
+                  <th style={{ width: '17%', border: '1px solid #cbd5e1', padding: '6px', textAlign: 'center' }}>Salon</th>
+                  <th style={{ width: '14%', border: '1px solid #cbd5e1', padding: '6px', textAlign: 'center' }}>Mevcut</th>
+                  <th style={{ width: '7%', border: '1px solid #cbd5e1', padding: '6px', textAlign: 'center' }}>Gelen</th>
+                  <th style={{ width: '8%', border: '1px solid #cbd5e1', padding: '6px', textAlign: 'center' }}>Gelm.</th>
+                  <th style={{ width: '8%', border: '1px solid #cbd5e1', padding: '6px', textAlign: 'center' }}>Optik</th>
                 </tr>
               </thead>
               <tbody>
                 {examDetailsData.map((item, idx) => (
                   <tr key={idx} style={{ borderBottom: '1px solid #cbd5e1' }}>
-                    <td style={{ border: '1px solid #cbd5e1', padding: '8px', textAlign: 'center', fontWeight: 'bold' }}>
+                    <td style={{ border: '1px solid #cbd5e1', padding: '5px 6px', textAlign: 'center', fontWeight: 'bold' }}>
                       {idx + 1}
                     </td>
-                    <td style={{ border: '1px solid #cbd5e1', padding: '8px', fontWeight: '600' }}>
+                    <td style={{ border: '1px solid #cbd5e1', padding: '5px 6px', fontWeight: '600', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {item.examTitle}
                     </td>
-                    <td style={{ border: '1px solid #cbd5e1', padding: '8px', textAlign: 'center' }}>
+                    <td style={{ border: '1px solid #cbd5e1', padding: '5px 6px', textAlign: 'center', whiteSpace: 'nowrap' }}>
                       {item.gradeLevel}
                     </td>
-                    <td style={{ border: '1px solid #cbd5e1', padding: '8px', textAlign: 'center', fontWeight: 'bold', color: '#1d4ed8' }}>
+                    <td style={{ border: '1px solid #cbd5e1', padding: '5px 6px', textAlign: 'center', fontWeight: 'bold', color: '#1d4ed8', whiteSpace: 'nowrap' }}>
                       {item.roomName}
                     </td>
-                    <td style={{ border: '1px solid #cbd5e1', padding: '8px', textAlign: 'center', fontWeight: 'bold' }}>
+                    <td style={{ border: '1px solid #cbd5e1', padding: '5px 6px', textAlign: 'center', fontWeight: 'bold', whiteSpace: 'nowrap' }}>
                       {item.totalStudents}
                     </td>
-                    <td style={{ border: '1px solid #cbd5e1', padding: '8px', textAlign: 'center', backgroundColor: '#fff' }}>
+                    <td style={{ border: '1px solid #cbd5e1', padding: '5px 6px', textAlign: 'center', backgroundColor: '#fff' }}>
                       &nbsp;
                     </td>
-                    <td style={{ border: '1px solid #cbd5e1', padding: '8px', textAlign: 'center', backgroundColor: '#fff' }}>
+                    <td style={{ border: '1px solid #cbd5e1', padding: '5px 6px', textAlign: 'center', backgroundColor: '#fff' }}>
                       &nbsp;
                     </td>
-                    <td style={{ border: '1px solid #cbd5e1', padding: '8px', textAlign: 'center' }}>
+                    <td style={{ border: '1px solid #cbd5e1', padding: '5px 6px', textAlign: 'center', whiteSpace: 'nowrap' }}>
                       [ &nbsp; ]
                     </td>
                   </tr>
@@ -368,36 +372,36 @@ const OpticsCollection = () => {
             </table>
 
             {/* Sınav Bazlı Genel Özet Tablosu */}
-            <div style={{ marginTop: '1.5rem' }}>
-              <h4 style={{ margin: '0 0 0.5rem 0', fontSize: '11pt', fontWeight: 'bold', textTransform: 'uppercase' }}>
+            <div style={{ marginTop: '1rem' }}>
+              <h4 style={{ margin: '0 0 0.4rem 0', fontSize: '10pt', fontWeight: 'bold', textTransform: 'uppercase' }}>
                 📋 Sınav Bazlı Genel Toplam Kutusu
               </h4>
-              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.9rem' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '8.5pt', tableLayout: 'fixed' }}>
                 <thead>
                   <tr style={{ background: '#e2e8f0' }}>
-                    <th style={{ border: '1px solid #cbd5e1', padding: '8px', width: '35%' }}>Sınav Adı</th>
-                    <th style={{ border: '1px solid #cbd5e1', padding: '8px', width: '20%', textAlign: 'center' }}>Sınıf Seviyesi</th>
-                    <th style={{ border: '1px solid #cbd5e1', padding: '8px', width: '15%', textAlign: 'center' }}>Toplam Öğrenci</th>
-                    <th style={{ border: '1px solid #cbd5e1', padding: '8px', width: '15%', textAlign: 'center' }}>Gelen Toplam</th>
-                    <th style={{ border: '1px solid #cbd5e1', padding: '8px', width: '15%', textAlign: 'center' }}>Gelemeyen Toplam</th>
+                    <th style={{ border: '1px solid #cbd5e1', padding: '6px', width: '40%' }}>Sınav Adı</th>
+                    <th style={{ border: '1px solid #cbd5e1', padding: '6px', width: '20%', textAlign: 'center' }}>Sınıf Seviyesi</th>
+                    <th style={{ border: '1px solid #cbd5e1', padding: '6px', width: '15%', textAlign: 'center' }}>Toplam</th>
+                    <th style={{ border: '1px solid #cbd5e1', padding: '6px', width: '12%', textAlign: 'center' }}>Gelen</th>
+                    <th style={{ border: '1px solid #cbd5e1', padding: '6px', width: '13%', textAlign: 'center' }}>Gelemeyen</th>
                   </tr>
                 </thead>
                 <tbody>
                   {examSummaryData.map((sumItem, sIdx) => (
                     <tr key={sIdx} style={{ borderBottom: '1px solid #cbd5e1' }}>
-                      <td style={{ border: '1px solid #cbd5e1', padding: '8px', fontWeight: 'bold' }}>
+                      <td style={{ border: '1px solid #cbd5e1', padding: '5px 6px', fontWeight: 'bold', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {sumItem.examTitle}
                       </td>
-                      <td style={{ border: '1px solid #cbd5e1', padding: '8px', textAlign: 'center' }}>
+                      <td style={{ border: '1px solid #cbd5e1', padding: '5px 6px', textAlign: 'center', whiteSpace: 'nowrap' }}>
                         {sumItem.gradeLevel}
                       </td>
-                      <td style={{ border: '1px solid #cbd5e1', padding: '8px', textAlign: 'center', fontWeight: 'bold', color: '#0369a1' }}>
+                      <td style={{ border: '1px solid #cbd5e1', padding: '5px 6px', textAlign: 'center', fontWeight: 'bold', color: '#0369a1', whiteSpace: 'nowrap' }}>
                         {sumItem.totalStudents}
                       </td>
-                      <td style={{ border: '1px solid #cbd5e1', padding: '8px', textAlign: 'center', backgroundColor: '#fff' }}>
+                      <td style={{ border: '1px solid #cbd5e1', padding: '5px 6px', textAlign: 'center', backgroundColor: '#fff' }}>
                         &nbsp;
                       </td>
-                      <td style={{ border: '1px solid #cbd5e1', padding: '8px', textAlign: 'center', backgroundColor: '#fff' }}>
+                      <td style={{ border: '1px solid #cbd5e1', padding: '5px 6px', textAlign: 'center', backgroundColor: '#fff' }}>
                         &nbsp;
                       </td>
                     </tr>
@@ -408,11 +412,11 @@ const OpticsCollection = () => {
           </>
         )}
 
-        <div style={{ marginTop: '2rem', display: 'flex', justifyContent: 'space-between', fontSize: '9pt', fontWeight: 'bold' }}>
-          <div style={{ borderTop: '1px solid #000', paddingTop: '0.4rem', width: '200px', textAlign: 'center' }}>
+        <div style={{ marginTop: '1.5rem', display: 'flex', justifyContent: 'space-between', fontSize: '8.5pt', fontWeight: 'bold' }}>
+          <div style={{ borderTop: '1px solid #000', paddingTop: '0.3rem', width: '180px', textAlign: 'center' }}>
             Teslim Alan (Optik Sorumlusu)
           </div>
-          <div style={{ borderTop: '1px solid #000', paddingTop: '0.4rem', width: '200px', textAlign: 'center' }}>
+          <div style={{ borderTop: '1px solid #000', paddingTop: '0.3rem', width: '180px', textAlign: 'center' }}>
             Kontrol Eden / Onaylayan
           </div>
         </div>
