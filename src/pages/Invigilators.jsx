@@ -524,6 +524,12 @@ const InvigilatorPayrollReport = ({ exams, selectedExamId }) => {
     setReportData(updated);
   };
 
+  // Kurum içi personel gelmediğinde bu satırı tutanaktan çıkaran fonksiyon
+  const handleRemoveRow = (index) => {
+    const updated = reportData.filter((_, idx) => idx !== index);
+    setReportData(updated);
+  };
+
   const handleSave = async () => {
     if (!selectedExamId) return;
     setSaving(true);
@@ -616,6 +622,7 @@ const InvigilatorPayrollReport = ({ exams, selectedExamId }) => {
                 <th style={{ padding: '6px 8px', width: '75px', textAlign: 'center' }}>Seans</th>
                 <th style={{ padding: '6px 8px', width: '120px', textAlign: 'right' }}>Toplam</th>
                 <th style={{ padding: '6px 8px', width: '120px', textAlign: 'center' }}>İmza</th>
+                <th style={{ padding: '6px 8px', width: '60px', textAlign: 'center' }} className="no-print">İşlem</th>
               </tr>
             </thead>
             <tbody>
@@ -641,6 +648,15 @@ const InvigilatorPayrollReport = ({ exams, selectedExamId }) => {
                       {rowTotal.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL
                     </td>
                     <td style={{ padding: '6px 8px', textAlign: 'center', height: '30px' }}></td>
+                    <td style={{ padding: '6px 8px', textAlign: 'center' }} className="no-print">
+                      <button 
+                        onClick={() => handleRemoveRow(idx)}
+                        style={{ background: '#ef4444', color: '#fff', border: 'none', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem' }}
+                        title="Bu salonu/görevliyi tutanaktan çıkar"
+                      >
+                        Çıkar
+                      </button>
+                    </td>
                   </tr>
                 );
               })}
@@ -814,10 +830,7 @@ const SecurityDateAttendanceReport = ({ exams }) => {
   const [combinedReportList, setCombinedReportList] = useState([]);
   const [loading, setLoading] = useState(false);
 
-  // Sistemdeki benzersiz tarihleri bul
   const uniqueDates = [...new Set(exams.map(e => e.date))].filter(Boolean).sort();
-
-  // Tarih seçildiğinde o tarihteki sınavları otomatik listele
   const examsForSelectedDate = exams.filter(e => e.date === selectedDate);
 
   const handleToggleExamSelection = (examId) => {
@@ -847,7 +860,6 @@ const SecurityDateAttendanceReport = ({ exams }) => {
       const examTitle = currentExam?.name || currentExam?.title || `Sınav #${examId}`;
       const examTime = currentExam?.time || currentExam?.start_time || '';
 
-      // Salon ID'leri ve İsimleri
       const { data: seatingData } = await supabase.from('seating_plans').select('assignments').eq('exam_id', examId);
       const roomIds = new Set();
       if (seatingData) {
@@ -868,7 +880,6 @@ const SecurityDateAttendanceReport = ({ exams }) => {
         }
       }
 
-      // Gözetmen Bilgileri
       const { data: invData } = await supabase.from('exam_invigilators').select('*').eq('exam_id', examId);
       const invMap = {};
       const allAssignedNames = [];
