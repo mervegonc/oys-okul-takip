@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabase';
-import { FaCalendarPlus, FaEye, FaEyeSlash, FaSave, FaTrash } from 'react-icons/fa';
-import { format } from 'date-fns';
+import { FaCalendarPlus, FaEye, FaEyeSlash, FaSave, FaTrash, FaFileExcel } from 'react-icons/fa';
+import { format, parseISO, isWithinInterval, startOfDay, endOfDay } from 'date-fns';
 import { tr } from 'date-fns/locale';
+import * as XLSX from 'xlsx';
 
 const DailyAttendanceList = () => {
   const [attendanceRecords, setAttendanceRecords] = useState([]);
@@ -18,6 +19,10 @@ const DailyAttendanceList = () => {
   const [absent12, setAbsent12] = useState('');
 
   const [showOnlyActive, setShowOnlyActive] = useState(false);
+
+  // Tarih aralığı Excel indirme state'leri
+  const [startDate, setStartDate] = useState(format(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000), 'yyyy-MM-dd'));
+  const [endDate, setEndDate] = useState(format(new Date(), 'yyyy-MM-dd'));
 
   useEffect(() => {
     fetchData();
@@ -121,6 +126,89 @@ const DailyAttendanceList = () => {
     }
   };
 
+  // Seçilen tarih aralığına göre Excel çıktısı üretme fonksiyonu
+  const exportToExcel = () => {
+    if (!startDate || !endDate) {
+      alert('Lütfen başlangıç ve bitiş tarihlerini seçiniz.');
+      return;
+    }
+
+    const start = startOfDay(parseISO(startDate));
+    const end = endOfDay(parseISO(endDate));
+
+    // Belirlenen aralıktaki ve aktif/geçerli kayıtları filtrele
+    const filteredForExcel = attendanceRecords.filter(r => {
+      const rDate = parseISO(r.date);
+      return isWithinInterval(rDate, { start, end });
+    });
+
+    if (filteredForExcel.length === 0) {
+      alert('Seçilen tarih aralığında dışarı aktarılacak kayıt bulunamadı.');
+      return;
+    }
+
+    const excelRows = [];
+    
+    // Üst bilgi satırları
+    excelRows.push({ 'Tarih': 'YILDIZLAR KAMPÜSÜ GÜNLÜK YOKLAMA VE KATILIM RAPORU', '': '', ' ': '', '  ': '', '   ': '', '    ': '' });
+    excelRows.push({ 'Tarih': `Aralık: ${startDate} ile ${endDate} arası`, '': '', ' ': '', '  ': '', '   ': '', '    ': '' });
+    excelRows.push({}); // Boş satır
+
+    // Mevcut Öğrenci Bilgisi Satırı
+    excelRows.push({
+      'Tarih': 'MEVCUT ÖĞRENCİ',
+      'Durum / Tip': '-',
+      '9. Sınıf': totals[9],
+      '10. Sınıf': totals[10],
+      '11. Sınıf': totals[11],
+      '12. Sınıf': totals[12],
+      'Toplam': totalMevcut
+    });
+
+    filteredForExcel.forEach(item => {
+      const dateStr = format(parseISO(item.date), 'd MMMM yyyy EEEE', { locale: tr });
+      
+      const a9 = item.grade_9_absent || 0;
+      const a10 = item.grade_10_absent || 0;
+      const a11 = item.grade_11_absent || 0;
+      const a12 = item.grade_12_absent || 0;
+      const totalAbsent = a9 + a10 + a11 + a12;
+
+      const p9 = totals[9] - a9;
+      const p10 = totals[10] - a10;
+      const p11 = totals[11] - a11;
+      const p12 = totals[12] - a12;
+      const totalPresent = p9 + p10 + p11 + p12;
+
+      // Gelmeyen Satırı
+      excelRows.push({
+        'Tarih': dateStr,
+        'Durum / Tip': 'GELMEYEN',
+        '9. Sınıf': a9,
+        '10. Sınıf': a10,
+        '11. Sınıf': a11,
+        '12. Sınıf': a12,
+        'Toplam': totalAbsent
+      });
+
+      // Gelen Satırı
+      excelRows.push({
+        'Tarih': dateStr,
+        'Durum / Tip': 'GELEN',
+        '9. Sınıf': p9,
+        '10. Sınıf': p10,
+        '11. Sınıf': p11,
+        '12. Sınıf': p12,
+        'Toplam': totalPresent
+      });
+    });
+
+    const worksheet = XLSX.utils.json_to_sheet(excelRows, { skipHeader: false });
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Gunluk_Yoklama');
+    XLSX.writeFile(workbook, `Gunluk_Yoklama_${startDate}_${endDate}.xlsx`);
+  };
+
   const filteredRecords = showOnlyActive 
     ? attendanceRecords.filter(r => r.is_active !== false) 
     : attendanceRecords;
@@ -128,18 +216,14 @@ const DailyAttendanceList = () => {
   return (
     <div style={{ padding: '2rem', maxWidth: '1400px', margin: '0 auto', fontFamily: 'Inter, system-ui, sans-serif', color: '#1e293b', background: '#f8fafc', minHeight: '100vh' }}>
       
-      {/* KESİN ÇÖZÜM: Yazdırma / PDF anında Navbar, Formlar, İşlem Sütunu ve Gizlenen Satırlar Tamamen Yok Olur */}
       <style>{`
         @media print {
-          /* Navbar'ı gizle (nav veya header etiketleri) */
           nav, header, aside {
             display: none !important;
           }
-          /* .no-print sınıfına sahip her şeyi gizle */
           .no-print {
             display: none !important;
           }
-          /* Gizlenmiş (pasif) satırları yazdırmada tamamen yok et */
           .inactive-row {
             display: none !important;
           }
@@ -176,6 +260,57 @@ const DailyAttendanceList = () => {
             }}
           >
             {showOnlyActive ? <FaEye /> : <FaEyeSlash />} {showOnlyActive ? 'Gizlenenleri Göster' : 'Aktifleri Göster'}
+          </button>
+        </div>
+      </div>
+
+      {/* Tarih Aralıklı Excel İndirme Paneli */}
+      <div className="no-print" style={{ background: '#ffffff', padding: '1.5rem', borderRadius: '20px', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.05)', marginBottom: '1.5rem', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+        <div>
+          <h3 style={{ fontSize: '1rem', fontWeight: '700', color: '#0f172a', marginBottom: '0.2rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <FaFileExcel style={{ color: '#16a34a' }} /> Tarih Aralıklı Excel Raporu İndir (Haftalık / Aylık)
+          </h3>
+          <p style={{ fontSize: '0.85rem', color: '#64748b', margin: 0 }}>İstediğiniz iki tarih arasını (Pazartesi-Cuma vb.) seçerek Excel çıktısı alabilirsiniz.</p>
+        </div>
+
+        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+          <div>
+            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: '600', color: '#475569', marginBottom: '0.2rem' }}>Başlangıç Tarihi</label>
+            <input 
+              type="date" 
+              value={startDate} 
+              onChange={(e) => setStartDate(e.target.value)}
+              style={{ padding: '0.5rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', background: '#f8fafc' }} 
+            />
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: '600', color: '#475569', marginBottom: '0.2rem' }}>Bitiş Tarihi</label>
+            <input 
+              type="date" 
+              value={endDate} 
+              onChange={(e) => setEndDate(e.target.value)}
+              style={{ padding: '0.5rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', background: '#f8fafc' }} 
+            />
+          </div>
+          <button 
+            onClick={exportToExcel}
+            style={{ 
+              marginTop: '1rem',
+              padding: '0.55rem 1.2rem', 
+              background: '#16a34a', 
+              color: 'white', 
+              border: 'none', 
+              borderRadius: '8px', 
+              fontWeight: '600', 
+              fontSize: '0.9rem', 
+              cursor: 'pointer', 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '0.5rem',
+              boxShadow: '0 2px 5px rgba(22, 163, 74, 0.3)'
+            }}
+          >
+            <FaFileExcel /> Excel İndir
           </button>
         </div>
       </div>
@@ -278,7 +413,7 @@ const DailyAttendanceList = () => {
           </thead>
           <tbody>
             {filteredRecords.map((item, idx) => {
-              const dateFormatted = format(new Date(item.date), 'd MMMM yyyy EEEE', { locale: tr });
+              const dateFormatted = format(parseISO(item.date), 'd MMMM yyyy EEEE', { locale: tr });
               
               const a9 = item.grade_9_absent || 0;
               const a10 = item.grade_10_absent || 0;
@@ -298,7 +433,7 @@ const DailyAttendanceList = () => {
 
               return (
                 <React.Fragment key={item.id}>
-                  {/* GELMEYEN SATIRI - Eğer pasifse 'inactive-row' sınıfı eklenir ve yazdırırken gizlenir */}
+                  {/* GELMEYEN SATIRI */}
                   <tr className={!isActive ? 'inactive-row' : ''} style={{ opacity: isActive ? 1 : 0.35, background: rowBg }}>
                     <td rowSpan="2" style={{ borderBottom: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0', padding: '0.85rem', fontWeight: '600', textAlign: 'center', verticalAlign: 'middle', background: '#f8fafc' }}>
                       {dateFormatted}
