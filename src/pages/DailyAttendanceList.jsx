@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabase';
-import { FaCalendarPlus, FaEye, FaEyeSlash, FaSave, FaTrash, FaFileExcel } from 'react-icons/fa';
+import { FaCalendarPlus, FaEye, FaEyeSlash, FaSave, FaTrash, FaFileExcel, FaFilePdf } from 'react-icons/fa';
 import { format, parseISO, isWithinInterval, startOfDay, endOfDay } from 'date-fns';
 import { tr } from 'date-fns/locale';
 import * as XLSX from 'xlsx';
@@ -20,9 +20,10 @@ const DailyAttendanceList = () => {
 
   const [showOnlyActive, setShowOnlyActive] = useState(false);
 
-  // Tarih aralığı Excel indirme state'leri
-  const [startDate, setStartDate] = useState(format(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000), 'yyyy-MM-dd'));
+  // Tarih aralığı raporlama state'leri
+  const [startDate, setStartDate] = useState(format(new Date(Date.now() - 4 * 24 * 60 * 60 * 1000), 'yyyy-MM-dd'));
   const [endDate, setEndDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [printMode, setPrintMode] = useState('table'); // 'table' veya 'chart'
 
   useEffect(() => {
     fetchData();
@@ -126,48 +127,43 @@ const DailyAttendanceList = () => {
     }
   };
 
-  // Seçilen tarih aralığına göre Excel çıktısı üretme fonksiyonu
+  // Seçilen tarih aralığındaki verileri kronolojik sırada getirir
+  const getRangeRecords = () => {
+    if (!startDate || !endDate) return [];
+    const start = startOfDay(parseISO(startDate));
+    const end = endOfDay(parseISO(endDate));
+
+    return attendanceRecords
+      .filter(r => {
+        const rDate = parseISO(r.date);
+        return isWithinInterval(rDate, { start, end }) && r.is_active !== false;
+      })
+      .sort((a, b) => new Date(a.date) - new Date(b.date)); // Pazartesi'den Cuma'ya sırala
+  };
+
+  // DÜZELTİLMİŞ TEMİZ EXCEL ÇIKTISI (aoa_to_sheet ile kaymasız)
   const exportToExcel = () => {
     if (!startDate || !endDate) {
       alert('Lütfen başlangıç ve bitiş tarihlerini seçiniz.');
       return;
     }
 
-    const start = startOfDay(parseISO(startDate));
-    const end = endOfDay(parseISO(endDate));
-
-    // Belirlenen aralıktaki ve aktif/geçerli kayıtları filtrele
-    const filteredForExcel = attendanceRecords.filter(r => {
-      const rDate = parseISO(r.date);
-      return isWithinInterval(rDate, { start, end });
-    });
-
-    if (filteredForExcel.length === 0) {
-      alert('Seçilen tarih aralığında dışarı aktarılacak kayıt bulunamadı.');
+    const rangeData = getRangeRecords();
+    if (rangeData.length === 0) {
+      alert('Seçilen tarih aralığında dışarı aktarılacak aktif kayıt bulunamadı.');
       return;
     }
 
-    const excelRows = [];
-    
-    // Üst bilgi satırları
-    excelRows.push({ 'Tarih': 'YILDIZLAR KAMPÜSÜ GÜNLÜK YOKLAMA VE KATILIM RAPORU', '': '', ' ': '', '  ': '', '   ': '', '    ': '' });
-    excelRows.push({ 'Tarih': `Aralık: ${startDate} ile ${endDate} arası`, '': '', ' ': '', '  ': '', '   ': '', '    ': '' });
-    excelRows.push({}); // Boş satır
+    const aoa = [
+      ['YILDIZLAR KAMPÜSÜ GÜNLÜK YOKLAMA VE KATILIM RAPORU'],
+      [`Tarih Aralığı: ${format(parseISO(startDate), 'd MMMM yyyy', { locale: tr })} - ${format(parseISO(endDate), 'd MMMM yyyy', { locale: tr })}`],
+      [],
+      ['TARİH', 'DURUM', '9. Sınıf', '10. Sınıf', '11. Sınıf', '12. Sınıf', 'TOPLAM', 'KATILIM ORANI'],
+      ['MEVCUT ÖĞRENCİ', 'TOPLAM MEVCUT', totals[9], totals[10], totals[11], totals[12], totalMevcut, '%100']
+    ];
 
-    // Mevcut Öğrenci Bilgisi Satırı
-    excelRows.push({
-      'Tarih': 'MEVCUT ÖĞRENCİ',
-      'Durum / Tip': '-',
-      '9. Sınıf': totals[9],
-      '10. Sınıf': totals[10],
-      '11. Sınıf': totals[11],
-      '12. Sınıf': totals[12],
-      'Toplam': totalMevcut
-    });
-
-    filteredForExcel.forEach(item => {
+    rangeData.forEach(item => {
       const dateStr = format(parseISO(item.date), 'd MMMM yyyy EEEE', { locale: tr });
-      
       const a9 = item.grade_9_absent || 0;
       const a10 = item.grade_10_absent || 0;
       const a11 = item.grade_11_absent || 0;
@@ -180,48 +176,74 @@ const DailyAttendanceList = () => {
       const p12 = totals[12] - a12;
       const totalPresent = p9 + p10 + p11 + p12;
 
-      // Gelmeyen Satırı
-      excelRows.push({
-        'Tarih': dateStr,
-        'Durum / Tip': 'GELMEYEN',
-        '9. Sınıf': a9,
-        '10. Sınıf': a10,
-        '11. Sınıf': a11,
-        '12. Sınıf': a12,
-        'Toplam': totalAbsent
-      });
+      const absentRate = totalMevcut > 0 ? `%${((totalAbsent / totalMevcut) * 100).toFixed(1)}` : '%0';
+      const presentRate = totalMevcut > 0 ? `%${((totalPresent / totalMevcut) * 100).toFixed(1)}` : '%0';
 
-      // Gelen Satırı
-      excelRows.push({
-        'Tarih': dateStr,
-        'Durum / Tip': 'GELEN',
-        '9. Sınıf': p9,
-        '10. Sınıf': p10,
-        '11. Sınıf': p11,
-        '12. Sınıf': p12,
-        'Toplam': totalPresent
-      });
+      aoa.push([dateStr, 'GELMEYEN', a9, a10, a11, a12, totalAbsent, absentRate]);
+      aoa.push([dateStr, 'GELEN', p9, p10, p11, p12, totalPresent, presentRate]);
     });
 
-    const worksheet = XLSX.utils.json_to_sheet(excelRows, { skipHeader: false });
+    const worksheet = XLSX.utils.aoa_to_sheet(aoa);
+
+    // Sütun genişliklerini düzenli ayarla (kayma ve kesilmeyi önler)
+    worksheet['!cols'] = [
+      { wch: 28 }, // TARİH
+      { wch: 16 }, // DURUM
+      { wch: 11 }, // 9. Sınıf
+      { wch: 11 }, // 10. Sınıf
+      { wch: 11 }, // 11. Sınıf
+      { wch: 11 }, // 12. Sınıf
+      { wch: 12 }, // TOPLAM
+      { wch: 15 }  // KATILIM ORANI
+    ];
+
+    // Başlık hücrelerini birleştir (A1:H1 ve A2:H2)
+    worksheet['!merges'] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 7 } },
+      { s: { r: 1, c: 0 }, e: { r: 1, c: 7 } }
+    ];
+
     const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Gunluk_Yoklama');
-    XLSX.writeFile(workbook, `Gunluk_Yoklama_${startDate}_${endDate}.xlsx`);
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Katilim_Raporu');
+    XLSX.writeFile(workbook, `Yoklama_Raporu_${startDate}_${endDate}.xlsx`);
+  };
+
+  // GRAFİKLİ PDF YAZDIRMA FONKSİYONU
+  const handlePrintChartPDF = () => {
+    const rangeData = getRangeRecords();
+    if (rangeData.length === 0) {
+      alert('Seçilen tarih aralığında grafik oluşturulacak veri bulunamadı.');
+      return;
+    }
+    setPrintMode('chart');
+    setTimeout(() => {
+      window.print();
+      setPrintMode('table');
+    }, 150);
   };
 
   const filteredRecords = showOnlyActive 
     ? attendanceRecords.filter(r => r.is_active !== false) 
     : attendanceRecords;
 
+  const rangeRecords = getRangeRecords();
+
+  // Sınıf bazlı ortalama devamsızlık hesaplama (Grafik özeti için)
+  const gradeSummary = [9, 10, 11, 12].map(grade => {
+    const key = `grade_${grade}_absent`;
+    const totalAbsentSum = rangeRecords.reduce((acc, r) => acc + (r[key] || 0), 0);
+    const avgAbsent = rangeRecords.length > 0 ? (totalAbsentSum / rangeRecords.length) : 0;
+    const avgPresent = Math.max(0, totals[grade] - avgAbsent);
+    const presentPct = totals[grade] > 0 ? ((avgPresent / totals[grade]) * 100).toFixed(1) : 0;
+    return { grade, total: totals[grade], avgAbsent: avgAbsent.toFixed(1), avgPresent: avgPresent.toFixed(1), presentPct };
+  });
+
   return (
     <div style={{ padding: '2rem', maxWidth: '1400px', margin: '0 auto', fontFamily: 'Inter, system-ui, sans-serif', color: '#1e293b', background: '#f8fafc', minHeight: '100vh' }}>
       
       <style>{`
         @media print {
-          nav, header, aside {
-            display: none !important;
-          }
-          .no-print {
+          nav, header, aside, .no-print {
             display: none !important;
           }
           .inactive-row {
@@ -230,7 +252,20 @@ const DailyAttendanceList = () => {
           body {
             background: white !important;
             padding: 0 !important;
+            margin: 0 !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
           }
+          @page {
+            size: A4 portrait;
+            margin: 10mm;
+          }
+          ${printMode === 'chart' ? `
+            .main-table-container { display: none !important; }
+            .chart-pdf-container { display: block !important; }
+          ` : `
+            .chart-pdf-container { display: none !important; }
+          `}
         }
       `}</style>
 
@@ -264,55 +299,188 @@ const DailyAttendanceList = () => {
         </div>
       </div>
 
-      {/* Tarih Aralıklı Excel İndirme Paneli */}
+      {/* Tarih Aralıklı Excel & Grafikli PDF İndirme Paneli */}
       <div className="no-print" style={{ background: '#ffffff', padding: '1.5rem', borderRadius: '20px', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.05)', marginBottom: '1.5rem', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
-          <h3 style={{ fontSize: '1rem', fontWeight: '700', color: '#0f172a', marginBottom: '0.2rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <FaFileExcel style={{ color: '#16a34a' }} /> Tarih Aralıklı Excel Raporu İndir (Haftalık / Aylık)
+          <h3 style={{ fontSize: '1.05rem', fontWeight: '700', color: '#0f172a', marginBottom: '0.2rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            📊 Haftalık / Aylık Rapor Dışa Aktar (Excel & Grafikli PDF)
           </h3>
-          <p style={{ fontSize: '0.85rem', color: '#64748b', margin: 0 }}>İstediğiniz iki tarih arasını (Pazartesi-Cuma vb.) seçerek Excel çıktısı alabilirsiniz.</p>
+          <p style={{ fontSize: '0.85rem', color: '#64748b', margin: 0 }}>Başlangıç ve bitiş tarihini seçerek düzenli Excel tablosu veya grafikli PDF raporu indirin.</p>
         </div>
 
-        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: '0.85rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
           <div>
-            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: '600', color: '#475569', marginBottom: '0.2rem' }}>Başlangıç Tarihi</label>
+            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: '600', color: '#475569', marginBottom: '0.25rem' }}>Başlangıç Tarihi</label>
             <input 
               type="date" 
               value={startDate} 
               onChange={(e) => setStartDate(e.target.value)}
-              style={{ padding: '0.5rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', background: '#f8fafc' }} 
+              style={{ padding: '0.55rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', background: '#f8fafc', fontWeight: '600' }} 
             />
           </div>
           <div>
-            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: '600', color: '#475569', marginBottom: '0.2rem' }}>Bitiş Tarihi</label>
+            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: '600', color: '#475569', marginBottom: '0.25rem' }}>Bitiş Tarihi</label>
             <input 
               type="date" 
               value={endDate} 
               onChange={(e) => setEndDate(e.target.value)}
-              style={{ padding: '0.5rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', background: '#f8fafc' }} 
+              style={{ padding: '0.55rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', background: '#f8fafc', fontWeight: '600' }} 
             />
           </div>
           <button 
             onClick={exportToExcel}
             style={{ 
-              marginTop: '1rem',
-              padding: '0.55rem 1.2rem', 
+              padding: '0.6rem 1.15rem', 
               background: '#16a34a', 
               color: 'white', 
               border: 'none', 
               borderRadius: '8px', 
               fontWeight: '600', 
-              fontSize: '0.9rem', 
+              fontSize: '0.88rem', 
               cursor: 'pointer', 
               display: 'flex', 
               alignItems: 'center', 
-              gap: '0.5rem',
-              boxShadow: '0 2px 5px rgba(22, 163, 74, 0.3)'
+              gap: '0.45rem',
+              boxShadow: '0 2px 5px rgba(22, 163, 74, 0.25)'
             }}
           >
             <FaFileExcel /> Excel İndir
           </button>
+          <button 
+            onClick={handlePrintChartPDF}
+            style={{ 
+              padding: '0.6rem 1.15rem', 
+              background: '#dc2626', 
+              color: 'white', 
+              border: 'none', 
+              borderRadius: '8px', 
+              fontWeight: '600', 
+              fontSize: '0.88rem', 
+              cursor: 'pointer', 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '0.45rem',
+              boxShadow: '0 2px 5px rgba(220, 38, 38, 0.25)'
+            }}
+          >
+            <FaFilePdf /> Grafikli PDF İndir
+          </button>
         </div>
+      </div>
+
+      {/* YALNIZCA "GRAFIKLI PDF İNDİR" TIKLANDIĞINDA YAZDIRMA ALANINDA GÖRÜNEN GRAFİK RAPORU */}
+      <div className="chart-pdf-container" style={{ display: 'none', background: '#fff', padding: '1rem' }}>
+        <div style={{ textAlign: 'center', borderBottom: '2px solid #1e293b', paddingBottom: '0.75rem', marginBottom: '1.25rem' }}>
+          <h2 style={{ margin: 0, fontSize: '15pt', fontWeight: '800', color: '#0f172a' }}>
+            YILDIZLAR KAMPÜSÜ KATILIM VE DEVAMSIZLIK GRAFİK RAPORU
+          </h2>
+          <p style={{ margin: '0.3rem 0 0 0', fontSize: '10pt', color: '#475569', fontWeight: '600' }}>
+            Dönem: {startDate ? format(parseISO(startDate), 'd MMMM yyyy', { locale: tr }) : ''} - {endDate ? format(parseISO(endDate), 'd MMMM yyyy', { locale: tr }) : ''} ({rangeRecords.length} Okul Günü) | Toplam Mevcudiyet: {totalMevcut} Öğrenci
+          </p>
+        </div>
+
+        {/* 1. BÖLÜM: GÜNLÜK KATILIM & DEVAMSIZLIK YATAY ÇUBUK GRAFİĞİ */}
+        <div style={{ marginBottom: '1.5rem', border: '1px solid #cbd5e1', borderRadius: '10px', padding: '1rem' }}>
+          <h3 style={{ margin: '0 0 0.75rem 0', fontSize: '11pt', color: '#1e293b', borderBottom: '1px solid #e2e8f0', paddingBottom: '0.4rem' }}>
+            1. Günlük Katılım (Gelen) ve Devamsızlık (Gelmeyen) Dağılım Grafiği
+          </h3>
+          
+          <div style={{ display: 'flex', gap: '1rem', fontSize: '8.5pt', marginBottom: '0.75rem', fontWeight: '600' }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+              <span style={{ width: '12px', height: '12px', background: '#16a34a', display: 'inline-block', borderRadius: '2px' }}></span> Gelen Öğrenci
+            </span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+              <span style={{ width: '12px', height: '12px', background: '#ef4444', display: 'inline-block', borderRadius: '2px' }}></span> Gelmeyen Öğrenci
+            </span>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+            {rangeRecords.map((item) => {
+              const totalAbsent = (item.grade_9_absent || 0) + (item.grade_10_absent || 0) + (item.grade_11_absent || 0) + (item.grade_12_absent || 0);
+              const totalPresent = Math.max(0, totalMevcut - totalAbsent);
+              const presentPercent = totalMevcut > 0 ? ((totalPresent / totalMevcut) * 100).toFixed(1) : 0;
+              const absentPercent = totalMevcut > 0 ? ((totalAbsent / totalMevcut) * 100).toFixed(1) : 0;
+              const dayLabel = format(parseISO(item.date), 'd MMM EEEE', { locale: tr });
+
+              return (
+                <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '8.5pt' }}>
+                  <div style={{ width: '130px', fontWeight: '700', color: '#334155', flexShrink: 0 }}>
+                    {dayLabel}
+                  </div>
+                  <div style={{ flex: 1, height: '22px', background: '#f1f5f9', borderRadius: '4px', overflow: 'hidden', display: 'flex', border: '1px solid #cbd5e1' }}>
+                    <div style={{ width: `${presentPercent}%`, background: '#16a34a', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700', fontSize: '8pt' }}>
+                      {totalPresent} (%{presentPercent})
+                    </div>
+                    {totalAbsent > 0 && (
+                      <div style={{ width: `${absentPercent}%`, background: '#ef4444', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700', fontSize: '7.5pt', minWidth: '38px' }}>
+                        {totalAbsent}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* 2. BÖLÜM: SINIF DÜZEYİNE GÖRE ORTALAMA KATILIM GRAFİĞİ */}
+        <div style={{ marginBottom: '1.5rem', border: '1px solid #cbd5e1', borderRadius: '10px', padding: '1rem' }}>
+          <h3 style={{ margin: '0 0 0.75rem 0', fontSize: '11pt', color: '#1e293b', borderBottom: '1px solid #e2e8f0', paddingBottom: '0.4rem' }}>
+            2. Sınıf Seviyelerine Göre Dönemlik Katılım Ortalaması
+          </h3>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.75rem' }}>
+            {gradeSummary.map(gs => (
+              <div key={gs.grade} style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '0.75rem', textAlign: 'center', background: '#f8fafc' }}>
+                <div style={{ fontWeight: '800', fontSize: '10pt', color: '#1e40af', marginBottom: '0.3rem' }}>{gs.grade}. SINIFLAR</div>
+                <div style={{ fontSize: '14pt', fontWeight: '800', color: '#16a34a' }}>%{gs.presentPct}</div>
+                <div style={{ fontSize: '7.5pt', color: '#64748b', marginTop: '0.2rem' }}>Katılım Oranı</div>
+                <div style={{ width: '100%', height: '8px', background: '#fee2e2', borderRadius: '4px', overflow: 'hidden', marginTop: '0.5rem' }}>
+                  <div style={{ width: `${gs.presentPct}%`, height: '100%', background: '#16a34a' }}></div>
+                </div>
+                <div style={{ fontSize: '7.5pt', color: '#334155', marginTop: '0.4rem', fontWeight: '600' }}>
+                  Ort. Gelen: {gs.avgPresent} / {gs.total}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* 3. BÖLÜM: ÖZET SAYISAL TABLO */}
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '8pt', textAlign: 'center' }}>
+          <thead>
+            <tr style={{ background: '#e2e8f0' }}>
+              <th style={{ border: '1px solid #000', padding: '5px' }}>Tarih</th>
+              <th style={{ border: '1px solid #000', padding: '5px' }}>9. Sınıf (Gelen/Gelm.)</th>
+              <th style={{ border: '1px solid #000', padding: '5px' }}>10. Sınıf (Gelen/Gelm.)</th>
+              <th style={{ border: '1px solid #000', padding: '5px' }}>11. Sınıf (Gelen/Gelm.)</th>
+              <th style={{ border: '1px solid #000', padding: '5px' }}>12. Sınıf (Gelen/Gelm.)</th>
+              <th style={{ border: '1px solid #000', padding: '5px' }}>Toplam Gelen</th>
+              <th style={{ border: '1px solid #000', padding: '5px' }}>Toplam Gelmeyen</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rangeRecords.map(item => {
+              const a9 = item.grade_9_absent || 0;
+              const a10 = item.grade_10_absent || 0;
+              const a11 = item.grade_11_absent || 0;
+              const a12 = item.grade_12_absent || 0;
+              const totAbs = a9 + a10 + a11 + a12;
+              const totPres = totalMevcut - totAbs;
+
+              return (
+                <tr key={item.id}>
+                  <td style={{ border: '1px solid #000', padding: '4px', fontWeight: '600' }}>{format(parseISO(item.date), 'd MMM yyyy EEEE', { locale: tr })}</td>
+                  <td style={{ border: '1px solid #000', padding: '4px' }}>{totals[9] - a9} / {a9}</td>
+                  <td style={{ border: '1px solid #000', padding: '4px' }}>{totals[10] - a10} / {a10}</td>
+                  <td style={{ border: '1px solid #000', padding: '4px' }}>{totals[11] - a11} / {a11}</td>
+                  <td style={{ border: '1px solid #000', padding: '4px' }}>{totals[12] - a12} / {a12}</td>
+                  <td style={{ border: '1px solid #000', padding: '4px', fontWeight: '700', color: '#166534' }}>{totPres}</td>
+                  <td style={{ border: '1px solid #000', padding: '4px', fontWeight: '700', color: '#991b1b' }}>{totAbs}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
 
       {/* Yeni Gün Ekleme Kartı */}
@@ -377,8 +545,8 @@ const DailyAttendanceList = () => {
         </form>
       </div>
 
-      {/* Tablo Alanı */}
-      <div style={{ background: '#ffffff', padding: '2rem', borderRadius: '20px', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.05)', overflowX: 'auto', border: '1px solid #e2e8f0' }}>
+      {/* Ana Tablo Alanı */}
+      <div className="main-table-container" style={{ background: '#ffffff', padding: '2rem', borderRadius: '20px', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.05)', overflowX: 'auto', border: '1px solid #e2e8f0' }}>
         
         <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
           <h3 style={{ fontSize: '1.3rem', fontWeight: '800', color: '#0f172a', letterSpacing: '0.5px', margin: 0 }}>
