@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { supabase } from '../supabase';
 import {
   FaUserPlus,
@@ -6,13 +6,11 @@ import {
   FaTrash,
   FaSlidersH,
   FaUserCheck,
-  FaCheckCircle,
-  FaTimesCircle,
-  FaClock,
   FaSearch,
   FaSave,
   FaTimes,
-  FaFileExcel
+  FaFileExcel,
+  FaFileUpload
 } from 'react-icons/fa';
 import * as XLSX from 'xlsx';
 
@@ -22,7 +20,10 @@ const Candidates = () => {
   const [thresholds, setThresholds] = useState([]);
   const [staffList, setStaffList] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [importing, setImporting] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+
+  const fileInputRef = useRef(null);
 
   // Aday Form State'leri
   const [showCandidateForm, setShowCandidateForm] = useState(false);
@@ -30,7 +31,9 @@ const Candidates = () => {
   const [candidateForm, setCandidateForm] = useState({
     full_name: '',
     grade_level: '9. Sınıf',
+    note_date: '',
     special_note: '',
+    caller_staff: '',
     appointment_by: '',
     exam_name: '',
     exam_score: '',
@@ -101,15 +104,15 @@ const Candidates = () => {
   // -------------------------------------------------------------
   // Otomatik Baraj Hesaplama Fonksiyonu
   // -------------------------------------------------------------
-  const calculatePassStatus = (gradeLevel, scoreVal) => {
-    if (scoreVal === '' || scoreVal === null || scoreVal === undefined) {
+  const calculatePassStatus = (gradeLevel, scoreVal, currentThresholds = thresholds) => {
+    if (scoreVal === '' || scoreVal === null || scoreVal === undefined || scoreVal === '-') {
       return 'Puan Girilmedi';
     }
-    const score = parseFloat(scoreVal);
+    const score = parseFloat(String(scoreVal).replace(',', '.'));
     if (isNaN(score)) return 'Puan Girilmedi';
 
-    const targetThreshold = thresholds.find(
-      (t) => t.grade_level.trim().toLowerCase() === String(gradeLevel).trim().toLowerCase()
+    const targetThreshold = currentThresholds.find(
+      (t) => t.grade_level.trim().toLowerCase() === String(gradeLevel || '').trim().toLowerCase()
     );
 
     if (!targetThreshold) {
@@ -134,13 +137,15 @@ const Candidates = () => {
     const payload = {
       full_name: candidateForm.full_name.trim(),
       grade_level: candidateForm.grade_level,
+      note_date: candidateForm.note_date ? new Date(candidateForm.note_date).toISOString() : new Date().toISOString(),
       special_note: candidateForm.special_note || '',
+      caller_staff: candidateForm.caller_staff || candidateForm.feedback_by || '',
       appointment_by: candidateForm.appointment_by || '',
       exam_name: candidateForm.exam_name || '',
       exam_score: candidateForm.exam_score !== '' ? parseFloat(candidateForm.exam_score) : null,
       pass_status: passStatus,
       exam_date: candidateForm.exam_date ? new Date(candidateForm.exam_date).toISOString() : null,
-      feedback_by: candidateForm.feedback_by || '',
+      feedback_by: candidateForm.feedback_by || candidateForm.caller_staff || '',
       feedback_note: candidateForm.feedback_note || ''
     };
 
@@ -172,12 +177,14 @@ const Candidates = () => {
     setCandidateForm({
       full_name: cand.full_name || '',
       grade_level: cand.grade_level || '9. Sınıf',
+      note_date: cand.note_date ? cand.note_date.slice(0, 16) : (cand.created_at ? cand.created_at.slice(0, 16) : ''),
       special_note: cand.special_note || '',
+      caller_staff: cand.caller_staff || cand.feedback_by || '',
       appointment_by: cand.appointment_by || '',
       exam_name: cand.exam_name || '',
-      exam_score: cand.exam_score !== null ? cand.exam_score : '',
+      exam_score: cand.exam_score !== null && cand.exam_score !== undefined ? cand.exam_score : '',
       exam_date: cand.exam_date ? cand.exam_date.slice(0, 16) : '',
-      feedback_by: cand.feedback_by || '',
+      feedback_by: cand.feedback_by || cand.caller_staff || '',
       feedback_note: cand.feedback_note || ''
     });
     setShowCandidateForm(true);
@@ -199,7 +206,9 @@ const Candidates = () => {
     setCandidateForm({
       full_name: '',
       grade_level: thresholds[0]?.grade_level || '9. Sınıf',
+      note_date: new Date().toISOString().slice(0, 16),
       special_note: '',
+      caller_staff: '',
       appointment_by: '',
       exam_name: '',
       exam_score: '',
@@ -241,7 +250,7 @@ const Candidates = () => {
       setEditingThreshold(null);
       setNewThreshold({ grade_level: '', min_score: '' });
       fetchThresholds();
-      fetchCandidates(); // Barajlar değişince durumları güncellemek için adayları da tazeliyoruz
+      fetchCandidates();
     } catch (err) {
       alert('Baraj kaydedilemedi: ' + err.message);
     }
@@ -290,28 +299,185 @@ const Candidates = () => {
   };
 
   // -------------------------------------------------------------
-  // Excel Dışa Aktarma
+  // Excel Dışa Aktarma (Ortak Alan Formatı)
   // -------------------------------------------------------------
   const exportToExcel = () => {
-    const dataToExport = filteredCandidates.map((c, idx) => ({
-      '#': idx + 1,
-      'Adı Soyadı': c.full_name,
-      'Sınıf Seviyesi': c.grade_level,
-      'Kayıt Tarihi': new Date(c.created_at).toLocaleString('tr-TR'),
-      'Randevu Veren': c.appointment_by || '-',
-      'Sınav Adı': c.exam_name || '-',
-      'Sınav Puanı': c.exam_score !== null ? c.exam_score : '-',
-      'Baraj Durumu': c.pass_status || '-',
-      'Sınav Tarihi/Saati': c.exam_date ? new Date(c.exam_date).toLocaleString('tr-TR') : '-',
-      'Dönüş Sağlayan': c.feedback_by || '-',
-      'Dönüş Notu': c.feedback_note || '-',
-      'Özel Not': c.special_note || '-'
-    }));
+    const dataToExport = filteredCandidates.map((c) => {
+      const noteDateRaw = c.note_date || c.created_at;
+      const formattedNoteDate = noteDateRaw ? new Date(noteDateRaw).toLocaleDateString('tr-TR') : '';
+      const scoreVal = c.exam_score !== null && c.exam_score !== undefined ? c.exam_score : '';
+      const computedStatus = c.pass_status || calculatePassStatus(c.grade_level, scoreVal);
+
+      return {
+        'Aday Adı Soyadı': c.full_name || '',
+        'Sınıf Seviyesi': c.grade_level || '',
+        'Not Alınma Tarihi': formattedNoteDate,
+        'Notu': c.special_note || '',
+        'Arayan Hoca': c.caller_staff || c.appointment_by || '',
+        'Puanı': scoreVal,
+        'Baraj Durumu': computedStatus,
+        'Baraj Sonrası Dönen Kişi': c.feedback_by || '',
+        'Baraj Sonrası Notu': c.feedback_note || ''
+      };
+    });
 
     const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+    worksheet['!cols'] = [
+      { wch: 24 }, // Aday Adı Soyadı
+      { wch: 16 }, // Sınıf Seviyesi
+      { wch: 18 }, // Not Alınma Tarihi
+      { wch: 28 }, // Notu
+      { wch: 20 }, // Arayan Hoca
+      { wch: 12 }, // Puanı
+      { wch: 18 }, // Baraj Durumu
+      { wch: 24 }, // Baraj Sonrası Dönen Kişi
+      { wch: 30 }  // Baraj Sonrası Notu
+    ];
+
     const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Adaylar');
-    XLSX.writeFile(workbook, `Aday_Kayit_Listesi_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Aday_Takip');
+    XLSX.writeFile(workbook, `Aday_Takip_Listesi_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  };
+
+  // -------------------------------------------------------------
+  // Excel'den Yükleme & Sisteme Güncelleme
+  // -------------------------------------------------------------
+  const parseExcelDate = (val) => {
+    if (!val) return null;
+    if (typeof val === 'number') {
+      // Excel seri tarihi
+      const parsed = XLSX.SSF.parse_date_code(val);
+      if (parsed) {
+        return new Date(parsed.y, parsed.m - 1, parsed.d).toISOString();
+      }
+    }
+    const str = String(val).trim();
+    // dd.mm.yyyy formatı kontrolü
+    const parts = str.split('.');
+    if (parts.length === 3) {
+      const d = parseInt(parts[0], 10);
+      const m = parseInt(parts[1], 10) - 1;
+      const y = parseInt(parts[2], 10);
+      const dt = new Date(y, m, d);
+      if (!isNaN(dt.getTime())) return dt.toISOString();
+    }
+    const fallback = new Date(str);
+    return !isNaN(fallback.getTime()) ? fallback.toISOString() : null;
+  };
+
+  const handleImportExcel = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setImporting(true);
+    try {
+      const buffer = await file.arrayBuffer();
+      const workbook = XLSX.read(buffer, { type: 'array' });
+      const firstSheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[firstSheetName];
+      const rows = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
+
+      if (!rows || rows.length === 0) {
+        alert('Excel dosyasında işlenecek veri bulunamadı.');
+        setImporting(false);
+        return;
+      }
+
+      let updatedCount = 0;
+      let insertedCount = 0;
+
+      for (const row of rows) {
+        const fullName = String(
+          row['Aday Adı Soyadı'] || row['Adı Soyadı'] || row['Ad Soyad'] || row['full_name'] || ''
+        ).trim();
+
+        if (!fullName) continue;
+
+        const gradeLevel = String(
+          row['Sınıf Seviyesi'] || row['Sınıf'] || row['grade_level'] || '9. Sınıf'
+        ).trim();
+
+        const rawNoteDate = row['Not Alınma Tarihi'] || row['Kayıt Tarihi'] || row['note_date'] || '';
+        const parsedNoteDate = parseExcelDate(rawNoteDate);
+
+        const noteText = String(row['Notu'] || row['Özel Not'] || row['special_note'] || '').trim();
+        const callerStaff = String(
+          row['Arayan Hoca'] || row['Arayan Kişi'] || row['Randevu Veren'] || row['caller_staff'] || ''
+        ).trim();
+
+        const rawScore = row['Puanı'] !== '' && row['Puanı'] !== undefined
+          ? row['Puanı']
+          : (row['Sınav Puanı'] !== '' && row['Sınav Puanı'] !== undefined ? row['Sınav Puanı'] : '');
+
+        const numericScore =
+          rawScore !== '' && rawScore !== '-' && !isNaN(parseFloat(String(rawScore).replace(',', '.')))
+            ? parseFloat(String(rawScore).replace(',', '.'))
+            : null;
+
+        const afterThresholdPerson = String(
+          row['Baraj Sonrası Dönen Kişi'] || row['Dönen Kişi'] || row['Dönüş Sağlayan'] || row['feedback_by'] || ''
+        ).trim();
+
+        const afterThresholdNote = String(
+          row['Baraj Sonrası Notu'] || row['Dönüş Notu'] || row['feedback_note'] || ''
+        ).trim();
+
+        const excelStatus = String(row['Baraj Durumu'] || '').trim();
+        const passStatus =
+          numericScore !== null
+            ? calculatePassStatus(gradeLevel, numericScore, thresholds)
+            : (excelStatus || 'Puan Girilmedi');
+
+        // Mevcut adayı isim bazlı (veya sınıf eşleşmeli) bul
+        const existing = candidates.find(
+          (c) => c.full_name?.trim().toLowerCase() === fullName.toLowerCase()
+        );
+
+        const payload = {
+          full_name: fullName,
+          grade_level: gradeLevel,
+          special_note: noteText,
+          caller_staff: callerStaff,
+          exam_score: numericScore,
+          pass_status: passStatus,
+          feedback_by: afterThresholdPerson || callerStaff,
+          feedback_note: afterThresholdNote
+        };
+
+        if (parsedNoteDate) {
+          payload.note_date = parsedNoteDate;
+        }
+
+        if (existing) {
+          const { error } = await supabase
+            .from('candidates')
+            .update(payload)
+            .eq('id', existing.id);
+
+          if (!error) updatedCount++;
+        } else {
+          const { error } = await supabase
+            .from('candidates')
+            .insert([{
+              ...payload,
+              note_date: parsedNoteDate || new Date().toISOString()
+            }]);
+
+          if (!error) insertedCount++;
+        }
+      }
+
+      alert(`Excel içe aktarma tamamlandı!\n• Güncellenen kayıt: ${updatedCount}\n• Yeni eklenen kayıt: ${insertedCount}`);
+      await fetchCandidates();
+    } catch (err) {
+      console.error('Excel yükleme hatası:', err);
+      alert('Excel dosyası işlenirken hata oluştu: ' + err.message);
+    } finally {
+      setImporting(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
   };
 
   // Arama Filtreleme
@@ -321,6 +487,7 @@ const Candidates = () => {
       return (
         c.full_name?.toLowerCase().includes(q) ||
         c.grade_level?.toLowerCase().includes(q) ||
+        c.caller_staff?.toLowerCase().includes(q) ||
         c.appointment_by?.toLowerCase().includes(q) ||
         c.exam_name?.toLowerCase().includes(q) ||
         c.feedback_by?.toLowerCase().includes(q)
@@ -339,7 +506,7 @@ const Candidates = () => {
               📝 Aday Not & Takip Modülü
             </h2>
             <p style={{ margin: '0.3rem 0 0 0', color: '#64748b', fontSize: '0.9rem' }}>
-              Aday kayıtları, baraj puanı tanımları ve personel listesini yönetin.
+              Aday kayıtları, ortak Excel senkronizasyonu, baraj puanı tanımları ve personel listesini yönetin.
             </p>
           </div>
 
@@ -411,7 +578,7 @@ const Candidates = () => {
       {activeTab === 'candidates' && (
         <div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '1rem' }}>
-            <div style={{ display: 'flex', gap: '0.8rem', alignItems: 'center' }}>
+            <div style={{ display: 'flex', gap: '0.8rem', alignItems: 'center', flexWrap: 'wrap' }}>
               <button
                 onClick={() => {
                   resetCandidateForm();
@@ -448,7 +615,34 @@ const Candidates = () => {
                   gap: '0.5rem'
                 }}
               >
-                <FaFileExcel /> Excel İndir
+                <FaFileExcel /> Excel'e Çıkart
+              </button>
+
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".xlsx,.xls"
+                onChange={handleImportExcel}
+                style={{ display: 'none' }}
+              />
+
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={importing}
+                style={{
+                  padding: '0.55rem 1.2rem',
+                  background: '#7c3aed',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '6px',
+                  fontWeight: 'bold',
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.5rem'
+                }}
+              >
+                <FaFileUpload /> {importing ? 'Güncelleniyor...' : "Excel'den Yükle / Güncelle"}
               </button>
             </div>
 
@@ -456,7 +650,7 @@ const Candidates = () => {
               <FaSearch style={{ color: '#94a3b8' }} />
               <input
                 type="text"
-                placeholder="Aday adı, Yetkili veya Sınıf ara..."
+                placeholder="Aday adı, Hoca veya Sınıf ara..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 style={{ border: 'none', outline: 'none', fontSize: '0.9rem', width: '220px' }}
@@ -526,43 +720,38 @@ const Candidates = () => {
                   </select>
                 </div>
 
-                {/* Randevu Veren Kişi */}
+                {/* Not Alınma Tarihi */}
                 <div>
                   <label style={{ display: 'block', fontWeight: 'bold', fontSize: '0.85rem', marginBottom: '0.3rem' }}>
-                    Randevu Veren Kişi
-                  </label>
-                  <select
-                    value={candidateForm.appointment_by}
-                    onChange={(e) => setCandidateForm({ ...candidateForm, appointment_by: e.target.value })}
-                    style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #cbd5e1' }}
-                  >
-                    <option value="">-- Kişi Seçin --</option>
-                    {staffList.map((st) => (
-                      <option key={st.id} value={st.name}>
-                        {st.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Sınav Adı */}
-                <div>
-                  <label style={{ display: 'block', fontWeight: 'bold', fontSize: '0.85rem', marginBottom: '0.3rem' }}>
-                    Girdiği Sınav İsmi
+                    Not Alınma Tarihi
                   </label>
                   <input
-                    type="text"
-                    value={candidateForm.exam_name}
-                    onChange={(e) => setCandidateForm({ ...candidateForm, exam_name: e.target.value })}
-                    placeholder="Örn: Yıldızlar Kabul Sınavı-1"
+                    type="datetime-local"
+                    value={candidateForm.note_date}
+                    onChange={(e) => setCandidateForm({ ...candidateForm, note_date: e.target.value })}
                     style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #cbd5e1' }}
                   />
                 </div>
 
-                {/* Sınav Sonuç Puanı */}
+                {/* Arayan Hoca / Kişi */}
                 <div>
                   <label style={{ display: 'block', fontWeight: 'bold', fontSize: '0.85rem', marginBottom: '0.3rem' }}>
-                    Sınav Sonuç Puanı
+                    Arayan Hoca / Yetkili
+                  </label>
+                  <input
+                    type="text"
+                    list="staff-options"
+                    value={candidateForm.caller_staff}
+                    onChange={(e) => setCandidateForm({ ...candidateForm, caller_staff: e.target.value })}
+                    placeholder="Seçin veya isim yazın"
+                    style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #cbd5e1' }}
+                  />
+                </div>
+
+                {/* Puanı */}
+                <div>
+                  <label style={{ display: 'block', fontWeight: 'bold', fontSize: '0.85rem', marginBottom: '0.3rem' }}>
+                    Puanı
                   </label>
                   <input
                     type="number"
@@ -574,37 +763,26 @@ const Candidates = () => {
                   />
                 </div>
 
-                {/* Sınav Tarihi ve Saati */}
+                {/* Baraj Sonrası Dönen Kişi */}
                 <div>
                   <label style={{ display: 'block', fontWeight: 'bold', fontSize: '0.85rem', marginBottom: '0.3rem' }}>
-                    Sınava Gireceği Tarih & Saat
+                    Baraj Sonrası Dönen Kişi
                   </label>
                   <input
-                    type="datetime-local"
-                    value={candidateForm.exam_date}
-                    onChange={(e) => setCandidateForm({ ...candidateForm, exam_date: e.target.value })}
+                    type="text"
+                    list="staff-options"
+                    value={candidateForm.feedback_by}
+                    onChange={(e) => setCandidateForm({ ...candidateForm, feedback_by: e.target.value })}
+                    placeholder="Seçin veya isim yazın"
                     style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #cbd5e1' }}
                   />
                 </div>
 
-                {/* Dönüş Sağlayan Kişi */}
-                <div>
-                  <label style={{ display: 'block', fontWeight: 'bold', fontSize: '0.85rem', marginBottom: '0.3rem' }}>
-                    Dönüş Sağlayan Kişi
-                  </label>
-                  <select
-                    value={candidateForm.feedback_by}
-                    onChange={(e) => setCandidateForm({ ...candidateForm, feedback_by: e.target.value })}
-                    style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #cbd5e1' }}
-                  >
-                    <option value="">-- Kişi Seçin --</option>
-                    {staffList.map((st) => (
-                      <option key={st.id} value={st.name}>
-                        {st.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                <datalist id="staff-options">
+                  {staffList.map((st) => (
+                    <option key={st.id} value={st.name} />
+                  ))}
+                </datalist>
 
                 {/* Canlı Baraj Durumu Hesaplama Gösterimi */}
                 <div style={{ background: '#f8fafc', padding: '0.6rem', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
@@ -616,8 +794,9 @@ const Candidates = () => {
                     {calculatePassStatus(candidateForm.grade_level, candidateForm.exam_score) === 'Baraj Altı' && (
                       <span style={{ color: '#dc2626' }}>❌ Baraj Altı</span>
                     )}
-                    {calculatePassStatus(candidateForm.grade_level, candidateForm.exam_score) === 'Puan Girilmedi' && (
-                      <span style={{ color: '#d97706' }}>⏳ Puan Girilmedi</span>
+                    {(calculatePassStatus(candidateForm.grade_level, candidateForm.exam_score) === 'Puan Girilmedi' ||
+                      calculatePassStatus(candidateForm.grade_level, candidateForm.exam_score) === 'Baraj Tanımsız') && (
+                      <span style={{ color: '#d97706' }}>⏳ {calculatePassStatus(candidateForm.grade_level, candidateForm.exam_score)}</span>
                     )}
                   </div>
                 </div>
@@ -626,22 +805,22 @@ const Candidates = () => {
               {/* Notlar Alanı */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '1rem' }}>
                 <div>
-                  <label style={{ display: 'block', fontWeight: 'bold', fontSize: '0.85rem', marginBottom: '0.3rem' }}>Özel Not</label>
+                  <label style={{ display: 'block', fontWeight: 'bold', fontSize: '0.85rem', marginBottom: '0.3rem' }}>Notu</label>
                   <textarea
                     rows="2"
                     value={candidateForm.special_note}
                     onChange={(e) => setCandidateForm({ ...candidateForm, special_note: e.target.value })}
-                    placeholder="Aday hakkında özel notlar..."
+                    placeholder="Aday hakkında alınan not..."
                     style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #cbd5e1' }}
                   />
                 </div>
                 <div>
-                  <label style={{ display: 'block', fontWeight: 'bold', fontSize: '0.85rem', marginBottom: '0.3rem' }}>Dönüş Notu (Arama Sonrası)</label>
+                  <label style={{ display: 'block', fontWeight: 'bold', fontSize: '0.85rem', marginBottom: '0.3rem' }}>Baraj Sonrası Notu</label>
                   <textarea
                     rows="2"
                     value={candidateForm.feedback_note}
                     onChange={(e) => setCandidateForm({ ...candidateForm, feedback_note: e.target.value })}
-                    placeholder="Puan sonrası yapılan arama notları..."
+                    placeholder="Baraj sonrası görüşme / arama notu..."
                     style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #cbd5e1' }}
                   />
                 </div>
@@ -666,84 +845,68 @@ const Candidates = () => {
           )}
 
           {/* ADAY TABLOSU */}
-          <div style={{ background: '#fff', borderRadius: '8px', border: '1px solid #e2e8f0', overflow: 'hidden', boxShadow: '0 2px 6px rgba(0,0,0,0.04)' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.9rem' }}>
+          <div style={{ background: '#fff', borderRadius: '8px', border: '1px solid #e2e8f0', overflowX: 'auto', boxShadow: '0 2px 6px rgba(0,0,0,0.04)' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.88rem' }}>
               <thead>
                 <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', color: '#334155' }}>
                   <th style={{ padding: '10px 12px' }}>Aday Adı Soyadı</th>
-                  <th style={{ padding: '10px 12px' }}>Sınıf</th>
-                  <th style={{ padding: '10px 12px' }}>Kayıt Tarihi</th>
-                  <th style={{ padding: '10px 12px' }}>Randevu Veren</th>
-                  <th style={{ padding: '10px 12px' }}>Sınav & Puan</th>
+                  <th style={{ padding: '10px 12px' }}>Sınıf Seviyesi</th>
+                  <th style={{ padding: '10px 12px' }}>Not Alınma Tarihi</th>
+                  <th style={{ padding: '10px 12px' }}>Notu</th>
+                  <th style={{ padding: '10px 12px' }}>Arayan Hoca</th>
+                  <th style={{ padding: '10px 12px' }}>Puanı</th>
                   <th style={{ padding: '10px 12px', textAlign: 'center' }}>Baraj Durumu</th>
-                  <th style={{ padding: '10px 12px' }}>Sınav Tarihi</th>
-                  <th style={{ padding: '10px 12px' }}>Dönüş & Notu</th>
+                  <th style={{ padding: '10px 12px' }}>Baraj Sonrası Dönen Kişi</th>
+                  <th style={{ padding: '10px 12px' }}>Baraj Sonrası Notu</th>
                   <th style={{ padding: '10px 12px', textAlign: 'center' }}>İşlemler</th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan="9" style={{ textAlign: 'center', padding: '2rem' }}>Adaylar yükleniyor...</td>
+                    <td colSpan="10" style={{ textAlign: 'center', padding: '2rem' }}>Adaylar yükleniyor...</td>
                   </tr>
                 ) : filteredCandidates.length === 0 ? (
                   <tr>
-                    <td colSpan="9" style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>Kayıtlı aday bulunamadı.</td>
+                    <td colSpan="10" style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>Kayıtlı aday bulunamadı.</td>
                   </tr>
                 ) : (
                   filteredCandidates.map((c) => {
                     const passStatus = c.pass_status || calculatePassStatus(c.grade_level, c.exam_score);
+                    const noteDateVal = c.note_date || c.created_at;
 
                     return (
                       <tr key={c.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                        <td style={{ padding: '10px 12px', fontWeight: 'bold', color: '#0f172a' }}>
-                          {c.full_name}
-                          {c.special_note && (
-                            <div style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 'normal' }}>
-                              📝 {c.special_note}
-                            </div>
-                          )}
-                        </td>
+                        <td style={{ padding: '10px 12px', fontWeight: 'bold', color: '#0f172a' }}>{c.full_name}</td>
                         <td style={{ padding: '10px 12px', fontWeight: '600' }}>{c.grade_level}</td>
                         <td style={{ padding: '10px 12px', fontSize: '0.82rem', color: '#64748b' }}>
-                          {new Date(c.created_at).toLocaleDateString('tr-TR')}
+                          {noteDateVal ? new Date(noteDateVal).toLocaleDateString('tr-TR') : '-'}
                         </td>
-                        <td style={{ padding: '10px 12px' }}>{c.appointment_by || '-'}</td>
-                        <td style={{ padding: '10px 12px' }}>
-                          <div style={{ fontWeight: '500' }}>{c.exam_name || 'Sınav Girilmedi'}</div>
-                          <div style={{ fontSize: '0.82rem', color: '#0369a1', fontWeight: 'bold' }}>
-                            {c.exam_score !== null ? `${c.exam_score} Puan` : '-'}
-                          </div>
+                        <td style={{ padding: '10px 12px', maxWidth: '200px' }}>{c.special_note || '-'}</td>
+                        <td style={{ padding: '10px 12px' }}>{c.caller_staff || c.appointment_by || '-'}</td>
+                        <td style={{ padding: '10px 12px', fontSize: '0.85rem', color: '#0369a1', fontWeight: 'bold' }}>
+                          {c.exam_score !== null && c.exam_score !== undefined ? c.exam_score : '-'}
                         </td>
                         <td style={{ padding: '10px 12px', textAlign: 'center' }}>
                           {passStatus === 'Barajı Geçti' && (
-                            <span style={{ background: '#dcfce7', color: '#166534', padding: '0.25rem 0.6rem', borderRadius: '12px', fontSize: '0.8rem', fontWeight: 'bold' }}>
+                            <span style={{ background: '#dcfce7', color: '#166534', padding: '0.25rem 0.6rem', borderRadius: '12px', fontSize: '0.78rem', fontWeight: 'bold', whiteSpace: 'nowrap' }}>
                               ✅ Barajı Geçti
                             </span>
                           )}
                           {passStatus === 'Baraj Altı' && (
-                            <span style={{ background: '#fee2e2', color: '#991b1b', padding: '0.25rem 0.6rem', borderRadius: '12px', fontSize: '0.8rem', fontWeight: 'bold' }}>
+                            <span style={{ background: '#fee2e2', color: '#991b1b', padding: '0.25rem 0.6rem', borderRadius: '12px', fontSize: '0.78rem', fontWeight: 'bold', whiteSpace: 'nowrap' }}>
                               ❌ Baraj Altı
                             </span>
                           )}
-                          {(passStatus === 'Puan Girilmedi' || !passStatus) && (
-                            <span style={{ background: '#fef3c7', color: '#92400e', padding: '0.25rem 0.6rem', borderRadius: '12px', fontSize: '0.8rem', fontWeight: 'bold' }}>
-                              ⏳ Bekliyor
+                          {(passStatus === 'Puan Girilmedi' || passStatus === 'Baraj Tanımsız' || !passStatus) && (
+                            <span style={{ background: '#fef3c7', color: '#92400e', padding: '0.25rem 0.6rem', borderRadius: '12px', fontSize: '0.78rem', fontWeight: 'bold', whiteSpace: 'nowrap' }}>
+                              ⏳ {passStatus || 'Bekliyor'}
                             </span>
                           )}
                         </td>
-                        <td style={{ padding: '10px 12px', fontSize: '0.85rem' }}>
-                          {c.exam_date ? new Date(c.exam_date).toLocaleString('tr-TR', { dateStyle: 'short', timeStyle: 'short' }) : '-'}
-                        </td>
-                        <td style={{ padding: '10px 12px' }}>
-                          <div style={{ fontWeight: 'bold', fontSize: '0.85rem' }}>{c.feedback_by || '-'}</div>
-                          {c.feedback_note && (
-                            <div style={{ fontSize: '0.78rem', color: '#475569', italic: 'true' }}>
-                              "{c.feedback_note}"
-                            </div>
-                          )}
-                        </td>
-                        <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                        <td style={{ padding: '10px 12px', fontWeight: '600' }}>{c.feedback_by || '-'}</td>
+                        <td style={{ padding: '10px 12px', maxWidth: '220px' }}>{c.feedback_note || '-'}</td>
+                        <td style={{ padding: '10px 12px', textAlign: 'center', whiteSpace: 'nowrap' }}>
                           <button
                             onClick={() => handleEditCandidate(c)}
                             style={{ border: 'none', background: 'transparent', color: '#2563eb', cursor: 'pointer', marginRight: '0.5rem', fontSize: '1rem' }}
@@ -779,7 +942,6 @@ const Candidates = () => {
             Sistemin adayların puanına göre otomatik "Barajı Geçti" veya "Baraj Altı" hesaplaması yapabilmesi için her sınıf seviyesine bir baraj puanı tanımlayın.
           </p>
 
-          {/* Yeni / Düzenleme Baraj Formu */}
           <form onSubmit={handleSaveThreshold} style={{ display: 'flex', gap: '1rem', alignItems: 'flex-end', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
             <div>
               <label style={{ display: 'block', fontWeight: 'bold', fontSize: '0.85rem', marginBottom: '0.3rem' }}>Sınıf Seviyesi / Grubu</label>
@@ -824,7 +986,6 @@ const Candidates = () => {
             )}
           </form>
 
-          {/* Baraj Listesi Tablosu */}
           <table style={{ width: '100%', maxWidth: '700px', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.9rem' }}>
             <thead>
               <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
@@ -867,16 +1028,16 @@ const Candidates = () => {
       {/* ========================================================================= */}
       {activeTab === 'staff' && (
         <div style={{ background: '#fff', padding: '1.5rem', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-          <h3 style={{ margin: '0 0 1rem 0', color: '#1e293b' }}>👥 Randevu Veren & Dönüş Sağlayan Yetkili İsim Listesi</h3>
+          <h3 style={{ margin: '0 0 1rem 0', color: '#1e293b' }}>👥 Arayan Hoca & Baraj Sonrası Dönen Yetkili Listesi</h3>
           <p style={{ color: '#64748b', fontSize: '0.88rem', marginBottom: '1.5rem' }}>
-            Aday formunda "Randevu Veren Kişi" ve "Dönüş Sağlayan Kişi" açılır menülerinde görünecek personel isimlerini buradan ekleyebilirsiniz.
+            Aday formundaki otomatik öneri listelerinde görünecek hoca ve yetkili isimlerini buradan ekleyebilirsiniz.
           </p>
 
           <form onSubmit={handleAddStaff} style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem' }}>
             <input
               type="text"
               required
-              placeholder="Yetkili Adı Soyadı (Örn: Hülya Hoca)"
+              placeholder="Yetkili / Hoca Adı Soyadı"
               value={newStaffName}
               onChange={(e) => setNewStaffName(e.target.value)}
               style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #cbd5e1', width: '280px' }}
