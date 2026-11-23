@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabase';
-import { FaSync, FaPlus, FaTrash, FaCheckSquare, FaSquare, FaExclamationTriangle, FaSort, FaSortUp, FaSortDown, FaArrowUp, FaArrowDown } from 'react-icons/fa';
+import { FaSync, FaPlus, FaTrash, FaCheckSquare, FaSquare, FaExclamationTriangle, FaSort, FaSortUp, FaSortDown, FaArrowUp, FaArrowDown, FaSave, FaCheckCircle } from 'react-icons/fa';
 
 const SeatingDistribution = () => {
   const [exams, setExams] = useState([]);
@@ -12,6 +12,9 @@ const SeatingDistribution = () => {
   const [conflictGroups, setConflictGroups] = useState([]);
   const [distributions, setDistributions] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [lastSavedAt, setLastSavedAt] = useState('');
   const [message, setMessage] = useState('');
 
   const [examMode, setExamMode] = useState('lise_akademik');
@@ -55,6 +58,8 @@ const SeatingDistribution = () => {
       setGroups([]);
       setDistributions([]);
       setOrderedRoomIds([]);
+      setHasUnsavedChanges(false);
+      setLastSavedAt('');
       setListBranchFilter('ALL');
       setListSecondLangFilter('ALL');
       setListEnglishFilter('ALL');
@@ -87,12 +92,18 @@ const SeatingDistribution = () => {
           .from('seating_plans')
           .select('*')
           .eq('exam_id', selectedExamId)
+          .order('created_at', { ascending: false })
+          .limit(1)
           .maybeSingle();
 
         if (planError) console.error('Plan kontrol hatası:', planError);
 
         if (planData && planData.assignments && planData.assignments.length > 0) {
           setDistributions(planData.assignments);
+          setHasUnsavedChanges(false);
+          if (planData.created_at) {
+            setLastSavedAt(new Date(planData.created_at).toLocaleTimeString('tr-TR'));
+          }
 
           const usedRoomIds = Array.from(new Set(planData.assignments.map(a => a.room_id)));
           const usedClasses = Array.from(new Set(planData.assignments.map(a => `${a.grade}-${a.class}`))).sort();
@@ -111,6 +122,8 @@ const SeatingDistribution = () => {
         } else {
           setDistributions([]);
           setOrderedRoomIds([]);
+          setHasUnsavedChanges(false);
+          setLastSavedAt('');
           setGroups([
             {
               id: Date.now(),
@@ -129,7 +142,6 @@ const SeatingDistribution = () => {
     fetchExamDataAndPlan();
   }, [selectedExamId, exams]);
 
-  // Seçili salonları sıralama listesiyle senkron tut
   useEffect(() => {
     const selectedIds = Array.from(new Set(groups.flatMap(g => g.roomIds || [])));
     setOrderedRoomIds(prev => {
@@ -256,6 +268,63 @@ const SeatingDistribution = () => {
     }
 
     return nameA.localeCompare(nameB, 'tr', { sensitivity: 'base' });
+  };
+
+  // Veritabanına güvenli kayıt fonksiyonu (Kaydet butonu tarafından çağrılır)
+  const saveDistributionPlan = async (customList = null) => {
+    const targetList = Array.isArray(customList) ? customList : distributions;
+    if (!selectedExamId) {
+      setMessage('Hata: Lütfen önce bir sınav seçin.');
+      return;
+    }
+    if (!targetList || targetList.length === 0) {
+      setMessage('Hata: Kaydedilecek öğrenci dağılımı bulunmuyor.');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const nowIso = new Date().toISOString();
+      const { data: existingPlans, error: fetchErr } = await supabase
+        .from('seating_plans')
+        .select('id')
+        .eq('exam_id', selectedExamId);
+
+      if (fetchErr) throw fetchErr;
+
+      if (existingPlans && existingPlans.length > 0) {
+        const primaryId = existingPlans[0].id;
+        const { error: updateErr } = await supabase
+          .from('seating_plans')
+          .update({
+            assignments: targetList,
+            created_at: nowIso
+          })
+          .eq('id', primaryId);
+
+        if (updateErr) throw updateErr;
+      } else {
+        const { error: insertErr } = await supabase
+          .from('seating_plans')
+          .insert({
+            exam_id: selectedExamId,
+            created_at: nowIso,
+            assignments: targetList
+          });
+
+        if (insertErr) throw insertErr;
+      }
+
+      setDistributions(targetList);
+      setHasUnsavedChanges(false);
+      setLastSavedAt(new Date(nowIso).toLocaleTimeString('tr-TR'));
+      setMessage(`✅ Plan başarıyla kaydedildi! (${targetList.length} öğrenci veritabanına işlendi.)`);
+    } catch (err) {
+      console.error('Kayıt hatası:', err);
+      setMessage(`Hata: Plan kaydedilemedi (${err.message || 'Bilinmeyen hata'}).`);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const runDistribution = async () => {
@@ -425,7 +494,6 @@ const SeatingDistribution = () => {
           });
         }
       } else if (examMode === 'lise_yabanci_dil') {
-        // KULLANICI SIRALAMASINA GÖRE 24'ER KİŞİLİK (MAX 24) MANUEL SALON YERLEŞTİRME
         const roomOrderIndexMap = new Map(orderedRoomIds.map((id, idx) => [String(id), idx]));
 
         for (const group of groups) {
@@ -469,7 +537,6 @@ const SeatingDistribution = () => {
 
           const sortedStudents = [...groupStudents].sort(compareBySelectedOrder);
 
-          // 24'er kişilik bloklar oluştur: istenirse her dil/seviye grubunu kendi içinde 24'er böler
           const chunks24 = [];
           if (splitByComboBeforeChunk) {
             const subGroups = [];
@@ -615,20 +682,13 @@ const SeatingDistribution = () => {
 
       if (assignments.length === 0) throw new Error('Dağıtılabilecek hiçbir öğrenci bulunamadı!');
 
-      await supabase.from('seating_plans').delete().eq('exam_id', selectedExamId);
-      const { error: insertError } = await supabase.from('seating_plans').insert({
-        exam_id: selectedExamId,
-        created_at: new Date().toISOString(),
-        assignments: assignments,
-      });
-
-      if (insertError) throw insertError;
-
       setDistributions(assignments);
-      setMessage(`Dağıtım başarıyla tamamlandı! ${assignments.length} öğrenci yerleştirildi.`);
+      setHasUnsavedChanges(true);
+      setMessage(`${assignments.length} öğrenci için yeni dağıtım hazırlandı! Değişiklikleri veritabanına işlemek için "Planı Kaydet" butonuna basın.`);
     } catch (err) {
       console.error(err);
       setDistributions([]);
+      setHasUnsavedChanges(false);
       setMessage(`${err.message}`);
     } finally {
       setLoading(false);
@@ -1130,14 +1190,49 @@ const SeatingDistribution = () => {
       </div>
 
       {selectedExamId && (
-        <div style={{ marginTop: '1.5rem' }}>
+        <div style={{ marginTop: '1.5rem', display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
           <button
             onClick={runDistribution}
-            disabled={loading}
-            style={{ padding: '0.8rem 2rem', background: '#007bff', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '1rem', fontWeight: 'bold' }}
+            disabled={loading || saving}
+            style={{ padding: '0.8rem 2rem', background: '#007bff', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '1rem', fontWeight: 'bold', display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}
           >
-            <FaSync /> {loading ? 'Dağıtılıyor...' : 'Dağıtımı Başlat'}
+            <FaSync /> {loading ? 'Dağıtılıyor...' : 'Dağıtımı Oluştur'}
           </button>
+
+          {distributions.length > 0 && (
+            <button
+              onClick={() => saveDistributionPlan()}
+              disabled={saving || loading}
+              style={{
+                padding: '0.8rem 2rem',
+                background: hasUnsavedChanges ? '#16a34a' : '#0f766e',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontSize: '1rem',
+                fontWeight: 'bold',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                boxShadow: hasUnsavedChanges ? '0 0 0 3px rgba(22, 163, 74, 0.25)' : 'none'
+              }}
+            >
+              <FaSave /> {saving ? 'Kaydediliyor...' : 'Planı Kaydet'}
+            </button>
+          )}
+
+          {hasUnsavedChanges && distributions.length > 0 && (
+            <span style={{ fontSize: '0.88rem', fontWeight: 'bold', color: '#b45309', background: '#fef3c7', padding: '0.4rem 0.75rem', borderRadius: '6px', border: '1px solid #fcd34d' }}>
+              ● Kaydedilmemiş değişiklikler var
+            </span>
+          )}
+
+          {!hasUnsavedChanges && lastSavedAt && distributions.length > 0 && (
+            <span style={{ fontSize: '0.88rem', fontWeight: '600', color: '#15803d', display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+              <FaCheckCircle /> Son kayıt: {lastSavedAt}
+            </span>
+          )}
         </div>
       )}
 
@@ -1258,6 +1353,28 @@ const SeatingDistribution = () => {
               ))}
             </tbody>
           </table>
+
+          <div style={{ marginTop: '1.25rem', display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '0.75rem' }}>
+            <button
+              onClick={() => saveDistributionPlan()}
+              disabled={saving || loading}
+              style={{
+                padding: '0.75rem 1.75rem',
+                background: '#16a34a',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontSize: '0.95rem',
+                fontWeight: 'bold',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.5rem'
+              }}
+            >
+              <FaSave /> {saving ? 'Kaydediliyor...' : 'Planı Kaydet'}
+            </button>
+          </div>
         </div>
       )}
     </div>
