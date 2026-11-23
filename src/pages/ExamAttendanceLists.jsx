@@ -14,7 +14,7 @@ const ExamAttendanceLists = () => {
   const [activeTab, setActiveTab] = useState('attendance');
   const [showRoomCode, setShowRoomCode] = useState(true);
   const [examCategory, setExamCategory] = useState('akademik_lise');
-  
+
   // Dinamik Sütun Göster/Gizle State'leri
   const [showCopyColumn, setShowCopyColumn] = useState(true);
   const [showPhoneColumn, setShowPhoneColumn] = useState(true);
@@ -122,7 +122,7 @@ const ExamAttendanceLists = () => {
         const newTcMap = {};
         let loadedStudentCount = 0;
 
-        let headerRowIndex = data.findIndex(row => 
+        let headerRowIndex = data.findIndex(row =>
           row && row.some(cell => {
             const s = String(cell || '').trim().toLocaleUpperCase('tr-TR');
             return s.includes('TC') || s.includes('KIMLIK') || s.includes('NUMARA') || s.includes('NO');
@@ -140,7 +140,7 @@ const ExamAttendanceLists = () => {
               const r = data[i];
               if (!r) continue;
               const tcVal = String(r[tcIdx] || '').trim();
-              
+
               if (/^\d{11}$/.test(tcVal)) {
                 loadedStudentCount++;
                 if (noIdx !== -1 && r[noIdx]) {
@@ -310,7 +310,7 @@ const ExamAttendanceLists = () => {
               const rawTc = String(st.tc || st.tc_no || st.tcNo || '').trim();
               const rawNo = String(st.no || st.student_no || st.studentNo || st.school_number || '').trim();
               const dbSt = currentStudentMap[rawId] || currentStudentMap[rawTc] || currentStudentMap[rawNo];
-              
+
               if (!dbSt) return;
 
               const grade = dbSt.grade || st.grade || st.sinif;
@@ -319,8 +319,8 @@ const ExamAttendanceLists = () => {
 
             const sortedGrades = Array.from(grades).sort((a, b) => a - b);
             if (sortedGrades.length > 0) {
-              gradesMap[plan.exam_id] = sortedGrades.length === 1 
-                ? `${sortedGrades[0]}. Sınıf` 
+              gradesMap[plan.exam_id] = sortedGrades.length === 1
+                ? `${sortedGrades[0]}. Sınıf`
                 : `${sortedGrades.join('-')}. Sınıflar`;
             }
           });
@@ -361,7 +361,6 @@ const ExamAttendanceLists = () => {
         plan.assignments = parsedAssignments;
       }
       setSeatingPlan(plan);
-
     } catch (err) {
       console.error('Oturma planı alınamadı:', err);
     } finally {
@@ -512,7 +511,7 @@ const ExamAttendanceLists = () => {
       const det = getStudentDetails(st);
       if (det.grade) grades.add(String(det.grade).replace('.', ''));
     });
-    
+
     const sortedGrades = Array.from(grades).sort((a, b) => a - b);
     if (sortedGrades.length === 0) return 'Tüm Sınıflar';
     if (sortedGrades.length === 1) return `${sortedGrades[0]}. Sınıf`;
@@ -536,17 +535,17 @@ const ExamAttendanceLists = () => {
     const rawId = String(st.studentId || st.student_id || st.id || '').trim();
     const rawTc = String(st.tc || st.tc_no || st.tcNo || '').trim();
     const rawNo = String(st.no || st.student_no || st.studentNo || st.school_number || '').trim();
-    
+
     const dbSt = studentMap[rawId] || studentMap[rawTc] || studentMap[rawNo];
     if (!dbSt) return false;
-    
+
     if (targetGradeStr) {
       const studentGrade = String(dbSt.grade || st.grade || st.sinif || '').replace(/\D/g, '');
       if (studentGrade && studentGrade !== targetGradeStr) {
         return false;
       }
     }
-    
+
     return true;
   });
 
@@ -623,6 +622,15 @@ const ExamAttendanceLists = () => {
         if (showCopyColumn) item['Kopya'] = '';
         if (showPhoneColumn) item['Telefon / Cihaz'] = '';
         item['Sınıf/Şube'] = `${det.grade}-${det.className}`;
+        if (examCategory === 'akademik_lise') {
+          item['Alan'] = det.track;
+        }
+        if (examCategory === 'sadece_ingilizce' || examCategory === 'ingilizce_ve_ikinci_dil') {
+          item['İngilizce'] = det.englishLevel;
+        }
+        if (examCategory === 'sadece_ikinci_dil' || examCategory === 'ingilizce_ve_ikinci_dil') {
+          item['2. Yabancı Dil'] = det.secondLanguage;
+        }
         return item;
       });
     } else if (type === 'door') {
@@ -680,7 +688,7 @@ const ExamAttendanceLists = () => {
 
   return (
     <div className="lists-container" style={{ padding: '1.5rem', maxWidth: '1400px', margin: '0 auto', fontFamily: 'Segoe UI, Tahoma, Geneva, Verdana, sans-serif' }}>
-      
+
       <style>{`
         @media print {
           body * {
@@ -757,11 +765,11 @@ const ExamAttendanceLists = () => {
 
         {/* 🛡️ VERİ TUTARLILIK PANELİ */}
         {selectedExam && (
-          <div style={{ 
-            background: isDataConsistent ? '#f0fdf4' : '#fef2f2', 
-            border: `1px solid ${isDataConsistent ? '#bbf7d0' : '#fecaca'}`, 
-            padding: '1rem 1.2rem', 
-            borderRadius: '8px', 
+          <div style={{
+            background: isDataConsistent ? '#f0fdf4' : '#fef2f2',
+            border: `1px solid ${isDataConsistent ? '#bbf7d0' : '#fecaca'}`,
+            padding: '1rem 1.2rem',
+            borderRadius: '8px',
             marginBottom: '1.5rem',
             display: 'flex',
             flexWrap: 'wrap',
@@ -774,7 +782,7 @@ const ExamAttendanceLists = () => {
                 {isDataConsistent ? '✅ Sistem Tutarlılık Sağlaması Başarılı' : '⚠️ UYARI: Veri Tutarsızlığı Tespit Edildi!'}
               </h4>
               <p style={{ margin: 0, fontSize: '0.85rem', color: isDataConsistent ? '#15803d' : '#b91c1c' }}>
-                {isDataConsistent 
+                {isDataConsistent
                   ? 'Kapı listeleri ile salon yoklama listesindeki öğrenci sayıları tam olarak uyuşuyor.'
                   : 'Dikkat! Kapı listesi ile salon listesi toplamları eşleşmiyor.'}
               </p>
@@ -897,7 +905,7 @@ const ExamAttendanceLists = () => {
                     <input type="file" accept=".xlsx, .xls" onChange={handleTcExcelUpload} style={{ display: 'none' }} />
                   </label>
                   {isTcLoaded && (
-                    <button 
+                    <button
                       onClick={() => { setTempTcMap({}); setIsTcLoaded(false); setLoadedFileName(''); }}
                       style={{ padding: '0.4rem 0.6rem', background: '#ef4444', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem' }}
                     >
@@ -1077,7 +1085,7 @@ const ExamAttendanceLists = () => {
 
                 return (
                   <div key={roomName} className="print-card page-break" style={{ background: '#fff', border: '1px solid #cbd5e1', padding: '0.8rem', marginBottom: '1rem', borderRadius: '6px' }}>
-                    
+
                     <div style={{ border: '2px solid #000', padding: '0.5rem', textAlign: 'center', marginBottom: '0.5rem', background: '#fafafa' }}>
                       <input
                         type="text"
@@ -1136,7 +1144,7 @@ const ExamAttendanceLists = () => {
                             <th style={{ width: '13%', textAlign: 'center' }}>TC KİMLİK NO</th>
                           )}
                           <th>ÖĞRENCİ ADI SOYADI</th>
-                          
+
                           {showCopyColumn && (
                             <th style={{ width: '7%', textAlign: 'center', fontSize: '8pt' }}>KOPYA</th>
                           )}
@@ -1145,9 +1153,17 @@ const ExamAttendanceLists = () => {
                           )}
 
                           <th style={{ width: '10%', textAlign: 'center' }}>ŞUBE</th>
-                          
+
                           {examCategory === 'akademik_lise' && (
                             <th style={{ width: '9%', textAlign: 'center' }}>ALAN</th>
+                          )}
+
+                          {(examCategory === 'sadece_ingilizce' || examCategory === 'ingilizce_ve_ikinci_dil') && (
+                            <th style={{ width: '10%', textAlign: 'center' }}>İNGİLİZCE</th>
+                          )}
+
+                          {(examCategory === 'sadece_ikinci_dil' || examCategory === 'ingilizce_ve_ikinci_dil') && (
+                            <th style={{ width: '12%', textAlign: 'center' }}>2. YABANCI DİL</th>
                           )}
 
                           <th style={{ width: '12%', textAlign: 'center' }}>YOKLAMA +/-</th>
@@ -1166,7 +1182,7 @@ const ExamAttendanceLists = () => {
                               {isTcLoaded && (
                                 <td style={{ textAlign: 'center', fontFamily: 'monospace', fontSize: '8.5pt' }}>{studentTc || '-'}</td>
                               )}
-                              
+
                               <td style={{ fontWeight: '500' }}>
                                 {det.fullName}
                               </td>
@@ -1181,11 +1197,11 @@ const ExamAttendanceLists = () => {
                               <td style={{ textAlign: 'center' }}>{det.grade}-{det.className}</td>
 
                               {examCategory === 'akademik_lise' && (
-                                <td 
+                                <td
                                   className={isEa ? 'ea-highlight' : ''}
-                                  style={{ 
-                                    textAlign: 'center', 
-                                    fontWeight: 'bold', 
+                                  style={{
+                                    textAlign: 'center',
+                                    fontWeight: 'bold',
                                     fontSize: '8.5pt',
                                     backgroundColor: isEa ? '#e2e8f0' : 'transparent',
                                     WebkitPrintColorAdjust: 'exact',
@@ -1193,6 +1209,18 @@ const ExamAttendanceLists = () => {
                                   }}
                                 >
                                   {det.track}
+                                </td>
+                              )}
+
+                              {(examCategory === 'sadece_ingilizce' || examCategory === 'ingilizce_ve_ikinci_dil') && (
+                                <td style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '8.5pt' }}>
+                                  {det.englishLevel}
+                                </td>
+                              )}
+
+                              {(examCategory === 'sadece_ikinci_dil' || examCategory === 'ingilizce_ve_ikinci_dil') && (
+                                <td style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '8.5pt' }}>
+                                  {det.secondLanguage}
                                 </td>
                               )}
 
@@ -1222,6 +1250,29 @@ const ExamAttendanceLists = () => {
                             {clsName} = {roomClassTotals[clsName]}
                           </div>
                         ))}
+
+                        {(examCategory === 'sadece_ingilizce' || examCategory === 'ingilizce_ve_ikinci_dil') && (totalCore > 0 || totalExt > 0) && (
+                          <>
+                            <span style={{ color: '#888', fontWeight: 'normal' }}>|</span>
+                            <div style={{ border: '1px solid #333', padding: '0.2rem 0.5rem', borderRadius: '4px', background: '#e0f2fe' }}>
+                              CORE = {totalCore}
+                            </div>
+                            <div style={{ border: '1px solid #333', padding: '0.2rem 0.5rem', borderRadius: '4px', background: '#f0f9ff' }}>
+                              EXT = {totalExt}
+                            </div>
+                          </>
+                        )}
+
+                        {(examCategory === 'sadece_ikinci_dil' || examCategory === 'ingilizce_ve_ikinci_dil') && Object.keys(langTotals).length > 0 && (
+                          <>
+                            <span style={{ color: '#888', fontWeight: 'normal' }}>|</span>
+                            {Object.keys(langTotals).sort().map(lang => (
+                              <div key={lang} style={{ border: '1px solid #333', padding: '0.2rem 0.5rem', borderRadius: '4px', background: '#fef3c7' }}>
+                                {lang} = {langTotals[lang]}
+                              </div>
+                            ))}
+                          </>
+                        )}
                       </div>
 
                       <div style={{ border: '1px solid #000', padding: '0.4rem 0.5rem', fontSize: '8.5pt', borderRadius: '4px', background: '#fafafa', display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
