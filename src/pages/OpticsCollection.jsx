@@ -56,6 +56,39 @@ const OpticsCollection = () => {
     return String(track).toUpperCase();
   };
 
+  const formatSecondLangShort = (rawLang) => {
+    if (!rawLang) return '';
+    const cleaned = String(rawLang).trim();
+    if (!cleaned || cleaned === '-' || cleaned.toUpperCase() === 'YOK' || cleaned.toLowerCase() === 'belirtilmedi') {
+      return '';
+    }
+    const lower = cleaned.toLocaleLowerCase('tr-TR');
+    if (lower.startsWith('alm')) return 'ALM';
+    if (lower.startsWith('isp') || lower.startsWith('İsp'.toLowerCase())) return 'İSP';
+    if (lower.startsWith('fra')) return 'FRA';
+    if (lower.startsWith('rus')) return 'RUS';
+    if (lower.startsWith('ita')) return 'İTA';
+    if (lower.startsWith('çin') || lower.startsWith('cin')) return 'ÇİN';
+    return cleaned.slice(0, 3).toLocaleUpperCase('tr-TR');
+  };
+
+  const formatEnglishLevelShort = (rawEng) => {
+    if (!rawEng) return '';
+    const cleaned = String(rawEng).trim();
+    if (!cleaned || cleaned === '-' || cleaned.toUpperCase() === 'YOK' || cleaned.toLowerCase() === 'belirtilmedi') {
+      return '';
+    }
+    const upper = cleaned.toLocaleUpperCase('tr-TR');
+    if (upper.includes('EXT')) return 'EXT';
+    if (upper.includes('CORE')) return 'CORE';
+    return upper;
+  };
+
+  const isForeignLangExam = (exam) => {
+    const t = String(exam?.type || exam?.exam_type || '').trim().toLowerCase();
+    return t === 'foreign_lang' || t.includes('foreign_lang') || t.includes('dil') || t.includes('yabancı');
+  };
+
   const getStudentDetails = (st) => {
     const rawId = String(st.studentId || st.student_id || st.id || '').trim();
     const rawTc = String(st.tc || st.tc_no || st.tcNo || '').trim();
@@ -66,10 +99,62 @@ const OpticsCollection = () => {
     const grade = dbSt.grade || st.grade || st.sinif || '';
     const rawField = dbSt.field || st.field || st.alan || st.track || st.department || '';
 
+    const rawSecondLang =
+      st.second_language ||
+      st.secondLanguage ||
+      dbSt.second_lang ||
+      dbSt.second_language ||
+      dbSt.ikinci_yabanci_dil ||
+      dbSt.ikinci_dil ||
+      dbSt.yabanci_dil ||
+      '';
+
+    const rawEnglishLevel =
+      st.english_level ||
+      st.englishLevel ||
+      dbSt.english_level ||
+      dbSt.ingilizce_seviye ||
+      dbSt.ing_seviye ||
+      '';
+
     return {
       grade: String(grade).replace('.', '').trim(),
-      track: formatTrack(rawField)
+      track: formatTrack(rawField),
+      secondLang: formatSecondLangShort(rawSecondLang),
+      englishLevel: formatEnglishLevelShort(rawEnglishLevel)
     };
+  };
+
+  const buildLanguageBreakdownText = (totalCount, secondLangCounts, englishLevelCounts) => {
+    const langOrder = ['ALM', 'İSP', 'FRA', 'RUS', 'İTA'];
+    const sortedLangKeys = Object.keys(secondLangCounts).sort((a, b) => {
+      const idxA = langOrder.indexOf(a);
+      const idxB = langOrder.indexOf(b);
+      if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+      if (idxA !== -1) return -1;
+      if (idxB !== -1) return 1;
+      return a.localeCompare(b, 'tr');
+    });
+
+    const engOrder = ['CORE', 'EXT'];
+    const sortedEngKeys = Object.keys(englishLevelCounts).sort((a, b) => {
+      const idxA = engOrder.indexOf(a);
+      const idxB = engOrder.indexOf(b);
+      if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+      if (idxA !== -1) return -1;
+      if (idxB !== -1) return 1;
+      return a.localeCompare(b, 'tr');
+    });
+
+    const langParts = sortedLangKeys.map(k => `${secondLangCounts[k]} ${k}`);
+    const engParts = sortedEngKeys.map(k => `${englishLevelCounts[k]} ${k}`);
+
+    const sections = [];
+    if (langParts.length > 0) sections.push(langParts.join(', '));
+    if (engParts.length > 0) sections.push(engParts.join(', '));
+
+    if (sections.length === 0) return `${totalCount}`;
+    return `${totalCount} [${sections.join(' | ')}]`;
   };
 
   const processExamsForDate = async () => {
@@ -113,11 +198,13 @@ const OpticsCollection = () => {
           assignments = plan.assignments;
         }
 
+        const isLangExam = isForeignLangExam(exam);
+
         const roomGroups = {};
         assignments.forEach(st => {
           const rawRoomId = st.roomId || st.room_id || st.salon_id || st.roomName || st.room_name || st.salon;
           let roomName = rawRoomId || 'Tanımsız Salon';
-          
+
           if (rooms.length > 0 && rawRoomId) {
             const foundDbRoom = rooms.find(r => String(r.id) === String(rawRoomId) || String(r.name) === String(rawRoomId));
             if (foundDbRoom && foundDbRoom.name) roomName = foundDbRoom.name;
@@ -129,62 +216,98 @@ const OpticsCollection = () => {
 
         let examTotalStudents = 0;
         const examGradesSet = new Set();
+        const examSecondLangTotals = {};
+        const examEnglishLevelTotals = {};
 
         Object.keys(roomGroups).forEach(roomName => {
           const roomStudents = roomGroups[roomName];
           examTotalStudents += roomStudents.length;
 
           const gradesSet = new Set();
-          let eaCount = 0;
-          let sayCount = 0;
-          let otherCount = 0;
+          let populationDisplay = `${roomStudents.length}`;
 
-          roomStudents.forEach(st => {
-            const det = getStudentDetails(st);
-            if (det.grade) {
-              gradesSet.add(det.grade);
-              examGradesSet.add(det.grade);
-            }
+          if (isLangExam) {
+            // Yabancı dil sınavında SAY / EA önemsiz; 2. Yabancı Dil ve İngilizce seviyesi sayılır
+            const roomSecondLangCounts = {};
+            const roomEnglishLevelCounts = {};
 
-            if (det.track === 'EA') {
-              eaCount++;
-            } else if (det.track === 'SAY') {
-              sayCount++;
-            } else if (det.track) {
-              otherCount++;
+            roomStudents.forEach(st => {
+              const det = getStudentDetails(st);
+              if (det.grade) {
+                gradesSet.add(det.grade);
+                examGradesSet.add(det.grade);
+              }
+              if (det.secondLang) {
+                roomSecondLangCounts[det.secondLang] = (roomSecondLangCounts[det.secondLang] || 0) + 1;
+                examSecondLangTotals[det.secondLang] = (examSecondLangTotals[det.secondLang] || 0) + 1;
+              }
+              if (det.englishLevel) {
+                roomEnglishLevelCounts[det.englishLevel] = (roomEnglishLevelCounts[det.englishLevel] || 0) + 1;
+                examEnglishLevelTotals[det.englishLevel] = (examEnglishLevelTotals[det.englishLevel] || 0) + 1;
+              }
+            });
+
+            populationDisplay = buildLanguageBreakdownText(
+              roomStudents.length,
+              roomSecondLangCounts,
+              roomEnglishLevelCounts
+            );
+          } else {
+            // Normal akademik sınav algoritması (bozulmadan korundu)
+            let eaCount = 0;
+            let sayCount = 0;
+            let otherCount = 0;
+
+            roomStudents.forEach(st => {
+              const det = getStudentDetails(st);
+              if (det.grade) {
+                gradesSet.add(det.grade);
+                examGradesSet.add(det.grade);
+              }
+
+              if (det.track === 'EA') {
+                eaCount++;
+              } else if (det.track === 'SAY') {
+                sayCount++;
+              } else if (det.track) {
+                otherCount++;
+              }
+            });
+
+            const activeFields = [];
+            if (eaCount > 0) activeFields.push(`${eaCount}EA`);
+            if (sayCount > 0) activeFields.push(`${sayCount}SAY`);
+            if (otherCount > 0) activeFields.push(`${otherCount}`);
+
+            if (activeFields.length > 1) {
+              populationDisplay = `${roomStudents.length} [${activeFields.join('+')}]`;
             }
-          });
+          }
 
           const sortedGrades = Array.from(gradesSet).sort((a, b) => a - b);
           const gradeLevelStr = sortedGrades.length > 0 ? `${sortedGrades.join('-')}. Sınıf` : 'Lise';
-
-          // Dar alanlar için kompakt format (alt alta kaymayı önler)
-          let populationDisplay = `${roomStudents.length}`;
-          const activeFields = [];
-          if (eaCount > 0) activeFields.push(`${eaCount}EA`);
-          if (sayCount > 0) activeFields.push(`${sayCount}SAY`);
-          if (otherCount > 0) activeFields.push(`${otherCount}`);
-
-          if (activeFields.length > 1) {
-            populationDisplay = `${roomStudents.length} [${activeFields.join('+')}]`;
-          }
 
           tableRows.push({
             examTitle: exam.title || 'İsimsiz Sınav',
             gradeLevel: gradeLevelStr,
             roomName: roomName.toUpperCase(),
             totalStudents: populationDisplay,
-            rawTotal: roomStudents.length
+            rawTotal: roomStudents.length,
+            isLanguageExam: isLangExam
           });
         });
 
         const sortedExamGrades = Array.from(examGradesSet).sort((a, b) => a - b);
         const examGradeStr = sortedExamGrades.length > 0 ? `${sortedExamGrades.join('-')}. Sınıf` : 'Lise';
 
+        const summaryTotalDisplay = isLangExam
+          ? buildLanguageBreakdownText(examTotalStudents, examSecondLangTotals, examEnglishLevelTotals)
+          : examTotalStudents;
+
         examTotalsMap[exam.id] = {
           examTitle: exam.title || 'İsimsiz Sınav',
           gradeLevel: examGradeStr,
-          totalStudents: examTotalStudents
+          totalStudents: summaryTotalDisplay
         };
       });
 
@@ -222,7 +345,7 @@ const OpticsCollection = () => {
 
   return (
     <div style={{ padding: '1rem', maxWidth: '1200px', margin: '0 auto', fontFamily: 'Segoe UI, sans-serif' }}>
-      
+
       <style>{`
         @media print {
           body * {
@@ -256,10 +379,11 @@ const OpticsCollection = () => {
           th, td {
             border: 1px solid #000 !important;
             padding: 4px 5px !important;
-            font-size: 8pt !important;
+            font-size: 7.8pt !important;
             color: #000 !important;
             overflow: hidden;
             word-break: break-word;
+            white-space: normal !important;
           }
           th {
             background-color: #e2e8f0 !important;
@@ -308,7 +432,7 @@ const OpticsCollection = () => {
       </div>
 
       <div className="print-area" style={{ background: '#fff', padding: '1.2rem', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
-        
+
         <div style={{ border: '2px solid #000', padding: '0.6rem', textAlign: 'center', marginBottom: '1rem', background: '#fafafa' }}>
           <h2 style={{ margin: '0 0 0.2rem 0', fontSize: '12pt', fontWeight: 'bold', textTransform: 'uppercase' }}>
             OPTICS COLLECTION & ATTENDANCE SHEET
@@ -332,12 +456,12 @@ const OpticsCollection = () => {
               <thead>
                 <tr style={{ background: '#f1f1f1' }}>
                   <th style={{ width: '5%', border: '1px solid #cbd5e1', padding: '6px', textAlign: 'center' }}>Sıra</th>
-                  <th style={{ width: '28%', border: '1px solid #cbd5e1', padding: '6px' }}>Sınav İsmi</th>
-                  <th style={{ width: '13%', border: '1px solid #cbd5e1', padding: '6px', textAlign: 'center' }}>Sınıf</th>
-                  <th style={{ width: '17%', border: '1px solid #cbd5e1', padding: '6px', textAlign: 'center' }}>Salon</th>
-                  <th style={{ width: '14%', border: '1px solid #cbd5e1', padding: '6px', textAlign: 'center' }}>Mevcut</th>
+                  <th style={{ width: '23%', border: '1px solid #cbd5e1', padding: '6px' }}>Sınav İsmi</th>
+                  <th style={{ width: '10%', border: '1px solid #cbd5e1', padding: '6px', textAlign: 'center' }}>Sınıf</th>
+                  <th style={{ width: '13%', border: '1px solid #cbd5e1', padding: '6px', textAlign: 'center' }}>Salon</th>
+                  <th style={{ width: '27%', border: '1px solid #cbd5e1', padding: '6px', textAlign: 'center' }}>Mevcut</th>
                   <th style={{ width: '7%', border: '1px solid #cbd5e1', padding: '6px', textAlign: 'center' }}>Gelen</th>
-                  <th style={{ width: '8%', border: '1px solid #cbd5e1', padding: '6px', textAlign: 'center' }}>Gelm.</th>
+                  <th style={{ width: '7%', border: '1px solid #cbd5e1', padding: '6px', textAlign: 'center' }}>Gelm.</th>
                   <th style={{ width: '8%', border: '1px solid #cbd5e1', padding: '6px', textAlign: 'center' }}>Optik</th>
                 </tr>
               </thead>
@@ -356,7 +480,7 @@ const OpticsCollection = () => {
                     <td style={{ border: '1px solid #cbd5e1', padding: '5px 6px', textAlign: 'center', fontWeight: 'bold', color: '#1d4ed8', whiteSpace: 'nowrap' }}>
                       {item.roomName}
                     </td>
-                    <td style={{ border: '1px solid #cbd5e1', padding: '5px 6px', textAlign: 'center', fontWeight: 'bold', whiteSpace: 'nowrap' }}>
+                    <td style={{ border: '1px solid #cbd5e1', padding: '5px 6px', textAlign: 'center', fontWeight: 'bold', color: item.isLanguageExam ? '#065f46' : 'inherit' }}>
                       {item.totalStudents}
                     </td>
                     <td style={{ border: '1px solid #cbd5e1', padding: '5px 6px', textAlign: 'center', backgroundColor: '#fff' }}>
@@ -381,11 +505,11 @@ const OpticsCollection = () => {
               <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '8.5pt', tableLayout: 'fixed' }}>
                 <thead>
                   <tr style={{ background: '#e2e8f0' }}>
-                    <th style={{ border: '1px solid #cbd5e1', padding: '6px', width: '40%' }}>Sınav Adı</th>
-                    <th style={{ border: '1px solid #cbd5e1', padding: '6px', width: '20%', textAlign: 'center' }}>Sınıf Seviyesi</th>
-                    <th style={{ border: '1px solid #cbd5e1', padding: '6px', width: '15%', textAlign: 'center' }}>Toplam</th>
-                    <th style={{ border: '1px solid #cbd5e1', padding: '6px', width: '12%', textAlign: 'center' }}>Gelen</th>
-                    <th style={{ border: '1px solid #cbd5e1', padding: '6px', width: '13%', textAlign: 'center' }}>Gelemeyen</th>
+                    <th style={{ border: '1px solid #cbd5e1', padding: '6px', width: '32%' }}>Sınav Adı</th>
+                    <th style={{ border: '1px solid #cbd5e1', padding: '6px', width: '14%', textAlign: 'center' }}>Sınıf Seviyesi</th>
+                    <th style={{ border: '1px solid #cbd5e1', padding: '6px', width: '32%', textAlign: 'center' }}>Toplam</th>
+                    <th style={{ border: '1px solid #cbd5e1', padding: '6px', width: '11%', textAlign: 'center' }}>Gelen</th>
+                    <th style={{ border: '1px solid #cbd5e1', padding: '6px', width: '11%', textAlign: 'center' }}>Gelemeyen</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -397,7 +521,7 @@ const OpticsCollection = () => {
                       <td style={{ border: '1px solid #cbd5e1', padding: '5px 6px', textAlign: 'center', whiteSpace: 'nowrap' }}>
                         {sumItem.gradeLevel}
                       </td>
-                      <td style={{ border: '1px solid #cbd5e1', padding: '5px 6px', textAlign: 'center', fontWeight: 'bold', color: '#0369a1', whiteSpace: 'nowrap' }}>
+                      <td style={{ border: '1px solid #cbd5e1', padding: '5px 6px', textAlign: 'center', fontWeight: 'bold', color: '#0369a1' }}>
                         {sumItem.totalStudents}
                       </td>
                       <td style={{ border: '1px solid #cbd5e1', padding: '5px 6px', textAlign: 'center', backgroundColor: '#fff' }}>
