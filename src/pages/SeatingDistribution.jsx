@@ -15,8 +15,11 @@ const SeatingDistribution = () => {
   const [message, setMessage] = useState('');
 
   const [examMode, setExamMode] = useState('lise_akademik');
-  const [langPrimaryFilter, setLangPrimaryFilter] = useState('second_lang');
   const [keepInOwnClassroom, setKeepInOwnClassroom] = useState(false);
+
+  // Lise Yabancı Dil Filtreleri
+  const [filterEnglishLevel, setFilterEnglishLevel] = useState('ALL');
+  const [filterSecondLang, setFilterSecondLang] = useState('ALL');
 
   useEffect(() => {
     const fetchData = async () => {
@@ -156,7 +159,17 @@ const SeatingDistribution = () => {
   };
 
   const getStudentLanguage = (st) => {
-    return st.second_lang || st.second_language || st.yabanci_dil || st.foreign_language || 'Belirtilmedi';
+    const raw = st.second_lang || st.second_language || st.ikinci_yabanci_dil || st.ikinci_dil || st.yabanci_dil || st.foreign_language || '';
+    const trimmed = String(raw).trim();
+    if (!trimmed || trimmed === '-' || trimmed.toUpperCase() === 'YOK') return 'Belirtilmedi';
+    return trimmed;
+  };
+
+  const getStudentEnglishLevel = (st) => {
+    const raw = st.english_level || st.ingilizce_seviye || st.ing_seviye || '';
+    const trimmed = String(raw).trim();
+    if (!trimmed || trimmed === '-') return 'Belirtilmedi';
+    return trimmed;
   };
 
   const runDistribution = async () => {
@@ -249,8 +262,8 @@ const SeatingDistribution = () => {
             const availClasses = group.classes.filter(cls => classQueues[cls] && classQueues[cls].length > 0);
             if (availClasses.length === 0) break;
 
-            const lastClass = interleavedList.length > 0 
-              ? `${interleavedList[interleavedList.length - 1].grade}-${interleavedList[interleavedList.length - 1].class}` 
+            const lastClass = interleavedList.length > 0
+              ? `${interleavedList[interleavedList.length - 1].grade}-${interleavedList[interleavedList.length - 1].class}`
               : null;
 
             let candidateClasses = availClasses.filter(c => c !== lastClass);
@@ -271,7 +284,7 @@ const SeatingDistribution = () => {
 
               const hasConflict = room.seats.some(existingSt => {
                 const existingIdStr = String(existingSt.id).trim();
-                return (conflictPairsMap[stIdStr] && conflictPairsMap[stIdStr].has(existingIdStr)) || 
+                return (conflictPairsMap[stIdStr] && conflictPairsMap[stIdStr].has(existingIdStr)) ||
                        (conflictPairsMap[existingIdStr] && conflictPairsMap[existingIdStr].has(stIdStr));
               });
 
@@ -288,7 +301,7 @@ const SeatingDistribution = () => {
                   if (r.seats.length >= r.totalCap || r.seats.length >= r.targetQuota + 2) return false;
                   return !r.seats.some(existingSt => {
                     const existingIdStr = String(existingSt.id).trim();
-                    return (conflictPairsMap[stIdStr] && conflictPairsMap[stIdStr].has(existingIdStr)) || 
+                    return (conflictPairsMap[stIdStr] && conflictPairsMap[stIdStr].has(existingIdStr)) ||
                            (conflictPairsMap[existingIdStr] && conflictPairsMap[existingIdStr].has(stIdStr));
                   });
                 })
@@ -326,75 +339,151 @@ const SeatingDistribution = () => {
           });
         }
       } else if (examMode === 'lise_yabanci_dil') {
+        // LİSE YABANCI DİL KARMA ALGORİTMASI:
+        // 1. Seçilen şubeler + aktif İngilizce/2. Yabancı Dil filtreleri uygulanır.
+        // 2. Öğrenciler önce İngilizce Seviyesi (A-Z: Core -> Extended), sonra 2. Yabancı Dil (A-Z: Almanca -> Fransızca -> İspanyolca) sıralanır.
+        // 3. Her (İngilizce Seviyesi + 2. Yabancı Dil) kombinasyonu mümkün olduğunca tek salona (max 24 kapasite) yerleştirilir;
+        //    kombinasyon değiştiğinde boş salona geçilerek aynı salonda tek İngilizce türü ve tek 2. yabancı dil hedeflenir.
         for (const group of groups) {
-          const groupStudents = students.filter(s => group.classes.includes(`${s.grade}-${s.class}`));
-          if (groupStudents.length === 0) throw new Error(`"${group.name}" grubunda seçilen şubelerde öğrenci bulunamadı!`);
+          let groupStudents = students.filter(s => group.classes.includes(`${s.grade}-${s.class}`));
+
+          if (filterEnglishLevel !== 'ALL') {
+            groupStudents = groupStudents.filter(
+              s => getStudentEnglishLevel(s).toLocaleUpperCase('tr-TR') === filterEnglishLevel.toLocaleUpperCase('tr-TR')
+            );
+          }
+
+          if (filterSecondLang !== 'ALL') {
+            groupStudents = groupStudents.filter(
+              s => getStudentLanguage(s).toLocaleUpperCase('tr-TR') === filterSecondLang.toLocaleUpperCase('tr-TR')
+            );
+          }
+
+          if (groupStudents.length === 0) {
+            throw new Error(`Hata: "${group.name}" grubunda seçilen şube ve dil filtrelerine uygun öğrenci bulunamadı!`);
+          }
 
           const groupRooms = rooms
             .filter(r => group.roomIds.includes(r.id))
             .map(r => ({
               ...r,
               totalCap: Math.min(24, Number(r.capacity || 24) + Number(r.extra_seats_added || r.extraSeatsAdded || 0)),
-              seats: []
+              seats: [],
+              assignedComboKey: null
             }));
 
-          if (groupRooms.length === 0) throw new Error(`"${group.name}" için salon seçilmedi.`);
+          if (groupRooms.length === 0) throw new Error(`Hata: "${group.name}" için salon seçilmedi.`);
 
-          const totalGroupStudents = groupStudents.length;
-          const numRooms = groupRooms.length;
-          const baseQuota = Math.floor(totalGroupStudents / numRooms);
-          const remainder = totalGroupStudents % numRooms;
+          const totalCapacity = groupRooms.reduce((sum, r) => sum + r.totalCap, 0);
+          if (totalCapacity < groupStudents.length) {
+            throw new Error(`Kapasite Yetersiz! "${group.name}" grubunda ${groupStudents.length} öğrenci var ancak seçili salonların toplam kapasitesi ${totalCapacity}.`);
+          }
 
-          groupRooms.forEach((room, idx) => {
-            room.targetQuota = baseQuota + (idx < remainder ? 1 : 0);
-          });
-
+          // Önce İngilizce Seviyesi (A-Z), sonra 2. Yabancı Dil (A-Z) sıralaması
           const sortedStudents = [...groupStudents].sort((a, b) => {
-            if (langPrimaryFilter === 'second_lang') {
-              const langA = getStudentLanguage(a);
-              const langB = getStudentLanguage(b);
-              if (langA !== langB) return langA.localeCompare(langB);
+            const engA = getStudentEnglishLevel(a);
+            const engB = getStudentEnglishLevel(b);
+            const engCmp = engA.localeCompare(engB, 'tr', { sensitivity: 'base' });
+            if (engCmp !== 0) return engCmp;
 
-              const engA = a.english_level || 'Z_Belirtilmedi';
-              const engB = b.english_level || 'Z_Belirtilmedi';
-              return engA.localeCompare(engB);
-            } else {
-              const engA = a.english_level || 'Z_Belirtilmedi';
-              const engB = b.english_level || 'Z_Belirtilmedi';
-              if (engA !== engB) return engA.localeCompare(engB);
-
-              const langA = getStudentLanguage(a);
-              const langB = getStudentLanguage(b);
-              return langA.localeCompare(langB);
-            }
+            const langA = getStudentLanguage(a);
+            const langB = getStudentLanguage(b);
+            return langA.localeCompare(langB, 'tr', { sensitivity: 'base' });
           });
 
-          for (const st of sortedStudents) {
-            let placed = false;
-            const stIdStr = String(st.id).trim();
+          // (İngilizce Seviyesi + 2. Yabancı Dil) saf paketlerine ayır ve paket içini karıştır
+          const comboBuckets = [];
+          const bucketMap = new Map();
 
-            for (const room of groupRooms) {
-              if (room.seats.length >= room.targetQuota) continue;
-
-              const hasConflict = room.seats.some(existingSt => {
-                const existingIdStr = String(existingSt.id).trim();
-                return (conflictPairsMap[stIdStr] && conflictPairsMap[stIdStr].has(existingIdStr)) || 
-                       (conflictPairsMap[existingIdStr] && conflictPairsMap[existingIdStr].has(stIdStr));
-              });
-
-              if (!hasConflict) {
-                room.seats.push(st);
-                placed = true;
-                break;
-              }
+          sortedStudents.forEach(st => {
+            const eng = getStudentEnglishLevel(st);
+            const lang = getStudentLanguage(st);
+            const comboKey = `${eng}|||${lang}`;
+            if (!bucketMap.has(comboKey)) {
+              const bucket = { comboKey, eng, lang, list: [] };
+              bucketMap.set(comboKey, bucket);
+              comboBuckets.push(bucket);
             }
+            bucketMap.get(comboKey).list.push(st);
+          });
 
-            if (!placed) {
-              const availableRooms = groupRooms
-                .filter(r => r.seats.length < r.totalCap)
-                .sort((a, b) => a.seats.length - b.seats.length);
-              if (availableRooms.length > 0) {
-                availableRooms[0].seats.push(st);
+          const hasConflictInRoom = (room, stIdStr) => {
+            return room.seats.some(existingSt => {
+              const existingIdStr = String(existingSt.id).trim();
+              return (conflictPairsMap[stIdStr] && conflictPairsMap[stIdStr].has(existingIdStr)) ||
+                     (conflictPairsMap[existingIdStr] && conflictPairsMap[existingIdStr].has(stIdStr));
+            });
+          };
+
+          // Her saf kombinasyon grubunu mümkün olduğunca kendi salon(lar)ına (max 24) yerleştir
+          for (const bucket of comboBuckets) {
+            const shuffledBucketStudents = shuffleArray(bucket.list);
+
+            for (const st of shuffledBucketStudents) {
+              const stIdStr = String(st.id).trim();
+              let placed = false;
+
+              // 1. Öncelik: Aynı kombinasyona atanmış ve kapasitesi (max 24) dolmamış, çakışmasız salon
+              for (const room of groupRooms) {
+                if (
+                  room.assignedComboKey === bucket.comboKey &&
+                  room.seats.length < room.totalCap &&
+                  !hasConflictInRoom(room, stIdStr)
+                ) {
+                  room.seats.push(st);
+                  placed = true;
+                  break;
+                }
+              }
+
+              // 2. Öncelik: Henüz hiç öğrenci atanmamış tamamen boş salon (tek İngilizce + tek 2. dil için)
+              if (!placed) {
+                const emptyRoom = groupRooms.find(r => r.seats.length === 0 && r.totalCap > 0);
+                if (emptyRoom) {
+                  emptyRoom.assignedComboKey = bucket.comboKey;
+                  emptyRoom.seats.push(st);
+                  placed = true;
+                }
+              }
+
+              // 3. Öncelik: Salon sayısı kombinasyon sayısından azsa, önce aynı İngilizce seviyesine sahip boş yer olan salona
+              if (!placed) {
+                const sameEngRoom = groupRooms
+                  .filter(r => {
+                    if (r.seats.length >= r.totalCap || hasConflictInRoom(r, stIdStr)) return false;
+                    const firstSt = r.seats[0];
+                    return firstSt && getStudentEnglishLevel(firstSt).toLocaleUpperCase('tr-TR') === bucket.eng.toLocaleUpperCase('tr-TR');
+                  })
+                  .sort((a, b) => a.seats.length - b.seats.length)[0];
+
+                if (sameEngRoom) {
+                  sameEngRoom.seats.push(st);
+                  placed = true;
+                }
+              }
+
+              // 4. Öncelik: Boş yeri olan ve çakışma olmayan herhangi bir salon
+              if (!placed) {
+                const anyCleanRoom = groupRooms
+                  .filter(r => r.seats.length < r.totalCap && !hasConflictInRoom(r, stIdStr))
+                  .sort((a, b) => a.seats.length - b.seats.length)[0];
+
+                if (anyCleanRoom) {
+                  anyCleanRoom.seats.push(st);
+                  placed = true;
+                }
+              }
+
+              // 5. Son çare: Kapasitesi dolmamış en az dolu salon
+              if (!placed) {
+                const fallbackRoom = groupRooms
+                  .filter(r => r.seats.length < r.totalCap)
+                  .sort((a, b) => a.seats.length - b.seats.length)[0];
+
+                if (!fallbackRoom) {
+                  throw new Error(`Kapasite/Salon Yetersiz! "${bucket.eng} - ${bucket.lang}" grubundaki öğrenciler için boş yer kalmadı.`);
+                }
+                fallbackRoom.seats.push(st);
               }
             }
           }
@@ -409,7 +498,7 @@ const SeatingDistribution = () => {
                 class: st.class,
                 grade: st.grade,
                 second_language: getStudentLanguage(st),
-                english_level: st.english_level || null,
+                english_level: getStudentEnglishLevel(st),
               });
             });
           });
@@ -496,14 +585,30 @@ const SeatingDistribution = () => {
     }
   };
 
+  // Mevcut öğrencilerdeki benzersiz İngilizce ve 2. Yabancı Dil seçenekleri
+  const availableEnglishLevels = Array.from(
+    new Set(students.map(s => getStudentEnglishLevel(s)).filter(v => v !== 'Belirtilmedi'))
+  ).sort((a, b) => a.localeCompare(b, 'tr', { sensitivity: 'base' }));
+
+  const availableSecondLangs = Array.from(
+    new Set(students.map(s => getStudentLanguage(s)).filter(v => v !== 'Belirtilmedi'))
+  ).sort((a, b) => a.localeCompare(b, 'tr', { sensitivity: 'base' }));
+
   const roomSummaryMap = {};
+  const roomLangBreakdownMap = {};
   distributions.forEach(item => {
     const rName = rooms.find(r => r.id === item.room_id)?.name || item.room_id;
     if (!roomSummaryMap[rName]) roomSummaryMap[rName] = 0;
     roomSummaryMap[rName]++;
+
+    if (examMode === 'lise_yabanci_dil') {
+      if (!roomLangBreakdownMap[rName]) roomLangBreakdownMap[rName] = new Set();
+      const eng = item.english_level || '-';
+      const lang = item.second_language || '-';
+      roomLangBreakdownMap[rName].add(`${eng} / ${lang}`);
+    }
   });
 
-  // Öğrenci ID'lerini string temizlenmiş şekilde eşliyoruz
   const studentRoomMap = {};
   distributions.forEach(item => {
     const rName = rooms.find(r => r.id === item.room_id)?.name || item.room_id;
@@ -627,27 +732,60 @@ const SeatingDistribution = () => {
       </div>
 
       {selectedExamId && examMode === 'lise_yabanci_dil' && (
-        <div style={{ background: '#eef6ff', padding: '1rem', borderRadius: '8px', border: '1px solid #b6d4fe', marginBottom: '1.5rem' }}>
-          <h4 style={{ margin: '0 0 0.5rem 0', color: '#055160' }}>📊 Excel Tipi Sıralama Düzeni</h4>
-          <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
-            <label style={{ cursor: 'pointer', fontWeight: 'bold' }}>
-              <input
-                type="radio"
-                name="langFilter"
-                value="second_lang"
-                checked={langPrimaryFilter === 'second_lang'}
-                onChange={() => setLangPrimaryFilter('second_lang')}
-              /> 1. 2. Yabancı Dil ➔ 2. Seviye
-            </label>
-            <label style={{ cursor: 'pointer', fontWeight: 'bold' }}>
-              <input
-                type="radio"
-                name="langFilter"
-                value="english_level"
-                checked={langPrimaryFilter === 'english_level'}
-                onChange={() => setLangPrimaryFilter('english_level')}
-              /> 1. İngilizce Seviye ➔ 2. 2. Yabancı Dil
-            </label>
+        <div style={{ background: '#ecfdf5', padding: '1rem', borderRadius: '8px', border: '1px solid #a7f3d0', marginBottom: '1.5rem' }}>
+          <h4 style={{ margin: '0 0 0.4rem 0', color: '#065f46' }}>
+            🌍 Lise Yabancı Dil Filtre & Saf Salon Dağıtımı (1. İngilizce A-Z ➔ 2. 2. Yabancı Dil A-Z • Max 24 Kişi)
+          </h4>
+          <p style={{ margin: '0 0 0.8rem 0', fontSize: '0.85rem', color: '#047857' }}>
+            Algoritma öğrencileri önce İngilizce seviyesine (Core / Extended), ardından 2. yabancı dile (Almanca / Fransızca / İspanyolca) göre A-Z sıralar ve her kombinasyonu mümkün olduğunca tek salona (max 24 kapasite) yerleştirir.
+          </p>
+          <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+            <div>
+              <label style={{ fontWeight: 'bold', fontSize: '0.85rem', display: 'block', marginBottom: '0.25rem', color: '#065f46' }}>
+                İngilizce Seviyesi Filtresi:
+              </label>
+              <select
+                value={filterEnglishLevel}
+                onChange={(e) => setFilterEnglishLevel(e.target.value)}
+                style={{ padding: '0.45rem 0.8rem', borderRadius: '4px', border: '1px solid #6ee7b7', fontWeight: 'bold', background: '#fff' }}
+              >
+                <option value="ALL">Tümü (Core + Extended)</option>
+                {availableEnglishLevels.length > 0 ? (
+                  availableEnglishLevels.map(lvl => (
+                    <option key={lvl} value={lvl}>{lvl}</option>
+                  ))
+                ) : (
+                  <>
+                    <option value="Core">Core</option>
+                    <option value="Extended">Extended</option>
+                  </>
+                )}
+              </select>
+            </div>
+
+            <div>
+              <label style={{ fontWeight: 'bold', fontSize: '0.85rem', display: 'block', marginBottom: '0.25rem', color: '#065f46' }}>
+                2. Yabancı Dil Filtresi:
+              </label>
+              <select
+                value={filterSecondLang}
+                onChange={(e) => setFilterSecondLang(e.target.value)}
+                style={{ padding: '0.45rem 0.8rem', borderRadius: '4px', border: '1px solid #6ee7b7', fontWeight: 'bold', background: '#fff' }}
+              >
+                <option value="ALL">Tümü (Almanca + Fransızca + İspanyolca)</option>
+                {availableSecondLangs.length > 0 ? (
+                  availableSecondLangs.map(lang => (
+                    <option key={lang} value={lang}>{lang}</option>
+                  ))
+                ) : (
+                  <>
+                    <option value="Almanca">Almanca</option>
+                    <option value="Fransızca">Fransızca</option>
+                    <option value="İspanyolca">İspanyolca</option>
+                  </>
+                )}
+              </select>
+            </div>
           </div>
         </div>
       )}
@@ -665,10 +803,10 @@ const SeatingDistribution = () => {
       )}
 
       <div style={{ display: 'grid', gridTemplateColumns: '420px 1fr', gap: '1.5rem', alignItems: 'start' }}>
-        
+
         {selectedExamId && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            
+
             <div style={{ background: '#fff', padding: '1rem', borderRadius: '8px', border: '1px solid #ddd', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
               <h4 style={{ margin: '0 0 0.8rem 0', borderBottom: '2px solid #007bff', paddingBottom: '0.4rem', color: '#007bff' }}>
                 📊 Salon Özetleri
@@ -680,6 +818,7 @@ const SeatingDistribution = () => {
                   <thead>
                     <tr style={{ background: '#f8f9fa', borderBottom: '1px solid #ddd', textAlign: 'left' }}>
                       <th style={{ padding: '0.5rem' }}>Salon Adı</th>
+                      {examMode === 'lise_yabanci_dil' && <th style={{ padding: '0.5rem' }}>İng / 2. Dil</th>}
                       <th style={{ padding: '0.5rem', textAlign: 'right' }}>Öğrenci</th>
                     </tr>
                   </thead>
@@ -687,11 +826,17 @@ const SeatingDistribution = () => {
                     {Object.entries(roomSummaryMap).map(([rName, count], idx) => (
                       <tr key={idx} style={{ borderBottom: '1px solid #eee' }}>
                         <td style={{ padding: '0.5rem' }}>{rName}</td>
+                        {examMode === 'lise_yabanci_dil' && (
+                          <td style={{ padding: '0.5rem', fontSize: '0.8rem', color: '#047857', fontWeight: '600' }}>
+                            {roomLangBreakdownMap[rName] ? Array.from(roomLangBreakdownMap[rName]).join(', ') : '-'}
+                          </td>
+                        )}
                         <td style={{ padding: '0.5rem', textAlign: 'right', fontWeight: 'bold', color: '#007bff' }}>{count}</td>
                       </tr>
                     ))}
                     <tr style={{ background: '#f8f9fa', fontWeight: 'bold' }}>
                       <td style={{ padding: '0.5rem' }}>Toplam</td>
+                      {examMode === 'lise_yabanci_dil' && <td></td>}
                       <td style={{ padding: '0.5rem', textAlign: 'right' }}>{distributions.length}</td>
                     </tr>
                   </tbody>
