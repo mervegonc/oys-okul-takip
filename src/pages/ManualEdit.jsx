@@ -102,7 +102,10 @@ const ManualEdit = () => {
         }
 
         const currentStudents = studentRes.data || [];
-        
+        if (currentStudents.length > 0) {
+          setAllStudents(currentStudents);
+        }
+
         const validStudentIds = new Set();
         const validStudentTc = new Set();
         const validStudentNos = new Set();
@@ -116,7 +119,7 @@ const ManualEdit = () => {
           if (st.student_no) validStudentNos.add(String(st.student_no).trim());
           if (st.school_number) validStudentNos.add(String(st.school_number).trim());
           if (st.no) validStudentNos.add(String(st.no).trim());
-          
+
           const fName = String(st.first_name || st.firstName || st.ad || '').trim().toLowerCase();
           const lName = String(st.last_name || st.lastName || st.soyad || '').trim().toLowerCase();
           if (fName && lName) validFullNames.add(`${fName} ${lName}`);
@@ -165,6 +168,40 @@ const ManualEdit = () => {
 
   const cleanStr = (val) => String(val || '').trim().toLowerCase();
   const extractNumbers = (val) => String(val || '').replace(/\D/g, '');
+
+  const findMatchingStudentRecord = (item) => {
+    const sId = cleanStr(item.studentId || item.student_id || item.id);
+    const sNo = cleanStr(item.studentNumber || item.student_number || item.school_number || item.no);
+    const sTc = cleanStr(item.tc || item.tc_no || item.tcNo);
+    const sFullName = cleanStr(item.studentName || item.student_name || `${item.firstName || item.first_name || ''} ${item.lastName || item.last_name || ''}`);
+
+    return allStudents.find(st => {
+      const dbId = cleanStr(st.id || st.student_id);
+      const dbNo = cleanStr(st.student_no || st.school_number || st.no);
+      const dbTc = cleanStr(st.tc_no || st.tc);
+      const dbFullName = cleanStr(`${st.first_name || st.firstName || st.ad || ''} ${st.last_name || st.lastName || st.soyad || ''}`);
+
+      if (sId && dbId && sId === dbId) return true;
+      if (sTc && dbTc && sTc === dbTc) return true;
+      if (sNo && dbNo && sNo === dbNo) return true;
+      if (sFullName && dbFullName && sFullName === dbFullName) return true;
+      return false;
+    }) || null;
+  };
+
+  const getItemEnglishLevel = (item, matchedStudent = null) => {
+    const st = matchedStudent || findMatchingStudentRecord(item);
+    const raw = item.english_level || item.englishLevel || st?.english_level || st?.ingilizce_seviye || st?.ing_seviye || '';
+    const trimmed = String(raw).trim();
+    return trimmed && trimmed !== '-' ? trimmed.toUpperCase() : '-';
+  };
+
+  const getItemSecondLanguage = (item, matchedStudent = null) => {
+    const st = matchedStudent || findMatchingStudentRecord(item);
+    const raw = item.second_language || item.secondLanguage || st?.second_lang || st?.second_language || st?.ikinci_yabanci_dil || st?.ikinci_dil || st?.yabanci_dil || '';
+    const trimmed = String(raw).trim();
+    return trimmed && trimmed !== '-' ? trimmed : '-';
+  };
 
   const handleFileUpload = (e) => {
     const file = e.target.files[0];
@@ -260,9 +297,9 @@ const ManualEdit = () => {
   };
 
   const handleRoomChange = (targetStudentId, newRoomId) => {
-    const updated = assignments.map(a => 
+    const updated = assignments.map(a =>
       isSameStudent(a, targetStudentId)
-        ? { ...a, roomId: newRoomId, room_id: newRoomId } 
+        ? { ...a, roomId: newRoomId, room_id: newRoomId }
         : a
     );
     setAssignments(updated);
@@ -271,11 +308,26 @@ const ManualEdit = () => {
 
   const handleSeatChange = (targetStudentId, newSeat) => {
     const seatNum = parseInt(newSeat) || 0;
-    const updated = assignments.map(a => 
+    const updated = assignments.map(a =>
       isSameStudent(a, targetStudentId)
-        ? { ...a, seatNumber: seatNum, seat_number: seatNum } 
+        ? { ...a, seatNumber: seatNum, seat_number: seatNum }
         : a
     );
+    setAssignments(updated);
+    setEditing(true);
+  };
+
+  const handleLanguageFieldChange = (targetStudentId, fieldKey, newValue) => {
+    const updated = assignments.map(a => {
+      if (!isSameStudent(a, targetStudentId)) return a;
+      if (fieldKey === 'second_language') {
+        return { ...a, second_language: newValue, secondLanguage: newValue };
+      }
+      if (fieldKey === 'english_level') {
+        return { ...a, english_level: newValue, englishLevel: newValue };
+      }
+      return a;
+    });
     setAssignments(updated);
     setEditing(true);
   };
@@ -317,7 +369,9 @@ const ManualEdit = () => {
       seatNumber: seatNum,
       seat_number: seatNum,
       tc: studentObj.tc_no || studentObj.tc || '',
-      tc_no: studentObj.tc_no || studentObj.tc || ''
+      tc_no: studentObj.tc_no || studentObj.tc || '',
+      second_language: studentObj.second_lang || studentObj.second_language || '',
+      english_level: studentObj.english_level || ''
     };
 
     setAssignments([...assignments, newAssignmentItem]);
@@ -371,7 +425,7 @@ const ManualEdit = () => {
       const rId = item.roomId || item.room_id;
       const roomObj = rooms.find(r => String(r.id) === String(rId));
       const roomName = roomObj ? roomObj.name : (rId ? `Salon (${rId})` : 'Atanmamış Salon');
-      
+
       if (!groups[roomName]) groups[roomName] = [];
       groups[roomName].push(item);
     });
@@ -420,10 +474,20 @@ const ManualEdit = () => {
     });
   });
 
+  // exams tablosundaki type değerine ("foreign_lang", "dil", "yabancı") göre otomatik algılama
   const examType = cleanStr(currentExamObj?.exam_type || currentExamObj?.type || '');
-  const isMiddleSchool = examType.includes('ortaokul') || (currentExamObj?.grade_levels || []).some(g => [5, 6, 7, 8].includes(Number(g)));
-  const isLanguageExam = examType.includes('dil') || examType.includes('yabancı');
-  const isAcademicHighSchool = examType.includes('akademik') || examType.includes('lise');
+  const isLanguageExam =
+    examType === 'foreign_lang' ||
+    examType.includes('foreign_lang') ||
+    examType.includes('dil') ||
+    examType.includes('yabancı');
+  const isMiddleSchool =
+    examType.includes('ortaokul') ||
+    cleanStr(currentExamObj?.level || '').includes('middle') ||
+    (currentExamObj?.grade_levels || []).some(g => [5, 6, 7, 8].includes(Number(g)));
+  const isAcademicHighSchool =
+    !isLanguageExam &&
+    (examType.includes('akademik') || examType.includes('academic') || examType.includes('lise'));
 
   const examGrades = (currentExamObj?.grade_levels || currentExamObj?.gradeLevels || []).map(g => Number(g));
 
@@ -446,7 +510,6 @@ const ManualEdit = () => {
     return true;
   });
 
-  // ** ÇAKIŞMA LİSTESİ MANTIĞI **
   const currentExamStudentIds = new Set(assignments.map(a => String(a.studentId || a.student_id || a.id).trim()));
   const activeConflictStudentsMap = {};
 
@@ -476,7 +539,6 @@ const ManualEdit = () => {
     }
   });
 
-  // Öğrencinin oturduğu salon ve sırayı bulmak için map
   const studentRoomMap = {};
   assignments.forEach(item => {
     const rId = item.roomId || item.room_id;
@@ -502,9 +564,10 @@ const ManualEdit = () => {
             <option value="">-- Sınav Seçin --</option>
             {exams.map(exam => {
               const grades = exam.grade_levels || exam.gradeLevels || [];
+              const isLang = cleanStr(exam.type || exam.exam_type || '').includes('foreign_lang') || cleanStr(exam.type || exam.exam_type || '').includes('dil');
               return (
                 <option key={exam.id} value={exam.id}>
-                  {exam.title} ({exam.date}) {grades.length > 0 ? `- ${grades.join(', ')}. Sınıflar` : ''}
+                  {exam.title} ({exam.date}) {grades.length > 0 ? `- ${grades.join(', ')}. Sınıflar` : ''} {isLang ? '[Yabancı Dil]' : ''}
                 </option>
               );
             })}
@@ -541,9 +604,9 @@ const ManualEdit = () => {
 
       {loading && <p>Yükleniyor...</p>}
       {message && (
-        <div style={{ 
-          padding: '0.8rem 1rem', 
-          borderRadius: '6px', 
+        <div style={{
+          padding: '0.8rem 1rem',
+          borderRadius: '6px',
           background: message.includes('❌') || message.includes('⚠️') ? '#fff3cd' : '#d4edda',
           color: message.includes('❌') || message.includes('⚠️') ? '#856404' : '#155724',
           marginBottom: '1.2rem',
@@ -555,11 +618,11 @@ const ManualEdit = () => {
       )}
 
       {assignments.length > 0 && totalConflicts > 0 && (
-        <div style={{ 
-          padding: '0.8rem 1rem', 
-          borderRadius: '6px', 
-          background: '#f8d7da', 
-          color: '#721c24', 
+        <div style={{
+          padding: '0.8rem 1rem',
+          borderRadius: '6px',
+          background: '#f8d7da',
+          color: '#721c24',
           marginBottom: '1.2rem',
           border: '1px solid #f5c6cb',
           fontWeight: '500',
@@ -573,11 +636,10 @@ const ManualEdit = () => {
 
       {assignments.length > 0 && (
         <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
-          
+
           {/* SOL KISIM: Salon Özetleri ve Genişletilmiş Çakışma Tablosu */}
           <div style={{ width: '380px', display: 'flex', flexDirection: 'column', gap: '1rem', position: 'sticky', top: '1rem' }}>
-            
-            {/* Salon Özet Tablosu */}
+
             <div style={{ background: '#fff', padding: '1rem', borderRadius: '8px', border: '1px solid #ddd', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
               <h4 style={{ marginTop: 0, marginBottom: '0.8rem', fontSize: '1rem', borderBottom: '2px solid #2b6cb0', paddingBottom: '0.4rem', color: '#2b6cb0' }}>
                 📊 Salon Özetleri
@@ -610,7 +672,6 @@ const ManualEdit = () => {
               </table>
             </div>
 
-            {/* ÇAKIŞMA LİSTESİ TABLOSU */}
             <div style={{ background: '#fff', padding: '1rem', borderRadius: '8px', border: '1px solid #ddd', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', maxHeight: '480px', overflowY: 'auto' }}>
               <h4 style={{ margin: '0 0 0.8rem 0', borderBottom: '2px solid #dc3545', paddingBottom: '0.4rem', color: '#dc3545', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                 <FaExclamationTriangle /> Çakışmadaki Öğrenciler
@@ -629,7 +690,7 @@ const ManualEdit = () => {
                     {Object.entries(activeConflictStudentsMap).map(([stId, info], idx) => {
                       const assignmentItem = assignments.find(a => String(a.studentId || a.student_id || a.id).trim() === stId);
                       if (!assignmentItem) return null;
-                      
+
                       const stName = assignmentItem.studentName || assignmentItem.student_name || `${assignmentItem.firstName || assignmentItem.first_name || ''} ${assignmentItem.lastName || assignmentItem.last_name || ''}`.trim() || 'İsimsiz';
                       const roomSeatInfo = studentRoomMap[stId] || 'Atanmadı';
 
@@ -655,8 +716,15 @@ const ManualEdit = () => {
 
           {/* SAĞ KISIM: Ana Liste ve Salonlar */}
           <div style={{ flex: 1, minWidth: '300px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-              <h4>Oturma Planı ({assignments.length} öğrenci)</h4>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+              <h4 style={{ margin: 0 }}>
+                Oturma Planı ({assignments.length} öğrenci)
+                {isLanguageExam && (
+                  <span style={{ marginLeft: '0.6rem', fontSize: '0.8rem', background: '#e0f2fe', color: '#0369a1', padding: '0.2rem 0.55rem', borderRadius: '4px' }}>
+                    Yabancı Dil Sınavı Sütunları Aktif
+                  </span>
+                )}
+              </h4>
               {editing && (
                 <div style={{ display: 'flex', gap: '0.5rem' }}>
                   <button
@@ -741,8 +809,8 @@ const ManualEdit = () => {
                           style={{ flex: 2, minWidth: '220px', padding: '0.4rem', borderRadius: '4px', border: '1px solid #ccc' }}
                         >
                           <option value="">
-                            {filteredStudentsForAdd.length > 0 
-                              ? `-- Öğrenci Seçin (${filteredStudentsForAdd.length} sonuç) --` 
+                            {filteredStudentsForAdd.length > 0
+                              ? `-- Öğrenci Seçin (${filteredStudentsForAdd.length} sonuç) --`
                               : '-- Eşleşen öğrenci bulunamadı --'}
                           </option>
                           {filteredStudentsForAdd.map(st => (
@@ -778,10 +846,19 @@ const ManualEdit = () => {
                           <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd' }}>Okul No</th>
                           <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd', textAlign: 'left' }}>Öğrenci</th>
                           <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd' }}>Sınıf / Şube</th>
-                          
-                          {isLanguageExam && <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd' }}>İngilizce / 2. Yabancı Dil</th>}
-                          {isAcademicHighSchool && !isLanguageExam && <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd' }}>Alan / Branş</th>}
-                          {isMiddleSchool && <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd' }}>2. Yabancı Dil</th>}
+
+                          {isLanguageExam && (
+                            <>
+                              <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd', color: '#6f42c1' }}>2. Yabancı Dil</th>
+                              <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd', color: '#007bff' }}>İngilizce</th>
+                            </>
+                          )}
+                          {isAcademicHighSchool && (
+                            <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd' }}>Alan / Branş</th>
+                          )}
+                          {isMiddleSchool && !isLanguageExam && (
+                            <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd' }}>2. Yabancı Dil</th>
+                          )}
 
                           <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd' }}>Grup</th>
                           <th style={{ padding: '0.6rem', borderBottom: '1px solid #ddd' }}>Salon</th>
@@ -798,15 +875,16 @@ const ManualEdit = () => {
 
                           const isConflict = conflictMap[`${roomName}-${currentSeat}`] || conflictMap[`student-${stId}`] || false;
 
-                          const engLevel = item.english_level || item.englishLevel;
-                          const secLang = item.second_language || item.secondLanguage;
-                          const fieldVal = item.field || item.branch || item.alan;
+                          const matchedStudent = findMatchingStudentRecord(item);
+                          const engLevel = getItemEnglishLevel(item, matchedStudent);
+                          const secLang = getItemSecondLanguage(item, matchedStudent);
+                          const fieldVal = item.field || item.branch || item.alan || matchedStudent?.field || '';
 
                           return (
-                            <tr 
-                              key={stId || idx} 
-                              style={{ 
-                                borderBottom: '1px solid #eee', 
+                            <tr
+                              key={stId || idx}
+                              style={{
+                                borderBottom: '1px solid #eee',
                                 textAlign: 'center',
                                 background: isConflict ? '#f8d7da' : 'transparent'
                               }}
@@ -815,20 +893,55 @@ const ManualEdit = () => {
                               <td style={{ padding: '0.5rem', fontWeight: 'bold' }}>{stNo}</td>
                               <td style={{ padding: '0.5rem', textAlign: 'left', fontWeight: '500' }}>{stName}</td>
                               <td style={{ padding: '0.5rem' }}>{item.grade}-{item.class || item.className}</td>
-                              
+
                               {isLanguageExam && (
-                                <td style={{ padding: '0.5rem', fontSize: '0.85rem', color: '#4a5568' }}>
-                                  {[engLevel ? `İng: ${String(engLevel).toUpperCase()}` : null, secLang ? `2.Dil: ${String(secLang)}` : null].filter(Boolean).join(' - ') || '-'}
-                                </td>
+                                <>
+                                  <td style={{ padding: '0.5rem' }}>
+                                    <input
+                                      type="text"
+                                      value={secLang === '-' ? '' : secLang}
+                                      placeholder="-"
+                                      onChange={(e) => handleLanguageFieldChange(stId, 'second_language', e.target.value)}
+                                      style={{
+                                        width: '100px',
+                                        padding: '0.28rem 0.4rem',
+                                        borderRadius: '4px',
+                                        border: '1px solid #cbd5e1',
+                                        textAlign: 'center',
+                                        fontWeight: 'bold',
+                                        color: '#6f42c1',
+                                        background: '#faf5ff'
+                                      }}
+                                    />
+                                  </td>
+                                  <td style={{ padding: '0.5rem' }}>
+                                    <input
+                                      type="text"
+                                      value={engLevel === '-' ? '' : engLevel}
+                                      placeholder="-"
+                                      onChange={(e) => handleLanguageFieldChange(stId, 'english_level', e.target.value)}
+                                      style={{
+                                        width: '90px',
+                                        padding: '0.28rem 0.4rem',
+                                        borderRadius: '4px',
+                                        border: '1px solid #cbd5e1',
+                                        textAlign: 'center',
+                                        fontWeight: 'bold',
+                                        color: '#007bff',
+                                        background: '#eff6ff'
+                                      }}
+                                    />
+                                  </td>
+                                </>
                               )}
-                              {isAcademicHighSchool && !isLanguageExam && (
+                              {isAcademicHighSchool && (
                                 <td style={{ padding: '0.5rem', fontSize: '0.85rem', color: '#4a5568' }}>
                                   {fieldVal || '-'}
                                 </td>
                               )}
-                              {isMiddleSchool && (
+                              {isMiddleSchool && !isLanguageExam && (
                                 <td style={{ padding: '0.5rem', fontSize: '0.85rem', color: '#4a5568' }}>
-                                  {secLang ? String(secLang) : '-'}
+                                  {secLang !== '-' ? secLang : '-'}
                                 </td>
                               )}
 
@@ -853,11 +966,11 @@ const ManualEdit = () => {
                                   min="1"
                                   value={currentSeat}
                                   onChange={(e) => handleSeatChange(stId, e.target.value)}
-                                  style={{ 
-                                    width: '60px', 
-                                    padding: '0.3rem', 
-                                    border: isConflict ? '2px solid #dc3545' : '1px solid #ccc', 
-                                    borderRadius: '4px', 
+                                  style={{
+                                    width: '60px',
+                                    padding: '0.3rem',
+                                    border: isConflict ? '2px solid #dc3545' : '1px solid #ccc',
+                                    borderRadius: '4px',
                                     textAlign: 'center',
                                     background: isConflict ? '#f5c6cb' : 'white',
                                     color: isConflict ? '#721c24' : 'inherit',
