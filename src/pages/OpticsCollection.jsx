@@ -12,33 +12,46 @@ const OpticsCollection = () => {
   const [studentMap, setStudentMap] = useState({});
   const [loading, setLoading] = useState(false);
 
+  const buildStudentLookupMap = (studentData) => {
+    const map = {};
+    (studentData || []).forEach(st => {
+      if (st.id) map[String(st.id).trim()] = st;
+      if (st.student_id) map[String(st.student_id).trim()] = st;
+      if (st.tc_no) map[String(st.tc_no).trim()] = st;
+      if (st.tc) map[String(st.tc).trim()] = st;
+      if (st.student_no) map[String(st.student_no).trim()] = st;
+      if (st.school_number) map[String(st.school_number).trim()] = st;
+      if (st.no) map[String(st.no).trim()] = st;
+
+      const fName = String(st.first_name || st.firstName || st.ad || '').trim().toLowerCase();
+      const lName = String(st.last_name || st.lastName || st.soyad || '').trim().toLowerCase();
+      if (fName && lName) {
+        map[`name:${fName} ${lName}`] = st;
+      }
+    });
+    return map;
+  };
+
   useEffect(() => {
     fetchInitialData();
   }, []);
 
   useEffect(() => {
     processExamsForDate();
-  }, [selectedDate, exams, rooms, studentMap]);
+  }, [selectedDate, exams, rooms]);
 
   const fetchInitialData = async () => {
     setLoading(true);
     try {
-      const { data: examData } = await supabase.from('exams').select('*').order('date', { ascending: true });
+      const [{ data: examData }, { data: roomData }, { data: studentData }] = await Promise.all([
+        supabase.from('exams').select('*').order('date', { ascending: true }),
+        supabase.from('rooms').select('*'),
+        supabase.from('students').select('*')
+      ]);
+
       setExams(examData || []);
-
-      const { data: roomData } = await supabase.from('rooms').select('*');
       setRooms(roomData || []);
-
-      const { data: studentData } = await supabase.from('students').select('*');
-      if (studentData) {
-        const map = {};
-        studentData.forEach(st => {
-          if (st.id) map[String(st.id)] = st;
-          if (st.tc_no) map[String(st.tc_no).trim()] = st;
-          if (st.student_no) map[String(st.student_no).trim()] = st;
-        });
-        setStudentMap(map);
-      }
+      setStudentMap(buildStudentLookupMap(studentData));
     } catch (err) {
       console.error('Veriler yüklenirken hata:', err);
     } finally {
@@ -89,33 +102,52 @@ const OpticsCollection = () => {
     return t === 'foreign_lang' || t.includes('foreign_lang') || t.includes('dil') || t.includes('yabancı');
   };
 
-  const getStudentDetails = (st) => {
+  const pickNonEmpty = (...vals) => {
+    for (const v of vals) {
+      if (v !== undefined && v !== null) {
+        const s = String(v).trim();
+        if (s !== '' && s !== '-') return s;
+      }
+    }
+    return '';
+  };
+
+  const getStudentDetails = (st, activeMap = studentMap) => {
     const rawId = String(st.studentId || st.student_id || st.id || '').trim();
     const rawTc = String(st.tc || st.tc_no || st.tcNo || '').trim();
     const rawNo = String(st.no || st.student_no || st.studentNo || st.school_number || '').trim();
+    const fName = String(st.firstName || st.first_name || st.ad || '').trim().toLowerCase();
+    const lName = String(st.lastName || st.last_name || st.soyad || '').trim().toLowerCase();
+    const fullNameKey = String(st.studentName || st.student_name || `${fName} ${lName}`).trim().toLowerCase();
 
-    const dbSt = studentMap[rawId] || studentMap[rawTc] || studentMap[rawNo] || {};
+    const dbSt =
+      activeMap[rawId] ||
+      activeMap[rawTc] ||
+      activeMap[rawNo] ||
+      activeMap[`name:${fullNameKey}`] ||
+      {};
 
-    const grade = dbSt.grade || st.grade || st.sinif || '';
-    const rawField = dbSt.field || st.field || st.alan || st.track || st.department || '';
+    const grade = pickNonEmpty(dbSt.grade, dbSt.sinif, st.grade, st.sinif);
+    const rawField = pickNonEmpty(dbSt.field, dbSt.alan, dbSt.track, dbSt.department, st.field, st.alan, st.track, st.department);
 
-    const rawSecondLang =
-      st.second_language ||
-      st.secondLanguage ||
-      dbSt.second_lang ||
-      dbSt.second_language ||
-      dbSt.ikinci_yabanci_dil ||
-      dbSt.ikinci_dil ||
-      dbSt.yabanci_dil ||
-      '';
+    // Önce güncel students tablosundaki (dbSt) veriye bak; yoksa oturma planındaki (st) değere düş
+    const rawSecondLang = pickNonEmpty(
+      dbSt.second_lang,
+      dbSt.second_language,
+      dbSt.ikinci_yabanci_dil,
+      dbSt.ikinci_dil,
+      dbSt.yabanci_dil,
+      st.second_language,
+      st.secondLanguage
+    );
 
-    const rawEnglishLevel =
-      st.english_level ||
-      st.englishLevel ||
-      dbSt.english_level ||
-      dbSt.ingilizce_seviye ||
-      dbSt.ing_seviye ||
-      '';
+    const rawEnglishLevel = pickNonEmpty(
+      dbSt.english_level,
+      dbSt.ingilizce_seviye,
+      dbSt.ing_seviye,
+      st.english_level,
+      st.englishLevel
+    );
 
     return {
       grade: String(grade).replace('.', '').trim(),
@@ -179,10 +211,18 @@ const OpticsCollection = () => {
       }
 
       const examIds = targetExams.map(e => e.id);
-      const { data: plansData } = await supabase
-        .from('seating_plans')
-        .select('*')
-        .in('exam_id', examIds);
+      const [{ data: plansData }, { data: freshStudentsData }] = await Promise.all([
+        supabase.from('seating_plans').select('*').in('exam_id', examIds),
+        supabase.from('students').select('*')
+      ]);
+
+      const freshMap = freshStudentsData && freshStudentsData.length > 0
+        ? buildStudentLookupMap(freshStudentsData)
+        : studentMap;
+
+      if (freshStudentsData && freshStudentsData.length > 0) {
+        setStudentMap(freshMap);
+      }
 
       const tableRows = [];
       const examTotalsMap = {};
@@ -232,7 +272,7 @@ const OpticsCollection = () => {
             const roomEnglishLevelCounts = {};
 
             roomStudents.forEach(st => {
-              const det = getStudentDetails(st);
+              const det = getStudentDetails(st, freshMap);
               if (det.grade) {
                 gradesSet.add(det.grade);
                 examGradesSet.add(det.grade);
@@ -259,7 +299,7 @@ const OpticsCollection = () => {
             let otherCount = 0;
 
             roomStudents.forEach(st => {
-              const det = getStudentDetails(st);
+              const det = getStudentDetails(st, freshMap);
               if (det.grade) {
                 gradesSet.add(det.grade);
                 examGradesSet.add(det.grade);
