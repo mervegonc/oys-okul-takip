@@ -24,7 +24,7 @@ const ManualEdit = () => {
   const cleanStr = (val) => String(val || '').trim().toLowerCase();
   const extractNumbers = (val) => String(val || '').replace(/\D/g, '');
 
-  const findMatchingStudentRecord = use (item, studentList = allStudents) => {
+ const findMatchingStudentRecord = (item, studentList = allStudents) => {
     const sId = cleanStr(item.studentId || item.student_id || item.id);
     const sNo = cleanStr(item.studentNumber || item.student_number || item.school_number || item.no);
     const sTc = cleanStr(item.tc || item.tc_no || item.tcNo);
