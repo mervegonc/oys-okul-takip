@@ -18,6 +18,7 @@ const ExamAttendanceLists = () => {
   // Dinamik Sütun Göster/Gizle State'leri
   const [showCopyColumn, setShowCopyColumn] = useState(true);
   const [showPhoneColumn, setShowPhoneColumn] = useState(true);
+  const [showDoorRoomColumn, setShowDoorRoomColumn] = useState(true);
   const [showDoorEnglishColumn, setShowDoorEnglishColumn] = useState(false);
   const [showDoorSecondLangColumn, setShowDoorSecondLangColumn] = useState(false);
 
@@ -646,9 +647,17 @@ const ExamAttendanceLists = () => {
           };
           if (isTcLoaded) item['TC Kimlik No'] = getStudentTc(st, st.det);
           item['Öğrenci Adı Soyadı'] = st.det.fullName;
-          if (showDoorEnglishColumn) item['İngilizce'] = st.det.englishLevel;
-          if (showDoorSecondLangColumn) item['2. Yabancı Dil'] = st.det.secondLanguage;
-          item['Gideceği Salon'] = st.roomDisplay;
+          if (showDoorEnglishColumn) {
+            item['İngilizce'] = st.det.englishLevel;
+            item['İng. Kontrol'] = '';
+          }
+          if (showDoorSecondLangColumn) {
+            item['2. Yabancı Dil'] = st.det.secondLanguage;
+            item['2. Dil Kontrol'] = '';
+          }
+          if (showDoorRoomColumn) {
+            item['Gideceği Salon'] = st.roomDisplay;
+          }
           dataToExport.push(item);
         });
       });
@@ -937,16 +946,22 @@ const ExamAttendanceLists = () => {
                     {showPhoneColumn ? '✓ Telefon/Cihaz (Açık)' : '✕ Telefon/Cihaz (Kapalı)'}
                   </button>
                   <button
+                    onClick={() => setShowDoorRoomColumn(!showDoorRoomColumn)}
+                    style={{ padding: '0.35rem 0.7rem', background: showDoorRoomColumn ? '#6b46c1' : '#94a3b8', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold' }}
+                  >
+                    {showDoorRoomColumn ? '✓ Kapı: Sınav Yerleri (Açık)' : '✕ Kapı: Sınav Yerleri (Kapalı)'}
+                  </button>
+                  <button
                     onClick={() => setShowDoorEnglishColumn(!showDoorEnglishColumn)}
                     style={{ padding: '0.35rem 0.7rem', background: showDoorEnglishColumn ? '#6b46c1' : '#94a3b8', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold' }}
                   >
-                    {showDoorEnglishColumn ? '✓ Kapı: İngilizce (Açık)' : '+ Kapı: İngilizce'}
+                    {showDoorEnglishColumn ? '✓ Kapı: İngilizce + Tik (Açık)' : '+ Kapı: İngilizce + Tik'}
                   </button>
                   <button
                     onClick={() => setShowDoorSecondLangColumn(!showDoorSecondLangColumn)}
                     style={{ padding: '0.35rem 0.7rem', background: showDoorSecondLangColumn ? '#6b46c1' : '#94a3b8', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold' }}
                   >
-                    {showDoorSecondLangColumn ? '✓ Kapı: 2. Yab. Dil (Açık)' : '+ Kapı: 2. Yab. Dil'}
+                    {showDoorSecondLangColumn ? '✓ Kapı: 2. Yab. Dil + Tik (Açık)' : '+ Kapı: 2. Yab. Dil + Tik'}
                   </button>
                 </div>
               </div>
@@ -1332,29 +1347,37 @@ const ExamAttendanceLists = () => {
                   <div key={classKey} className="print-card page-break" style={{ background: '#fff', border: '1px solid #cbd5e1', padding: '1.2rem', marginBottom: '2rem', borderRadius: '6px' }}>
                     <div style={{ border: '2px solid #000', padding: '0.6rem', textAlign: 'center', marginBottom: '1rem', background: '#fafafa' }}>
                       <h1 style={{ margin: '0 0 0.3rem 0', fontSize: '13pt', fontWeight: 'bold', textTransform: 'uppercase' }}>
-                        {selectedExam.title} - {classKey} ŞUBESİ SINAV YERLERİ
+                        {selectedExam.title} - {classKey} ŞUBESİ {showDoorRoomColumn ? 'SINAV YERLERİ' : 'ÖĞRENCİ KONTROL LİSTESİ'}
                       </h1>
                       <div style={{ fontSize: '9.5pt', fontWeight: 'bold', borderTop: '1px solid #000', paddingTop: '0.3rem', marginTop: '0.3rem' }}>
-                        TARİH: {selectedExam.date} &nbsp;|&nbsp; ŞUBE ÖĞRENCİ LİSTESİ VE GİDECEĞİ SALONLAR
+                        TARİH: {selectedExam.date} &nbsp;|&nbsp; {showDoorRoomColumn ? 'ŞUBE ÖĞRENCİ LİSTESİ VE GİDECEĞİ SALONLAR' : 'ŞUBE ÖĞRENCİ BİLGİ KONTROL LİSTESİ'}
                       </div>
                     </div>
 
                     <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                       <thead>
                         <tr style={{ background: '#eee' }}>
-                          <th style={{ width: '7%', textAlign: 'center' }}>SIRA</th>
-                          <th style={{ width: '14%', textAlign: 'center' }}>ÖĞR. NO</th>
+                          <th style={{ width: '6%', textAlign: 'center' }}>SIRA</th>
+                          <th style={{ width: '12%', textAlign: 'center' }}>ÖĞR. NO</th>
                           {isTcLoaded && (
-                            <th style={{ width: '15%', textAlign: 'center' }}>TC KİMLİK NO</th>
+                            <th style={{ width: '14%', textAlign: 'center' }}>TC KİMLİK NO</th>
                           )}
                           <th>ÖĞRENCİ ADI SOYADI</th>
                           {showDoorEnglishColumn && (
-                            <th style={{ width: '12%', textAlign: 'center' }}>İNGİLİZCE</th>
+                            <>
+                              <th style={{ width: '11%', textAlign: 'center' }}>İNGİLİZCE</th>
+                              <th style={{ width: '7%', textAlign: 'center', fontSize: '8pt' }}>KONTROL</th>
+                            </>
                           )}
                           {showDoorSecondLangColumn && (
-                            <th style={{ width: '14%', textAlign: 'center' }}>2. YABANCI DİL</th>
+                            <>
+                              <th style={{ width: '13%', textAlign: 'center' }}>2. YABANCI DİL</th>
+                              <th style={{ width: '7%', textAlign: 'center', fontSize: '8pt' }}>KONTROL</th>
+                            </>
                           )}
-                          <th style={{ width: '28%', textAlign: 'center', background: '#e2e8f0' }}>GİDECEĞİ SALON</th>
+                          {showDoorRoomColumn && (
+                            <th style={{ width: '25%', textAlign: 'center', background: '#e2e8f0' }}>GİDECEĞİ SALON</th>
+                          )}
                         </tr>
                       </thead>
                       <tbody>
@@ -1367,14 +1390,22 @@ const ExamAttendanceLists = () => {
                             )}
                             <td style={{ fontWeight: '500' }}>{st.det.fullName}</td>
                             {showDoorEnglishColumn && (
-                              <td style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '8.5pt' }}>{st.det.englishLevel}</td>
+                              <>
+                                <td style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '8.5pt' }}>{st.det.englishLevel}</td>
+                                <td style={{ textAlign: 'center', color: '#888', fontSize: '8.5pt' }}>[ &nbsp; ]</td>
+                              </>
                             )}
                             {showDoorSecondLangColumn && (
-                              <td style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '8.5pt' }}>{st.det.secondLanguage}</td>
+                              <>
+                                <td style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '8.5pt' }}>{st.det.secondLanguage}</td>
+                                <td style={{ textAlign: 'center', color: '#888', fontSize: '8.5pt' }}>[ &nbsp; ]</td>
+                              </>
                             )}
-                            <td style={{ textAlign: 'center', fontWeight: 'bold', color: '#1d4ed8', background: '#f8fafc', fontSize: '9.5pt' }}>
-                              {st.roomDisplay.toUpperCase()}
-                            </td>
+                            {showDoorRoomColumn && (
+                              <td style={{ textAlign: 'center', fontWeight: 'bold', color: '#1d4ed8', background: '#f8fafc', fontSize: '9.5pt' }}>
+                                {st.roomDisplay.toUpperCase()}
+                              </td>
+                            )}
                           </tr>
                         ))}
                       </tbody>
