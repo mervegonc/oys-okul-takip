@@ -1082,6 +1082,12 @@ const ExamAttendanceLists = () => {
                 });
 
                 const sortedClassNames = Object.keys(roomClassTotals).sort();
+                const showEnglishBreakdown =
+                  (examCategory === 'sadece_ingilizce' || examCategory === 'ingilizce_ve_ikinci_dil') &&
+                  (totalCore > 0 || totalExt > 0);
+                const showSecondLangBreakdown =
+                  (examCategory === 'sadece_ikinci_dil' || examCategory === 'ingilizce_ve_ikinci_dil') &&
+                  Object.keys(langTotals).length > 0;
 
                 return (
                   <div key={roomName} className="print-card page-break" style={{ background: '#fff', border: '1px solid #cbd5e1', padding: '0.8rem', marginBottom: '1rem', borderRadius: '6px' }}>
@@ -1231,7 +1237,8 @@ const ExamAttendanceLists = () => {
                       </tbody>
                     </table>
 
-                    <div style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                    <div style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                      {/* 1. Satır: Şube ve Akademik Alan Özetleri */}
                       <div style={{ display: 'flex', gap: '0.4rem', fontSize: '8pt', fontWeight: 'bold', flexWrap: 'wrap', alignItems: 'center' }}>
                         {examCategory === 'akademik_lise' && roomEaCount > 0 && roomSayCount > 0 && (
                           <>
@@ -1250,30 +1257,33 @@ const ExamAttendanceLists = () => {
                             {clsName} = {roomClassTotals[clsName]}
                           </div>
                         ))}
+                      </div>
 
-                        {(examCategory === 'sadece_ingilizce' || examCategory === 'ingilizce_ve_ikinci_dil') && (totalCore > 0 || totalExt > 0) && (
-                          <>
-                            <span style={{ color: '#888', fontWeight: 'normal' }}>|</span>
+                      {/* 2. Satır: Yabancı Dil / İngilizce Seviye Özetleri (sadece > 0 olanlar) */}
+                      {(showEnglishBreakdown || showSecondLangBreakdown) && (
+                        <div style={{ display: 'flex', gap: '0.4rem', fontSize: '8pt', fontWeight: 'bold', flexWrap: 'wrap', alignItems: 'center' }}>
+                          {showEnglishBreakdown && totalCore > 0 && (
                             <div style={{ border: '1px solid #333', padding: '0.2rem 0.5rem', borderRadius: '4px', background: '#e0f2fe' }}>
                               CORE = {totalCore}
                             </div>
+                          )}
+                          {showEnglishBreakdown && totalExt > 0 && (
                             <div style={{ border: '1px solid #333', padding: '0.2rem 0.5rem', borderRadius: '4px', background: '#f0f9ff' }}>
                               EXT = {totalExt}
                             </div>
-                          </>
-                        )}
+                          )}
 
-                        {(examCategory === 'sadece_ikinci_dil' || examCategory === 'ingilizce_ve_ikinci_dil') && Object.keys(langTotals).length > 0 && (
-                          <>
+                          {showEnglishBreakdown && showSecondLangBreakdown && (
                             <span style={{ color: '#888', fontWeight: 'normal' }}>|</span>
-                            {Object.keys(langTotals).sort().map(lang => (
-                              <div key={lang} style={{ border: '1px solid #333', padding: '0.2rem 0.5rem', borderRadius: '4px', background: '#fef3c7' }}>
-                                {lang} = {langTotals[lang]}
-                              </div>
-                            ))}
-                          </>
-                        )}
-                      </div>
+                          )}
+
+                          {showSecondLangBreakdown && Object.keys(langTotals).sort().map(lang => (
+                            <div key={lang} style={{ border: '1px solid #333', padding: '0.2rem 0.5rem', borderRadius: '4px', background: '#fef3c7' }}>
+                              {lang} = {langTotals[lang]}
+                            </div>
+                          ))}
+                        </div>
+                      )}
 
                       <div style={{ border: '1px solid #000', padding: '0.4rem 0.5rem', fontSize: '8.5pt', borderRadius: '4px', background: '#fafafa', display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.1rem' }}>
