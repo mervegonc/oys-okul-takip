@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabase';
 import * as XLSX from 'xlsx';
-import { FaExclamationTriangle } from 'react-icons/fa';
+import { FaExclamationTriangle, FaSync } from 'react-icons/fa';
 
 const ManualEdit = () => {
   const [exams, setExams] = useState([]);
@@ -20,6 +20,83 @@ const ManualEdit = () => {
   const [studentSearchTerm, setStudentSearchTerm] = useState('');
   const [selectedStudentToAdd, setSelectedStudentToAdd] = useState('');
   const [customSeatToAdd, setCustomSeatToAdd] = useState('');
+
+  const cleanStr = (val) => String(val || '').trim().toLowerCase();
+  const extractNumbers = (val) => String(val || '').replace(/\D/g, '');
+
+  const findMatchingStudentRecord = use (item, studentList = allStudents) => {
+    const sId = cleanStr(item.studentId || item.student_id || item.id);
+    const sNo = cleanStr(item.studentNumber || item.student_number || item.school_number || item.no);
+    const sTc = cleanStr(item.tc || item.tc_no || item.tcNo);
+    const sFullName = cleanStr(
+      item.studentName ||
+      item.student_name ||
+      `${item.firstName || item.first_name || item.ad || ''} ${item.lastName || item.last_name || item.soyad || ''}`
+    );
+
+    return studentList.find(st => {
+      const dbId = cleanStr(st.id || st.student_id);
+      const dbNo = cleanStr(st.student_no || st.school_number || st.no);
+      const dbTc = cleanStr(st.tc_no || st.tc);
+      const dbFullName = cleanStr(
+        `${st.first_name || st.firstName || st.ad || ''} ${st.last_name || st.lastName || st.soyad || ''}`
+      );
+
+      if (sId && dbId && sId === dbId) return true;
+      if (sTc && dbTc && sTc === dbTc) return true;
+      if (sNo && dbNo && sNo === dbNo) return true;
+      if (sFullName && dbFullName && sFullName === dbFullName) return true;
+      return false;
+    }) || null;
+  };
+
+  // Önce güncel students kaydındaki değeri al; yoksa item içindekine bak
+  const getItemEnglishLevel = (item, matchedStudent = null, studentList = allStudents) => {
+    const st = matchedStudent || findMatchingStudentRecord(item, studentList);
+    const dbRaw = st?.english_level ?? st?.ingilizce_seviye ?? st?.ing_seviye;
+    const itemRaw = item.english_level ?? item.englishLevel;
+
+    const chosen =
+      (dbRaw !== undefined && dbRaw !== null && String(dbRaw).trim() !== '' && String(dbRaw).trim() !== '-')
+        ? dbRaw
+        : itemRaw;
+
+    const trimmed = String(chosen || '').trim();
+    return trimmed && trimmed !== '-' ? trimmed.toUpperCase() : '-';
+  };
+
+  // Önce güncel students kaydındaki değeri al; yoksa item içindekine bak
+  const getItemSecondLanguage = (item, matchedStudent = null, studentList = allStudents) => {
+    const st = matchedStudent || findMatchingStudentRecord(item, studentList);
+    const dbRaw = st?.second_lang ?? st?.second_language ?? st?.ikinci_yabanci_dil ?? st?.ikinci_dil ?? st?.yabanci_dil;
+    const itemRaw = item.second_language ?? item.secondLanguage;
+
+    const chosen =
+      (dbRaw !== undefined && dbRaw !== null && String(dbRaw).trim() !== '' && String(dbRaw).trim() !== '-')
+        ? dbRaw
+        : itemRaw;
+
+    const trimmed = String(chosen || '').trim();
+    return trimmed && trimmed !== '-' ? trimmed : '-';
+  };
+
+  const syncAssignmentsWithStudents = (rawAssignments, studentList) => {
+    return (rawAssignments || []).map(item => {
+      const matched = findMatchingStudentRecord(item, studentList);
+      if (!matched) return item;
+
+      const latestEng = getItemEnglishLevel(item, matched, studentList);
+      const latestLang = getItemSecondLanguage(item, matched, studentList);
+
+      return {
+        ...item,
+        second_language: latestLang === '-' ? '' : latestLang,
+        secondLanguage: latestLang === '-' ? '' : latestLang,
+        english_level: latestEng === '-' ? '' : latestEng,
+        englishLevel: latestEng === '-' ? '' : latestEng
+      };
+    });
+  };
 
   // Sınavları, salonları, tüm öğrencileri ve çakışma gruplarını getir
   useEffect(() => {
@@ -59,7 +136,7 @@ const ManualEdit = () => {
 
   const currentExamObj = exams.find(e => String(e.id) === String(selectedExam));
 
-  // Sınav seçilince oturma planını getir
+  // Sınav seçilince oturma planını ve güncel öğrenci listesini getir
   useEffect(() => {
     if (!selectedExam) {
       setSeatingPlan(null);
@@ -81,6 +158,7 @@ const ManualEdit = () => {
         ]);
 
         if (planRes.error) throw planRes.error;
+        if (studentRes.error) throw studentRes.error;
 
         const planData = planRes.data;
         if (!planData || planData.length === 0) {
@@ -102,9 +180,7 @@ const ManualEdit = () => {
         }
 
         const currentStudents = studentRes.data || [];
-        if (currentStudents.length > 0) {
-          setAllStudents(currentStudents);
-        }
+        setAllStudents(currentStudents);
 
         const validStudentIds = new Set();
         const validStudentTc = new Set();
@@ -141,11 +217,12 @@ const ManualEdit = () => {
           return false;
         };
 
-        const finalAssignments = (parsedAssignments || []).filter(isStudentInMainList);
+        const filteredByMainList = (parsedAssignments || []).filter(isStudentInMainList);
+        const finalAssignments = syncAssignmentsWithStudents(filteredByMainList, currentStudents);
 
         setSeatingPlan(plan);
         setAssignments(finalAssignments);
-        setMessage(`${finalAssignments.length} öğrenci listelendi.`);
+        setMessage(`${finalAssignments.length} öğrenci listelendi (güncel öğrenci bilgileriyle eşleştirildi).`);
 
         if (parsedAssignments && finalAssignments.length !== parsedAssignments.length) {
           await supabase
@@ -166,41 +243,25 @@ const ManualEdit = () => {
     fetchSeatingPlan();
   }, [selectedExam]);
 
-  const cleanStr = (val) => String(val || '').trim().toLowerCase();
-  const extractNumbers = (val) => String(val || '').replace(/\D/g, '');
+  // Öğrenci listesinde sonradan yapılan dil/ingilizce düzenlemelerini taze çekmek için
+  const handleRefreshFromStudents = async () => {
+    setLoading(true);
+    try {
+      const { data: freshStudents, error } = await supabase.from('students').select('*');
+      if (error) throw error;
 
-  const findMatchingStudentRecord = (item) => {
-    const sId = cleanStr(item.studentId || item.student_id || item.id);
-    const sNo = cleanStr(item.studentNumber || item.student_number || item.school_number || item.no);
-    const sTc = cleanStr(item.tc || item.tc_no || item.tcNo);
-    const sFullName = cleanStr(item.studentName || item.student_name || `${item.firstName || item.first_name || ''} ${item.lastName || item.last_name || ''}`);
-
-    return allStudents.find(st => {
-      const dbId = cleanStr(st.id || st.student_id);
-      const dbNo = cleanStr(st.student_no || st.school_number || st.no);
-      const dbTc = cleanStr(st.tc_no || st.tc);
-      const dbFullName = cleanStr(`${st.first_name || st.firstName || st.ad || ''} ${st.last_name || st.lastName || st.soyad || ''}`);
-
-      if (sId && dbId && sId === dbId) return true;
-      if (sTc && dbTc && sTc === dbTc) return true;
-      if (sNo && dbNo && sNo === dbNo) return true;
-      if (sFullName && dbFullName && sFullName === dbFullName) return true;
-      return false;
-    }) || null;
-  };
-
-  const getItemEnglishLevel = (item, matchedStudent = null) => {
-    const st = matchedStudent || findMatchingStudentRecord(item);
-    const raw = item.english_level || item.englishLevel || st?.english_level || st?.ingilizce_seviye || st?.ing_seviye || '';
-    const trimmed = String(raw).trim();
-    return trimmed && trimmed !== '-' ? trimmed.toUpperCase() : '-';
-  };
-
-  const getItemSecondLanguage = (item, matchedStudent = null) => {
-    const st = matchedStudent || findMatchingStudentRecord(item);
-    const raw = item.second_language || item.secondLanguage || st?.second_lang || st?.second_language || st?.ikinci_yabanci_dil || st?.ikinci_dil || st?.yabanci_dil || '';
-    const trimmed = String(raw).trim();
-    return trimmed && trimmed !== '-' ? trimmed : '-';
+      const list = freshStudents || [];
+      setAllStudents(list);
+      const refreshed = syncAssignmentsWithStudents(assignments, list);
+      setAssignments(refreshed);
+      setEditing(true);
+      setMessage('✅ Öğrenci listesindeki güncel 2. Yabancı Dil ve İngilizce bilgileri çekildi. Kaydetmek için "Değişiklikleri Kaydet"e basın.');
+    } catch (err) {
+      console.error('Öğrenci listesi yenileme hatası:', err);
+      setMessage('❌ Öğrenci listesi güncellenemedi: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleFileUpload = (e) => {
@@ -413,7 +474,7 @@ const ManualEdit = () => {
       if (typeof parsed === 'string') {
         try { parsed = JSON.parse(parsed); } catch (e) {}
       }
-      setAssignments(parsed || []);
+      setAssignments(syncAssignmentsWithStudents(parsed || [], allStudents));
       setEditing(false);
       setMessage('Değişiklikler iptal edildi.');
     }
@@ -474,7 +535,6 @@ const ManualEdit = () => {
     });
   });
 
-  // exams tablosundaki type değerine ("foreign_lang", "dil", "yabancı") göre otomatik algılama
   const examType = cleanStr(currentExamObj?.exam_type || currentExamObj?.type || '');
   const isLanguageExam =
     examType === 'foreign_lang' ||
@@ -575,7 +635,28 @@ const ManualEdit = () => {
         </div>
 
         {selectedExam && (
-          <div>
+          <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              onClick={handleRefreshFromStudents}
+              disabled={loading}
+              style={{
+                padding: '0.55rem 1rem',
+                background: '#6f42c1',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontWeight: 'bold',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.4rem',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+              }}
+            >
+              <FaSync /> Öğrenci Listesinden Yenile
+            </button>
+
             <label
               htmlFor="excel-upload"
               style={{
@@ -875,9 +956,9 @@ const ManualEdit = () => {
 
                           const isConflict = conflictMap[`${roomName}-${currentSeat}`] || conflictMap[`student-${stId}`] || false;
 
-                          const matchedStudent = findMatchingStudentRecord(item);
-                          const engLevel = getItemEnglishLevel(item, matchedStudent);
-                          const secLang = getItemSecondLanguage(item, matchedStudent);
+                          const matchedStudent = findMatchingStudentRecord(item, allStudents);
+                          const engLevel = getItemEnglishLevel(item, matchedStudent, allStudents);
+                          const secLang = getItemSecondLanguage(item, matchedStudent, allStudents);
                           const fieldVal = item.field || item.branch || item.alan || matchedStudent?.field || '';
 
                           return (
