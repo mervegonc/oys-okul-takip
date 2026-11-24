@@ -18,6 +18,8 @@ const ExamAttendanceLists = () => {
   // Dinamik Sütun Göster/Gizle State'leri
   const [showCopyColumn, setShowCopyColumn] = useState(true);
   const [showPhoneColumn, setShowPhoneColumn] = useState(true);
+  const [showDoorEnglishColumn, setShowDoorEnglishColumn] = useState(false);
+  const [showDoorSecondLangColumn, setShowDoorSecondLangColumn] = useState(false);
 
   const [invigilators, setInvigilators] = useState({});
   const [savedInvigilatorsList, setSavedInvigilatorsList] = useState([]);
@@ -644,6 +646,8 @@ const ExamAttendanceLists = () => {
           };
           if (isTcLoaded) item['TC Kimlik No'] = getStudentTc(st, st.det);
           item['Öğrenci Adı Soyadı'] = st.det.fullName;
+          if (showDoorEnglishColumn) item['İngilizce'] = st.det.englishLevel;
+          if (showDoorSecondLangColumn) item['2. Yabancı Dil'] = st.det.secondLanguage;
           item['Gideceği Salon'] = st.roomDisplay;
           dataToExport.push(item);
         });
@@ -931,6 +935,18 @@ const ExamAttendanceLists = () => {
                     style={{ padding: '0.35rem 0.7rem', background: showPhoneColumn ? '#0284c7' : '#94a3b8', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold' }}
                   >
                     {showPhoneColumn ? '✓ Telefon/Cihaz (Açık)' : '✕ Telefon/Cihaz (Kapalı)'}
+                  </button>
+                  <button
+                    onClick={() => setShowDoorEnglishColumn(!showDoorEnglishColumn)}
+                    style={{ padding: '0.35rem 0.7rem', background: showDoorEnglishColumn ? '#6b46c1' : '#94a3b8', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold' }}
+                  >
+                    {showDoorEnglishColumn ? '✓ Kapı: İngilizce (Açık)' : '+ Kapı: İngilizce'}
+                  </button>
+                  <button
+                    onClick={() => setShowDoorSecondLangColumn(!showDoorSecondLangColumn)}
+                    style={{ padding: '0.35rem 0.7rem', background: showDoorSecondLangColumn ? '#6b46c1' : '#94a3b8', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold' }}
+                  >
+                    {showDoorSecondLangColumn ? '✓ Kapı: 2. Yab. Dil (Açık)' : '+ Kapı: 2. Yab. Dil'}
                   </button>
                 </div>
               </div>
@@ -1332,6 +1348,12 @@ const ExamAttendanceLists = () => {
                             <th style={{ width: '15%', textAlign: 'center' }}>TC KİMLİK NO</th>
                           )}
                           <th>ÖĞRENCİ ADI SOYADI</th>
+                          {showDoorEnglishColumn && (
+                            <th style={{ width: '12%', textAlign: 'center' }}>İNGİLİZCE</th>
+                          )}
+                          {showDoorSecondLangColumn && (
+                            <th style={{ width: '14%', textAlign: 'center' }}>2. YABANCI DİL</th>
+                          )}
                           <th style={{ width: '28%', textAlign: 'center', background: '#e2e8f0' }}>GİDECEĞİ SALON</th>
                         </tr>
                       </thead>
@@ -1344,6 +1366,12 @@ const ExamAttendanceLists = () => {
                               <td style={{ textAlign: 'center', fontFamily: 'monospace', fontSize: '8.5pt' }}>{getStudentTc(st, st.det) || '-'}</td>
                             )}
                             <td style={{ fontWeight: '500' }}>{st.det.fullName}</td>
+                            {showDoorEnglishColumn && (
+                              <td style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '8.5pt' }}>{st.det.englishLevel}</td>
+                            )}
+                            {showDoorSecondLangColumn && (
+                              <td style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '8.5pt' }}>{st.det.secondLanguage}</td>
+                            )}
                             <td style={{ textAlign: 'center', fontWeight: 'bold', color: '#1d4ed8', background: '#f8fafc', fontSize: '9.5pt' }}>
                               {st.roomDisplay.toUpperCase()}
                             </td>
